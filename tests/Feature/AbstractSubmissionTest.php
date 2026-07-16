@@ -20,7 +20,7 @@ class AbstractSubmissionTest extends TestCase
 
         $subtheme = Subtheme::create(['title' => 'Conservation of Medicinal Plants', 'active' => true, 'sort_order' => 1]);
         $user = User::factory()->create(['payment_status' => 'pending']);
-        $admin = User::factory()->create(['is_admin' => true]);
+        $admin = User::factory()->admin()->create();
 
         $response = $this->actingAs($user)->post('/abstracts', [
             'title' => 'A Study of Local Herbs',
@@ -48,7 +48,7 @@ class AbstractSubmissionTest extends TestCase
 
         $subtheme = Subtheme::create(['title' => 'Policy', 'active' => true, 'sort_order' => 1]);
         $author = User::factory()->create();
-        $admin = User::factory()->create(['is_admin' => true]);
+        $admin = User::factory()->admin()->create();
         $submission = $author->abstractSubmissions()->create([
             'subtheme_id' => $subtheme->id,
             'title' => 'Original title',

@@ -12,14 +12,14 @@ class CheckinApiTest extends TestCase
 
     public function test_only_admin_accounts_can_log_into_the_checkin_app(): void
     {
-        $attendee = User::factory()->create(['is_admin' => false, 'password' => 'password123']);
+        $attendee = User::factory()->create(['password' => 'password123']);
 
         $this->postJson('/api/checkin/login', [
             'email' => $attendee->email,
             'password' => 'password123',
         ])->assertUnprocessable();
 
-        $staff = User::factory()->create(['is_admin' => true, 'password' => 'password123']);
+        $staff = User::factory()->staff()->create(['password' => 'password123']);
 
         $this->postJson('/api/checkin/login', [
             'email' => $staff->email,
@@ -29,7 +29,7 @@ class CheckinApiTest extends TestCase
 
     public function test_checkin_login_is_rate_limited_after_repeated_failed_attempts(): void
     {
-        $staff = User::factory()->create(['is_admin' => true, 'password' => 'password123']);
+        $staff = User::factory()->staff()->create(['password' => 'password123']);
 
         for ($i = 0; $i < 5; $i++) {
             $this->postJson('/api/checkin/login', [
@@ -46,7 +46,7 @@ class CheckinApiTest extends TestCase
 
     public function test_scanning_a_paid_registrants_code_checks_them_in(): void
     {
-        $staff = User::factory()->create(['is_admin' => true]);
+        $staff = User::factory()->staff()->create();
         $attendee = User::factory()->create([
             'payment_status' => 'verified',
             'registration_code' => 'TMSC-TESTCODE01',
@@ -60,7 +60,7 @@ class CheckinApiTest extends TestCase
 
     public function test_staff_can_register_an_attendance_ready_attendee(): void
     {
-        $staff = User::factory()->create(['is_admin' => true]);
+        $staff = User::factory()->staff()->create();
 
         $response = $this->actingAs($staff, 'sanctum')->postJson('/api/checkin/register', [
             'name' => 'Asha Nyerere',
@@ -78,13 +78,13 @@ class CheckinApiTest extends TestCase
         $this->assertDatabaseHas('users', [
             'email' => 'asha@example.com',
             'payment_status' => 'verified',
-            'is_admin' => false,
+            'role' => 'user',
         ]);
     }
 
     public function test_attendee_registration_rejects_duplicate_email_addresses(): void
     {
-        $staff = User::factory()->create(['is_admin' => true]);
+        $staff = User::factory()->staff()->create();
         User::factory()->create(['email' => 'used@example.com']);
 
         $this->actingAs($staff, 'sanctum')->postJson('/api/checkin/register', [
@@ -97,7 +97,7 @@ class CheckinApiTest extends TestCase
 
     public function test_scanning_an_unpaid_registrants_code_is_rejected(): void
     {
-        $staff = User::factory()->create(['is_admin' => true]);
+        $staff = User::factory()->staff()->create();
         $attendee = User::factory()->create([
             'payment_status' => 'pending',
             'registration_code' => 'TMSC-UNPAID001',

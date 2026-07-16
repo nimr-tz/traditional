@@ -143,7 +143,7 @@ class RegisteredUserController extends Controller
 
         if ($user->requiresStudentVerification()) {
             User::query()
-                ->where('is_admin', true)
+                ->whereIn('role', User::ADMIN_ROLES)
                 ->pluck('email')
                 ->each(fn (string $email) => Mail::to($email)->send(new StudentVerificationSubmitted($user)));
         }

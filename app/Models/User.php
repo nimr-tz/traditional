@@ -18,6 +18,33 @@ class User extends Authenticatable implements MustVerifyEmailContract
     /** @use HasFactory<UserFactory> */
     use HasApiTokens, HasFactory, MustVerifyEmail, Notifiable;
 
+    public const ROLE_USER = 'user';
+
+    public const ROLE_REVIEWER = 'reviewer';
+
+    public const ROLE_STAFF = 'staff';
+
+    public const ROLE_ADMIN = 'admin';
+
+    public const ROLE_SUPER_ADMIN = 'super_admin';
+
+    public const ROLES = [
+        self::ROLE_USER,
+        self::ROLE_REVIEWER,
+        self::ROLE_STAFF,
+        self::ROLE_ADMIN,
+        self::ROLE_SUPER_ADMIN,
+    ];
+
+    /** Roles that can decide on abstract submissions and their presentations. */
+    public const ABSTRACT_REVIEWER_ROLES = [self::ROLE_REVIEWER, self::ROLE_ADMIN, self::ROLE_SUPER_ADMIN];
+
+    /** Roles that can administer registrations, students, and conference settings. */
+    public const ADMIN_ROLES = [self::ROLE_ADMIN, self::ROLE_SUPER_ADMIN];
+
+    /** Roles that can sign in to the check-in app and record attendance. */
+    public const CHECKIN_ROLES = [self::ROLE_STAFF, self::ROLE_ADMIN, self::ROLE_SUPER_ADMIN];
+
     protected $fillable = [
         'name',
         'first_name',
@@ -50,7 +77,6 @@ class User extends Authenticatable implements MustVerifyEmailContract
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'is_east_africa' => 'boolean',
-            'is_admin' => 'boolean',
             'fee_amount' => 'decimal:2',
             'paid_at' => 'datetime',
             'student_verified_at' => 'datetime',
@@ -66,6 +92,27 @@ class User extends Authenticatable implements MustVerifyEmailContract
     public function institutionRecord(): BelongsTo
     {
         return $this->belongsTo(Institution::class, 'institution_id');
+    }
+
+    public function isSuperAdmin(): bool
+    {
+        return $this->role === self::ROLE_SUPER_ADMIN;
+    }
+
+    /** Full conference administration access (registrations, students, settings). */
+    public function isAdmin(): bool
+    {
+        return in_array($this->role, self::ADMIN_ROLES, true);
+    }
+
+    public function canReviewAbstracts(): bool
+    {
+        return in_array($this->role, self::ABSTRACT_REVIEWER_ROLES, true);
+    }
+
+    public function canUseCheckinApp(): bool
+    {
+        return in_array($this->role, self::CHECKIN_ROLES, true);
     }
 
     public function abstractSubmissions(): HasMany

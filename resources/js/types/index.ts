@@ -24,9 +24,12 @@ export interface NavItem {
 export interface SharedData {
     name: string;
     quote: { message: string; author: string };
+    conference: Record<string, string | null>;
     auth: Auth;
     [key: string]: unknown;
 }
+
+export type UserRole = 'user' | 'reviewer' | 'staff' | 'admin' | 'super_admin';
 
 export interface User {
     id: number;
@@ -34,7 +37,7 @@ export interface User {
     email: string;
     avatar?: string;
     email_verified_at: string | null;
-    is_admin: boolean;
+    role: UserRole;
     created_at: string;
     updated_at: string;
     [key: string]: unknown; // This allows for additional properties...

@@ -24,7 +24,7 @@ class AuthController extends Controller
 
         $user = User::where('email', $credentials['email'])->first();
 
-        if (! $user || ! Auth::guard('web')->validate($credentials) || ! $user->is_admin) {
+        if (! $user || ! Auth::guard('web')->validate($credentials) || ! $user->canUseCheckinApp()) {
             throw ValidationException::withMessages([
                 'email' => 'Invalid credentials or this account is not authorized to use the check-in app.',
             ]);

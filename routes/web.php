@@ -33,6 +33,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('abstracts', [AbstractController::class, 'store'])->name('abstracts.store');
     Route::get('abstracts/{abstract}/edit', [AbstractController::class, 'edit'])->name('abstracts.edit');
     Route::put('abstracts/{abstract}', [AbstractController::class, 'update'])->name('abstracts.update');
+    Route::post('abstracts/{abstract}/comments/{comment}/toggle-addressed', [AbstractController::class, 'toggleCommentAddressed'])
+        ->name('abstracts.comments.toggle-addressed');
 
     Route::get('abstracts/{abstract}/presentation', [PresentationController::class, 'show'])->name('abstracts.presentation.show');
     Route::post('abstracts/{abstract}/presentation', [PresentationController::class, 'store'])->name('abstracts.presentation.store');

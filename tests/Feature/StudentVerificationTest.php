@@ -23,7 +23,7 @@ class StudentVerificationTest extends TestCase
         Storage::fake('local');
         Mail::fake();
         Notification::fake();
-        $admin = User::factory()->create(['is_admin' => true]);
+        $admin = User::factory()->admin()->create();
 
         FeeCategory::create([
             'key' => 'student_east_africa',
@@ -86,7 +86,7 @@ class StudentVerificationTest extends TestCase
         Storage::fake('local');
         Mail::fake();
 
-        $admin = User::factory()->create(['is_admin' => true]);
+        $admin = User::factory()->admin()->create();
         $student = User::factory()->create([
             'fee_category' => 'student_non_east_africa',
             'student_document_path' => 'student-verification/id.pdf',
@@ -119,7 +119,7 @@ class StudentVerificationTest extends TestCase
         Storage::fake('local');
         Mail::fake();
 
-        $admin = User::factory()->create(['is_admin' => true]);
+        $admin = User::factory()->admin()->create();
         $student = User::factory()->create([
             'fee_category' => 'student_east_africa',
             'student_document_path' => 'student-verification/old-id.pdf',

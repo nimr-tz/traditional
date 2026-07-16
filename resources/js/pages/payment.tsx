@@ -1,10 +1,10 @@
+import { StatusBanner } from '@/components/status-banner';
 import { StatusPill, type PillTone } from '@/components/status-pill';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem } from '@/types';
 import { Head, Link, useForm, usePage } from '@inertiajs/react';
-import { ArrowRight, Check, CheckCircle2, Clock3, Copy, FileCheck2, LoaderCircle, ReceiptText, ShieldCheck, Wallet } from 'lucide-react';
+import { ArrowRight, Check, CheckCircle2, Clock3, Copy, FileCheck2, LoaderCircle, ReceiptText, ShieldCheck, Wallet, XCircle } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 const breadcrumbs: BreadcrumbItem[] = [{ title: 'Payment', href: '/payment' }];
@@ -134,56 +134,43 @@ export default function Payment({ user, registrationCategory, gepgPayeeName, req
                     </div>
                 </header>
 
-                {props.flash?.success && (
-                    <Alert>
-                        <CheckCircle2 className="h-4 w-4" />
-                        <AlertTitle>Done</AlertTitle>
-                        <AlertDescription>{props.flash.success}</AlertDescription>
-                    </Alert>
-                )}
+                {props.flash?.success && <StatusBanner tone="success" icon={CheckCircle2} title="Done" description={props.flash.success} />}
                 {props.flash?.error && (
-                    <Alert variant="destructive">
-                        <AlertTitle>We could not complete that request</AlertTitle>
-                        <AlertDescription>{props.flash.error}</AlertDescription>
-                    </Alert>
+                    <StatusBanner tone="negative" icon={XCircle} title="We could not complete that request" description={props.flash.error} />
                 )}
-                {props.flash?.info && (
-                    <Alert>
-                        <AlertTitle>Payment update</AlertTitle>
-                        <AlertDescription>{props.flash.info}</AlertDescription>
-                    </Alert>
-                )}
+                {props.flash?.info && <StatusBanner tone="info" icon={ReceiptText} title="Payment update" description={props.flash.info} />}
 
                 {requiresStudentVerification && status.student_verification_status === 'pending' && (
-                    <Alert>
-                        <Clock3 className="h-4 w-4" />
-                        <AlertTitle>Your student document is being reviewed</AlertTitle>
-                        <AlertDescription>You will be able to request a control number as soon as your student status is approved.</AlertDescription>
-                    </Alert>
+                    <StatusBanner
+                        tone="info"
+                        icon={Clock3}
+                        title="Your student document is being reviewed"
+                        description="You will be able to request a control number as soon as your student status is approved."
+                    />
                 )}
 
                 {requiresStudentVerification && status.student_verification_status === 'verified' && (
-                    <Alert>
-                        <ShieldCheck className="h-4 w-4" />
-                        <AlertTitle>Student status approved</AlertTitle>
-                        <AlertDescription>Your student registration rate is confirmed and ready for payment.</AlertDescription>
-                    </Alert>
+                    <StatusBanner
+                        tone="success"
+                        icon={ShieldCheck}
+                        title="Student status approved"
+                        description="Your student registration rate is confirmed and ready for payment."
+                    />
                 )}
 
                 {requiresStudentVerification && status.student_verification_status === 'rejected' && (
-                    <Alert variant="destructive">
-                        <FileCheck2 className="h-4 w-4" />
-                        <AlertTitle>Please provide another student document</AlertTitle>
-                        <AlertDescription>
-                            {status.student_verification_notes && <p>{status.student_verification_notes}</p>}
-                            <Link
-                                href={route('profile.edit')}
-                                className="mt-3 inline-block font-semibold underline underline-offset-2 hover:no-underline"
-                            >
+                    <StatusBanner
+                        tone="warning"
+                        icon={FileCheck2}
+                        title="Please provide another student document"
+                        note={status.student_verification_notes}
+                        noteLabel="Organizer feedback"
+                        action={
+                            <Link href={route('profile.edit')} className="text-sm font-bold underline underline-offset-2 hover:no-underline">
                                 Upload a replacement document in Settings
                             </Link>
-                        </AlertDescription>
-                    </Alert>
+                        }
+                    />
                 )}
 
                 <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1.65fr)_minmax(290px,0.75fr)]">

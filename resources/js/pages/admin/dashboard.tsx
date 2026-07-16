@@ -1,3 +1,4 @@
+import { IconTile } from '@/components/dashboard-card';
 import { Button } from '@/components/ui/button';
 import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem } from '@/types';
@@ -73,10 +74,10 @@ export default function AdminDashboard({ stats, reviewQueue, studentQueue }: Adm
 
                 <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" aria-label="Conference totals">
                     {[
-                        { label: 'Registrants', value: stats.total_registrants, icon: UsersRound },
-                        { label: 'Payments confirmed', value: stats.paid, icon: WalletCards },
-                        { label: 'Abstracts awaiting review', value: stats.abstracts_submitted, icon: FileClock },
-                        { label: 'Students awaiting verification', value: stats.students_pending, icon: GraduationCap },
+                        { label: 'Registrants', value: stats.total_registrants, icon: UsersRound, tone: 'blue' as const },
+                        { label: 'Payments confirmed', value: stats.paid, icon: WalletCards, tone: 'green' as const },
+                        { label: 'Abstracts awaiting review', value: stats.abstracts_submitted, icon: FileClock, tone: 'blue' as const },
+                        { label: 'Students awaiting verification', value: stats.students_pending, icon: GraduationCap, tone: 'green' as const },
                     ].map((item) => {
                         const Icon = item.icon;
                         return (
@@ -85,7 +86,9 @@ export default function AdminDashboard({ stats, reviewQueue, studentQueue }: Adm
                                     <div className="text-3xl font-bold tabular-nums">{item.value}</div>
                                     <div className="text-muted-foreground mt-2 text-xs font-semibold">{item.label}</div>
                                 </div>
-                                <Icon className="size-5 text-[#4c8a1f]" />
+                                <IconTile tone={item.tone}>
+                                    <Icon className="size-5" />
+                                </IconTile>
                             </div>
                         );
                     })}

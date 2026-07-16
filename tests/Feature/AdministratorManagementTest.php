@@ -11,9 +11,9 @@ class AdministratorManagementTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_an_administrator_can_search_verified_non_administrator_accounts(): void
+    public function test_a_super_admin_can_search_verified_plain_user_accounts(): void
     {
-        $administrator = User::factory()->create(['is_admin' => true]);
+        $superAdmin = User::factory()->superAdmin()->create();
         $candidate = User::factory()->create([
             'name' => 'Amina Mushi',
             'email' => 'amina@example.com',
@@ -22,13 +22,12 @@ class AdministratorManagementTest extends TestCase
             'name' => 'Amina Unverified',
             'email' => 'unverified@example.com',
         ]);
-        User::factory()->create([
-            'name' => 'Amina Administrator',
-            'email' => 'another-admin@example.com',
-            'is_admin' => true,
+        User::factory()->reviewer()->create([
+            'name' => 'Amina Reviewer',
+            'email' => 'reviewer@example.com',
         ]);
 
-        $response = $this->actingAs($administrator)->getJson(route('admin.settings.administrators.search', [
+        $response = $this->actingAs($superAdmin)->getJson(route('admin.settings.administrators.search', [
             'query' => 'Amina',
         ]));
 
@@ -38,93 +37,105 @@ class AdministratorManagementTest extends TestCase
             ->assertJsonPath('users.0.email', 'amina@example.com');
     }
 
-    public function test_an_administrator_can_grant_access_and_the_change_is_audited(): void
+    public function test_a_super_admin_can_grant_a_role_and_the_change_is_audited(): void
     {
-        $administrator = User::factory()->create([
+        $superAdmin = User::factory()->superAdmin()->create([
             'name' => 'First Administrator',
             'email' => 'first-admin@example.com',
-            'is_admin' => true,
         ]);
         $candidate = User::factory()->create([
-            'name' => 'New Administrator',
-            'email' => 'new-admin@example.com',
+            'name' => 'New Reviewer',
+            'email' => 'new-reviewer@example.com',
         ]);
 
-        $this->actingAs($administrator)
-            ->post(route('admin.settings.administrators.store'), ['user_id' => $candidate->id])
+        $this->actingAs($superAdmin)
+            ->post(route('admin.settings.administrators.store'), ['user_id' => $candidate->id, 'role' => 'reviewer'])
             ->assertRedirect()
-            ->assertSessionHas('success', 'Administrator access granted.');
+            ->assertSessionHas('success', 'Role granted.');
 
-        $this->assertTrue($candidate->fresh()->is_admin);
+        $this->assertSame('reviewer', $candidate->fresh()->role);
         $this->assertDatabaseHas('administrator_access_changes', [
             'target_user_id' => $candidate->id,
-            'target_name' => 'New Administrator',
-            'changed_by' => $administrator->id,
+            'target_name' => 'New Reviewer',
+            'changed_by' => $superAdmin->id,
             'changed_by_name' => 'First Administrator',
             'action' => 'granted',
+            'role' => 'reviewer',
         ]);
     }
 
-    public function test_an_unverified_account_cannot_be_granted_administrator_access(): void
+    public function test_an_unverified_account_cannot_be_granted_a_role(): void
     {
-        $administrator = User::factory()->create(['is_admin' => true]);
+        $superAdmin = User::factory()->superAdmin()->create();
         $candidate = User::factory()->unverified()->create();
 
-        $this->actingAs($administrator)
-            ->post(route('admin.settings.administrators.store'), ['user_id' => $candidate->id])
+        $this->actingAs($superAdmin)
+            ->post(route('admin.settings.administrators.store'), ['user_id' => $candidate->id, 'role' => 'reviewer'])
             ->assertSessionHasErrors('user_id');
 
-        $this->assertFalse($candidate->fresh()->is_admin);
+        $this->assertSame('user', $candidate->fresh()->role);
         $this->assertSame(0, AdministratorAccessChange::count());
     }
 
-    public function test_an_administrator_can_remove_another_administrator_and_the_change_is_audited(): void
+    public function test_a_super_admin_can_remove_another_users_role_and_the_change_is_audited(): void
     {
-        $administrator = User::factory()->create([
+        $superAdmin = User::factory()->superAdmin()->create([
             'name' => 'Retained Administrator',
-            'is_admin' => true,
         ]);
-        $removedAdministrator = User::factory()->create([
-            'name' => 'Removed Administrator',
-            'is_admin' => true,
+        $reviewer = User::factory()->reviewer()->create([
+            'name' => 'Removed Reviewer',
         ]);
 
-        $this->actingAs($administrator)
-            ->delete(route('admin.settings.administrators.destroy', $removedAdministrator))
+        $this->actingAs($superAdmin)
+            ->delete(route('admin.settings.administrators.destroy', $reviewer))
             ->assertRedirect()
-            ->assertSessionHas('success', 'Administrator access removed.');
+            ->assertSessionHas('success', 'Role removed.');
 
-        $this->assertFalse($removedAdministrator->fresh()->is_admin);
-        $this->assertTrue($administrator->fresh()->is_admin);
+        $this->assertSame('user', $reviewer->fresh()->role);
+        $this->assertSame('super_admin', $superAdmin->fresh()->role);
         $this->assertDatabaseHas('administrator_access_changes', [
-            'target_user_id' => $removedAdministrator->id,
-            'changed_by' => $administrator->id,
+            'target_user_id' => $reviewer->id,
+            'changed_by' => $superAdmin->id,
             'action' => 'revoked',
+            'role' => 'reviewer',
         ]);
     }
 
-    public function test_an_administrator_cannot_remove_their_own_access(): void
+    public function test_a_super_admin_cannot_remove_their_own_role(): void
     {
-        $administrator = User::factory()->create(['is_admin' => true]);
-        User::factory()->create(['is_admin' => true]);
+        $superAdmin = User::factory()->superAdmin()->create();
+        User::factory()->superAdmin()->create();
 
-        $this->actingAs($administrator)
-            ->delete(route('admin.settings.administrators.destroy', $administrator))
+        $this->actingAs($superAdmin)
+            ->delete(route('admin.settings.administrators.destroy', $superAdmin))
             ->assertSessionHasErrors('administrator');
 
-        $this->assertTrue($administrator->fresh()->is_admin);
+        $this->assertSame('super_admin', $superAdmin->fresh()->role);
         $this->assertSame(0, AdministratorAccessChange::count());
     }
 
-    public function test_a_non_administrator_cannot_manage_administrator_access(): void
+    public function test_a_plain_admin_can_also_grant_roles(): void
+    {
+        $admin = User::factory()->admin()->create();
+        $candidate = User::factory()->create();
+
+        $this->actingAs($admin)
+            ->post(route('admin.settings.administrators.store'), ['user_id' => $candidate->id, 'role' => 'reviewer'])
+            ->assertRedirect()
+            ->assertSessionHas('success', 'Role granted.');
+
+        $this->assertSame('reviewer', $candidate->fresh()->role);
+    }
+
+    public function test_a_non_administrator_cannot_manage_roles(): void
     {
         $user = User::factory()->create();
         $candidate = User::factory()->create();
 
         $this->actingAs($user)
-            ->post(route('admin.settings.administrators.store'), ['user_id' => $candidate->id])
+            ->post(route('admin.settings.administrators.store'), ['user_id' => $candidate->id, 'role' => 'reviewer'])
             ->assertForbidden();
 
-        $this->assertFalse($candidate->fresh()->is_admin);
+        $this->assertSame('user', $candidate->fresh()->role);
     }
 }

@@ -65,7 +65,7 @@ class PresentationUploadTest extends TestCase
         Storage::fake('local');
         Mail::fake();
 
-        $admin = User::factory()->create(['is_admin' => true]);
+        $admin = User::factory()->admin()->create();
         $submission = $this->acceptedSubmission();
 
         $response = $this->actingAs($submission->user)->post(route('abstracts.presentation.store', $submission), [
@@ -142,7 +142,7 @@ class PresentationUploadTest extends TestCase
     {
         Storage::fake('local');
 
-        $admin = User::factory()->create(['is_admin' => true]);
+        $admin = User::factory()->admin()->create();
         $stranger = User::factory()->create();
         $submission = $this->acceptedSubmission();
 
@@ -160,7 +160,7 @@ class PresentationUploadTest extends TestCase
         Storage::fake('local');
         Mail::fake();
 
-        $admin = User::factory()->create(['is_admin' => true]);
+        $admin = User::factory()->admin()->create();
         $submission = $this->acceptedSubmission();
 
         $this->actingAs($submission->user)->post(route('abstracts.presentation.store', $submission), [
@@ -184,7 +184,7 @@ class PresentationUploadTest extends TestCase
         Storage::fake('local');
         Mail::fake();
 
-        $admin = User::factory()->create(['is_admin' => true]);
+        $admin = User::factory()->admin()->create();
         $submission = $this->acceptedSubmission();
 
         $this->actingAs($submission->user)->post(route('abstracts.presentation.store', $submission), [

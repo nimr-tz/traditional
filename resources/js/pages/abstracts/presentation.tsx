@@ -1,6 +1,6 @@
 import { DashboardCard, IconTile } from '@/components/dashboard-card';
 import InputError from '@/components/input-error';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { StatusBanner } from '@/components/status-banner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -8,7 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem } from '@/types';
 import { Head, Link, useForm, usePage } from '@inertiajs/react';
-import { BadgeCheck, Clock3, Download, FileUp, LoaderCircle, ShieldAlert, Trash2 } from 'lucide-react';
+import { BadgeCheck, Clock3, Download, FileUp, LoaderCircle, ShieldAlert, Trash2, XCircle } from 'lucide-react';
 import { FormEventHandler } from 'react';
 
 type PresentationStatus = 'pending' | 'uploaded' | 'approved';
@@ -81,42 +81,37 @@ export default function Presentation({ submission, requirements }: PresentationP
                     <p className="text-muted-foreground mt-2 text-sm capitalize">{submission.presentation_type} presentation</p>
                 </div>
 
-                {props.flash?.success && (
-                    <Alert>
-                        <BadgeCheck className="h-4 w-4" />
-                        <AlertTitle>Done</AlertTitle>
-                        <AlertDescription>{props.flash.success}</AlertDescription>
-                    </Alert>
-                )}
+                {props.flash?.success && <StatusBanner tone="success" icon={BadgeCheck} title="Done" description={props.flash.success} />}
                 {props.flash?.error && (
-                    <Alert variant="destructive">
-                        <AlertTitle>We could not complete that request</AlertTitle>
-                        <AlertDescription>{props.flash.error}</AlertDescription>
-                    </Alert>
+                    <StatusBanner tone="negative" icon={XCircle} title="We could not complete that request" description={props.flash.error} />
                 )}
 
                 {submission.presentation_status === 'approved' && (
-                    <Alert className="border-[#67b52f]/25 bg-[#67b52f]/5">
-                        <BadgeCheck className="h-4 w-4" />
-                        <AlertTitle>Presentation approved</AlertTitle>
-                        <AlertDescription>No further action is needed. We look forward to your presentation.</AlertDescription>
-                    </Alert>
+                    <StatusBanner
+                        tone="success"
+                        icon={BadgeCheck}
+                        title="Presentation approved"
+                        description="No further action is needed. We look forward to your presentation."
+                    />
                 )}
 
                 {submission.presentation_status === 'uploaded' && (
-                    <Alert>
-                        <Clock3 className="h-4 w-4" />
-                        <AlertTitle>Awaiting review</AlertTitle>
-                        <AlertDescription>Your presentation file is being reviewed by the organizers.</AlertDescription>
-                    </Alert>
+                    <StatusBanner
+                        tone="info"
+                        icon={Clock3}
+                        title="Awaiting review"
+                        description="Your presentation file is being reviewed by the organizers."
+                    />
                 )}
 
                 {wasRejected && (
-                    <Alert variant="destructive">
-                        <ShieldAlert className="h-4 w-4" />
-                        <AlertTitle>Please upload a replacement file</AlertTitle>
-                        <AlertDescription>{submission.presentation_review_notes}</AlertDescription>
-                    </Alert>
+                    <StatusBanner
+                        tone="warning"
+                        icon={ShieldAlert}
+                        title="Please upload a replacement file"
+                        note={submission.presentation_review_notes}
+                        noteLabel="Organizer feedback"
+                    />
                 )}
 
                 <DashboardCard>
@@ -137,9 +132,7 @@ export default function Presentation({ submission, requirements }: PresentationP
                             <div className="min-w-0">
                                 <p className="truncate text-sm font-semibold">{submission.presentation_original_name}</p>
                                 {submission.presentation_uploaded_at && (
-                                    <p className="text-muted-foreground mt-0.5 text-xs">
-                                        Uploaded {formatDate(submission.presentation_uploaded_at)}
-                                    </p>
+                                    <p className="text-muted-foreground mt-0.5 text-xs">Uploaded {formatDate(submission.presentation_uploaded_at)}</p>
                                 )}
                             </div>
                             <div className="flex shrink-0 items-center gap-2">

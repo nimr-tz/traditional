@@ -15,6 +15,7 @@ class AdministratorAccessChange extends Model
         'changed_by_name',
         'changed_by_email',
         'action',
+        'role',
     ];
 
     public function targetUser(): BelongsTo

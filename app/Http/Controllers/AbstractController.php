@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Mail\AbstractReviewRequested;
 use App\Mail\AbstractSubmitted;
+use App\Models\AbstractReviewerComment;
 use App\Models\AbstractSubmission;
 use App\Models\Subtheme;
 use App\Models\User;
@@ -69,10 +70,24 @@ class AbstractController extends Controller
     {
         $this->authorizeOwner($abstract);
 
+        $abstract->load(['subtheme', 'reviewer:id,name', 'reviewHistory.actor:id,name', 'reviewerDecisions.comments']);
+
+        $reviewerComments = $abstract->reviewerDecisions
+            ->flatMap(fn ($decision) => $decision->comments->map(fn ($comment) => [
+                'id' => $comment->id,
+                'section' => $comment->section,
+                'body' => $comment->body,
+                'addressed' => $comment->isAddressed(),
+                'reviewer_label' => $abstract->reviewerLabelFor($decision->reviewer_id) ?? 'Reviewer',
+                'created_at' => $comment->created_at,
+            ]))
+            ->values();
+
         return Inertia::render('abstracts/edit', [
-            'submission' => $abstract->load(['subtheme', 'reviewer:id,name', 'reviewHistory.actor:id,name']),
+            'submission' => $abstract,
             'subthemes' => Subtheme::where('active', true)->orderBy('sort_order')->get(['id', 'title']),
             'presentationTypes' => config('tmsc.presentation_types'),
+            'reviewerComments' => $reviewerComments,
         ]);
     }
 
@@ -96,6 +111,11 @@ class AbstractController extends Controller
             ] : []));
 
             if ($isRevision) {
+                // Reviewers must re-review the revised content — clear the
+                // prior round's recommendations (and their comments), but
+                // keep the same two reviewers assigned.
+                $abstract->reviewerDecisions()->delete();
+
                 $abstract->reviewHistory()->create([
                     'acted_by' => Auth::id(),
                     'action' => 'resubmitted',
@@ -113,6 +133,16 @@ class AbstractController extends Controller
         }
 
         return to_route('abstracts.index')->with('success', 'Your abstract has been updated.');
+    }
+
+    public function toggleCommentAddressed(AbstractSubmission $abstract, AbstractReviewerComment $comment): RedirectResponse
+    {
+        $this->authorizeOwner($abstract);
+        abort_unless($comment->decision->abstract_submission_id === $abstract->id, 404);
+
+        $comment->update(['addressed_at' => $comment->isAddressed() ? null : now()]);
+
+        return back();
     }
 
     private function authorizeOwner(AbstractSubmission $abstract): void
@@ -155,7 +185,7 @@ class AbstractController extends Controller
     private function notifyReviewers(AbstractSubmission $submission, bool $isRevision = false): void
     {
         User::query()
-            ->where('is_admin', true)
+            ->whereIn('role', User::ABSTRACT_REVIEWER_ROLES)
             ->pluck('email')
             ->each(fn (string $email) => Mail::to($email)->send(new AbstractReviewRequested($submission, $isRevision)));
     }

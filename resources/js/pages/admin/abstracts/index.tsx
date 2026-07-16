@@ -1,10 +1,11 @@
+import { IconTile } from '@/components/dashboard-card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem } from '@/types';
 import { Head, Link, router } from '@inertiajs/react';
-import { ArrowRight, FileCheck2, FileClock, FilePenLine, FileX2, Search } from 'lucide-react';
+import { ArrowRight, FileCheck2, FileClock, FilePenLine, FileX2, ScrollText, Search } from 'lucide-react';
 import { FormEventHandler, useState } from 'react';
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -23,6 +24,8 @@ interface Submission {
     resubmitted_at: string | null;
     user: { name: string; email: string; institution: string | null };
     subtheme: { title: string } | null;
+    reviewer_one: { name: string } | null;
+    reviewer_two: { name: string } | null;
 }
 
 interface Paginated<T> {
@@ -93,11 +96,16 @@ export default function AdminAbstractsIndex({ submissions, subthemes, filters, c
             <Head title="Abstract Review" />
 
             <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 p-4 pb-10 md:p-6">
-                <header className="flex flex-col gap-2 border-b pb-5 md:flex-row md:items-end md:justify-between">
-                    <div>
-                        <p className="text-xs font-bold tracking-[0.18em] text-[#4c8a1f] uppercase">Reviewer workspace</p>
-                        <h1 className="mt-2 font-serif text-3xl font-semibold text-balance">Abstract review</h1>
-                        <p className="text-muted-foreground mt-2 text-sm">Open an abstract to read it fully before recording a decision.</p>
+                <header className="flex flex-col gap-4 border-b pb-5 md:flex-row md:items-end md:justify-between">
+                    <div className="flex items-start gap-4">
+                        <IconTile tone="green">
+                            <ScrollText className="size-5" />
+                        </IconTile>
+                        <div>
+                            <p className="text-xs font-bold tracking-[0.18em] text-[#4c8a1f] uppercase">Reviewer workspace</p>
+                            <h1 className="mt-2 font-serif text-3xl font-semibold text-balance">Abstract review</h1>
+                            <p className="text-muted-foreground mt-2 text-sm">Open an abstract to read it fully before recording a decision.</p>
+                        </div>
                     </div>
                     <p className="text-muted-foreground text-sm tabular-nums">
                         {submissions.from ?? 0}–{submissions.to ?? 0} of {submissions.total}
@@ -193,6 +201,11 @@ export default function AdminAbstractsIndex({ submissions, subthemes, filters, c
                                                     {submission.resubmitted_at ? 'Resubmitted' : 'Submitted'} {formatDate(submittedDate)}
                                                 </span>
                                             </div>
+                                            <p className="text-muted-foreground mt-2 text-xs">
+                                                {submission.reviewer_one && submission.reviewer_two
+                                                    ? `Reviewers: ${submission.reviewer_one.name}, ${submission.reviewer_two.name}`
+                                                    : 'No reviewers assigned yet'}
+                                            </p>
                                         </div>
                                         <Button
                                             asChild

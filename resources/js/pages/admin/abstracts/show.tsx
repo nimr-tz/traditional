@@ -1,11 +1,12 @@
 import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import AppLayout from '@/layouts/app-layout';
-import { type BreadcrumbItem } from '@/types';
-import { Head, Link, router } from '@inertiajs/react';
-import { ArrowLeft, Check, Clock3, Download, FilePenLine, FileUp, Presentation, UserRound, X } from 'lucide-react';
-import { useState } from 'react';
+import { type BreadcrumbItem, type SharedData } from '@/types';
+import { Head, Link, router, usePage } from '@inertiajs/react';
+import { ArrowLeft, Check, Clock3, Download, FilePenLine, FileUp, Plus, Presentation, UserRound, X } from 'lucide-react';
+import { FormEventHandler, useState } from 'react';
 
 type AbstractStatus = 'submitted' | 'revision_requested' | 'accepted' | 'rejected';
 type ReviewAction = 'accepted' | 'revision_requested' | 'rejected';
@@ -27,6 +28,33 @@ interface History {
     actor: { name: string } | null;
 }
 
+interface ReviewerRef {
+    id: number;
+    name: string;
+    email: string;
+}
+
+interface ReviewerComment {
+    id: number;
+    section: string | null;
+    body: string;
+}
+
+interface ReviewerDecision {
+    id: number;
+    reviewer_id: number;
+    recommendation: ReviewAction;
+    comments: ReviewerComment[];
+    decided_at: string;
+    reviewer: ReviewerRef;
+}
+
+const recommendationLabel: Record<ReviewAction, string> = {
+    accepted: 'Accept',
+    revision_requested: 'Request revision',
+    rejected: 'Reject',
+};
+
 const ABSTRACT_SECTIONS = [
     { key: 'background', label: 'Background' },
     { key: 'objective', label: 'Objective' },
@@ -34,6 +62,18 @@ const ABSTRACT_SECTIONS = [
     { key: 'results', label: 'Results' },
     { key: 'conclusion', label: 'Conclusion' },
 ] as const;
+
+const sectionLabel: Record<string, string> = {
+    background: 'Background',
+    objective: 'Objective',
+    methods: 'Methods',
+    results: 'Results',
+    conclusion: 'Conclusion',
+};
+
+function labelForSection(section: string | null): string {
+    return section ? (sectionLabel[section] ?? section) : 'Overall';
+}
 
 interface Submission {
     id: number;
@@ -56,6 +96,7 @@ interface Submission {
     resubmitted_at: string | null;
     decided_at: string | null;
     user: {
+        id: number;
         name: string;
         email: string;
         phone: string | null;
@@ -64,6 +105,9 @@ interface Submission {
     };
     subtheme: { title: string } | null;
     reviewer: { name: string } | null;
+    reviewer_one: ReviewerRef | null;
+    reviewer_two: ReviewerRef | null;
+    reviewer_decisions: ReviewerDecision[];
     review_history: History[];
 }
 
@@ -86,7 +130,20 @@ function formatDate(value: string) {
     return new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
 }
 
-export default function AbstractReviewShow({ submission }: { submission: Submission }) {
+interface AbstractReviewShowProps {
+    submission: Submission;
+    eligibleReviewers: ReviewerRef[];
+}
+
+export default function AbstractReviewShow({ submission, eligibleReviewers }: AbstractReviewShowProps) {
+    const { auth } = usePage<SharedData>().props;
+    const isAdmin = auth.user.role === 'admin' || auth.user.role === 'super_admin';
+    const isAssignedReviewer = auth.user.id === submission.reviewer_one?.id || auth.user.id === submission.reviewer_two?.id;
+    const myDecision = submission.reviewer_decisions.find((d) => d.reviewer_id === auth.user.id) ?? null;
+    const otherDecision = submission.reviewer_decisions.find((d) => d.reviewer_id !== auth.user.id) ?? null;
+    const bothReviewersAssigned = Boolean(submission.reviewer_one && submission.reviewer_two);
+    const bothReviewersDecided = bothReviewersAssigned && submission.reviewer_decisions.length === 2;
+
     const [notes, setNotes] = useState('');
     const [processing, setProcessing] = useState(false);
     const [errors, setErrors] = useState<Record<string, string>>({});
@@ -97,12 +154,75 @@ export default function AbstractReviewShow({ submission }: { submission: Submiss
         const value = submission[key];
         return total + (value.trim() ? value.trim().split(/\s+/).length : 0);
     }, 0);
-    const canDecide = submission.status === 'submitted';
+    const canDecide = isAdmin && submission.status === 'submitted' && bothReviewersDecided;
     const breadcrumbs: BreadcrumbItem[] = [
         { title: 'Admin', href: '/admin' },
         { title: 'Abstract Review', href: '/admin/abstracts' },
         { title: submission.title, href: route('admin.abstracts.show', submission.id) },
     ];
+
+    const [reviewerOneId, setReviewerOneId] = useState(submission.reviewer_one ? String(submission.reviewer_one.id) : '');
+    const [reviewerTwoId, setReviewerTwoId] = useState(submission.reviewer_two ? String(submission.reviewer_two.id) : '');
+    const [assigning, setAssigning] = useState(false);
+    const [assignError, setAssignError] = useState<string | null>(null);
+
+    const assignReviewers: FormEventHandler = (event) => {
+        event.preventDefault();
+        setAssignError(null);
+        setAssigning(true);
+
+        router.post(
+            route('admin.abstracts.reviewers.assign', submission.id),
+            { reviewer_one_id: reviewerOneId, reviewer_two_id: reviewerTwoId },
+            {
+                preserveScroll: true,
+                onError: (validationErrors) => setAssignError(String(Object.values(validationErrors)[0] ?? 'Reviewers could not be assigned.')),
+                onFinish: () => setAssigning(false),
+            },
+        );
+    };
+
+    const [myRecommendation, setMyRecommendation] = useState<ReviewAction>(myDecision?.recommendation ?? 'accepted');
+    const [myComments, setMyComments] = useState<{ section: string | null; body: string }[]>(
+        myDecision?.comments.map((c) => ({ section: c.section, body: c.body })) ?? [],
+    );
+    const [draftSection, setDraftSection] = useState<string>('overall');
+    const [draftBody, setDraftBody] = useState('');
+    const [recommending, setRecommending] = useState(false);
+    const [recommendError, setRecommendError] = useState<string | null>(null);
+
+    const addComment = () => {
+        if (!draftBody.trim()) return;
+        setMyComments((prev) => [...prev, { section: draftSection === 'overall' ? null : draftSection, body: draftBody.trim() }]);
+        setDraftBody('');
+    };
+
+    const removeComment = (index: number) => {
+        setMyComments((prev) => prev.filter((_, i) => i !== index));
+    };
+
+    const submitRecommendation: FormEventHandler = (event) => {
+        event.preventDefault();
+
+        if (myRecommendation !== 'accepted' && myComments.length === 0) {
+            setRecommendError('At least one comment is required for this recommendation.');
+            return;
+        }
+
+        setRecommendError(null);
+        setRecommending(true);
+
+        router.post(
+            route('admin.abstracts.reviewer-decision', submission.id),
+            { recommendation: myRecommendation, comments: myComments },
+            {
+                preserveScroll: true,
+                onError: (validationErrors) =>
+                    setRecommendError(String(Object.values(validationErrors)[0] ?? 'Your recommendation could not be recorded.')),
+                onFinish: () => setRecommending(false),
+            },
+        );
+    };
 
     const decide = (action: ReviewAction) => {
         if (action !== 'accepted' && !notes.trim()) {
@@ -365,72 +485,271 @@ export default function AbstractReviewShow({ submission }: { submission: Submiss
                             </dl>
                         </section>
 
-                        <section className="bg-card rounded-2xl border p-5">
-                            <h2 className="text-lg font-semibold">Reviewer decision</h2>
-                            {canDecide ? (
-                                <>
-                                    <label htmlFor="decision-notes" className="mt-4 block text-sm font-semibold">
-                                        Reviewer comment
-                                    </label>
-                                    <p className="text-muted-foreground mt-1 text-xs leading-5">
-                                        Required when requesting revisions or permanently rejecting. Included in the author’s email.
-                                    </p>
-                                    <Textarea
-                                        id="decision-notes"
-                                        value={notes}
-                                        onChange={(event) => setNotes(event.target.value)}
-                                        rows={6}
-                                        className="mt-3"
-                                        placeholder="Write clear, actionable feedback for the author."
-                                        disabled={processing}
-                                    />
-                                    <InputError message={errors.decision_notes} className="mt-2" />
+                        {isAdmin && submission.status === 'submitted' && (
+                            <section className="bg-card rounded-2xl border p-5">
+                                <h2 className="text-lg font-semibold">Assign reviewers</h2>
+                                <p className="text-muted-foreground mt-1 text-xs leading-5">
+                                    Two reviewers must each submit a recommendation before a final decision can be made.
+                                </p>
+                                <form onSubmit={assignReviewers} className="mt-4 space-y-3">
+                                    <div className="grid gap-1">
+                                        <label className="text-xs font-semibold">Reviewer A</label>
+                                        <Select value={reviewerOneId} onValueChange={setReviewerOneId}>
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="Select a reviewer" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {eligibleReviewers.map((reviewer) => (
+                                                    <SelectItem key={reviewer.id} value={String(reviewer.id)}>
+                                                        {reviewer.name}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div className="grid gap-1">
+                                        <label className="text-xs font-semibold">Reviewer B</label>
+                                        <Select value={reviewerTwoId} onValueChange={setReviewerTwoId}>
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="Select a reviewer" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {eligibleReviewers.map((reviewer) => (
+                                                    <SelectItem key={reviewer.id} value={String(reviewer.id)}>
+                                                        {reviewer.name}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    {assignError && <p className="text-sm text-red-700">{assignError}</p>}
+                                    <Button
+                                        type="submit"
+                                        variant="outline"
+                                        size="sm"
+                                        disabled={assigning || !reviewerOneId || !reviewerTwoId || reviewerOneId === reviewerTwoId}
+                                    >
+                                        {assigning ? 'Saving…' : 'Save assignment'}
+                                    </Button>
+                                </form>
+                            </section>
+                        )}
 
-                                    <div className="mt-5 grid gap-2">
-                                        <Button
-                                            onClick={() => decide('accepted')}
-                                            disabled={processing}
-                                            className="h-11 bg-[#4c8a1f] font-bold hover:bg-[#3f751a]"
-                                        >
-                                            <Check className="size-4" />
-                                            Accept abstract
-                                        </Button>
-                                        <Button
-                                            onClick={() => decide('revision_requested')}
-                                            disabled={processing || !notes.trim()}
-                                            variant="outline"
-                                            className="h-11 border-[#135eeb]/35 font-bold text-[#135eeb] hover:bg-[#135eeb]/5"
-                                        >
-                                            <FilePenLine className="size-4" />
-                                            Request revision
-                                        </Button>
-                                        <Button
-                                            onClick={() => decide('rejected')}
-                                            disabled={processing || !notes.trim()}
-                                            variant="outline"
-                                            className="h-11 border-red-200 font-bold text-red-700 hover:bg-red-50 hover:text-red-800"
-                                        >
-                                            <X className="size-4" />
-                                            Reject permanently
-                                        </Button>
-                                    </div>
-                                    <p className="text-muted-foreground mt-4 text-center text-xs">Accept and permanent rejection are final.</p>
-                                </>
-                            ) : (
-                                <div className="mt-4 rounded-xl bg-slate-50 p-4 dark:bg-slate-900">
-                                    <div className="flex items-center gap-2 font-semibold">
-                                        <Clock3 className="size-4 text-[#4c8a1f]" />
-                                        {status.label}
-                                    </div>
-                                    {submission.decision_notes && (
-                                        <p className="text-muted-foreground mt-3 text-sm leading-6">{submission.decision_notes}</p>
-                                    )}
-                                    {submission.reviewer && (
-                                        <p className="text-muted-foreground mt-3 text-xs">Reviewed by {submission.reviewer.name}</p>
-                                    )}
+                        {(submission.reviewer_one || submission.reviewer_two) && (
+                            <section className="bg-card rounded-2xl border p-5">
+                                <h2 className="text-lg font-semibold">Reviewer recommendations</h2>
+                                <div className="mt-4 space-y-3">
+                                    {[submission.reviewer_one, submission.reviewer_two].map((reviewer, index) => {
+                                        if (!reviewer) return null;
+                                        const decision = submission.reviewer_decisions.find((d) => d.reviewer_id === reviewer.id);
+
+                                        return (
+                                            <div key={reviewer.id} className="rounded-xl bg-slate-50 p-4 dark:bg-slate-900">
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <p className="text-sm font-semibold">
+                                                        Reviewer {index === 0 ? 'A' : 'B'} · {reviewer.name}
+                                                    </p>
+                                                    {decision ? (
+                                                        <span className="text-xs font-bold text-[#4c8a1f]">
+                                                            {recommendationLabel[decision.recommendation]}
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-muted-foreground text-xs">Pending</span>
+                                                    )}
+                                                </div>
+                                                {decision && decision.comments.length > 0 && (
+                                                    <div className="mt-3 space-y-2">
+                                                        {decision.comments.map((comment) => (
+                                                            <div key={comment.id} className="text-sm leading-6">
+                                                                <span className="mr-1.5 inline-flex rounded-full bg-white px-2 py-0.5 text-[11px] font-bold text-[#4c8a1f] dark:bg-black/20">
+                                                                    {labelForSection(comment.section)}
+                                                                </span>
+                                                                <span className="text-muted-foreground">{comment.body}</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
                                 </div>
-                            )}
-                        </section>
+                            </section>
+                        )}
+
+                        {isAssignedReviewer && submission.status === 'submitted' && (
+                            <section className="bg-card rounded-2xl border p-5">
+                                <h2 className="text-lg font-semibold">Your recommendation</h2>
+                                <form onSubmit={submitRecommendation} className="mt-4 space-y-3">
+                                    <div className="grid gap-2">
+                                        {(Object.keys(recommendationLabel) as ReviewAction[]).map((action) => (
+                                            <label key={action} className="flex items-center gap-2 text-sm">
+                                                <input
+                                                    type="radio"
+                                                    name="recommendation"
+                                                    value={action}
+                                                    checked={myRecommendation === action}
+                                                    onChange={() => setMyRecommendation(action)}
+                                                />
+                                                {recommendationLabel[action]}
+                                            </label>
+                                        ))}
+                                    </div>
+                                    <div className="flex flex-col gap-2">
+                                        <label className="text-xs font-semibold">
+                                            Comments {myRecommendation !== 'accepted' && '(at least one required)'}
+                                        </label>
+                                        {myComments.length > 0 && (
+                                            <div className="flex flex-col gap-2">
+                                                {myComments.map((comment, index) => (
+                                                    <div
+                                                        key={index}
+                                                        className="flex items-start justify-between gap-2 rounded-lg bg-slate-50 p-3 text-sm dark:bg-slate-900"
+                                                    >
+                                                        <div>
+                                                            <span className="mr-1.5 inline-flex rounded-full bg-white px-2 py-0.5 text-[11px] font-bold text-[#4c8a1f] dark:bg-black/20">
+                                                                {labelForSection(comment.section)}
+                                                            </span>
+                                                            <span className="text-muted-foreground">{comment.body}</span>
+                                                        </div>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => removeComment(index)}
+                                                            className="text-muted-foreground shrink-0 hover:text-red-600"
+                                                            aria-label="Remove comment"
+                                                        >
+                                                            <X className="size-3.5" />
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                        <div className="flex flex-col gap-2 rounded-lg border p-3">
+                                            <Select value={draftSection} onValueChange={setDraftSection}>
+                                                <SelectTrigger className="h-8 text-xs">
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="overall">Overall</SelectItem>
+                                                    {ABSTRACT_SECTIONS.map(({ key, label }) => (
+                                                        <SelectItem key={key} value={key}>
+                                                            {label}
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                            <Textarea
+                                                value={draftBody}
+                                                onChange={(event) => setDraftBody(event.target.value)}
+                                                rows={3}
+                                                placeholder="Write clear, actionable feedback for the author."
+                                                className="text-sm"
+                                            />
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={addComment}
+                                                disabled={!draftBody.trim()}
+                                                className="w-fit"
+                                            >
+                                                <Plus className="size-3.5" />
+                                                Add comment
+                                            </Button>
+                                        </div>
+                                    </div>
+                                    {recommendError && <p className="text-sm text-red-700">{recommendError}</p>}
+                                    <Button type="submit" size="sm" disabled={recommending} className="bg-[#4c8a1f] hover:bg-[#3f751a]">
+                                        {myDecision ? 'Update recommendation' : 'Submit recommendation'}
+                                    </Button>
+                                    <p className="text-muted-foreground text-xs">
+                                        {otherDecision
+                                            ? 'The other assigned reviewer has submitted their recommendation.'
+                                            : 'The other assigned reviewer has not decided yet.'}
+                                    </p>
+                                </form>
+                            </section>
+                        )}
+
+                        {isAdmin && (
+                            <section className="bg-card rounded-2xl border p-5">
+                                <h2 className="text-lg font-semibold">Final decision</h2>
+                                {canDecide ? (
+                                    <>
+                                        <label htmlFor="decision-notes" className="mt-4 block text-sm font-semibold">
+                                            Decision notes
+                                        </label>
+                                        <p className="text-muted-foreground mt-1 text-xs leading-5">
+                                            Required when requesting revisions or permanently rejecting. Included in the author’s email.
+                                        </p>
+                                        <Textarea
+                                            id="decision-notes"
+                                            value={notes}
+                                            onChange={(event) => setNotes(event.target.value)}
+                                            rows={6}
+                                            className="mt-3"
+                                            placeholder="Write clear, actionable feedback for the author."
+                                            disabled={processing}
+                                        />
+                                        <InputError message={errors.decision_notes} className="mt-2" />
+
+                                        <div className="mt-5 grid gap-2">
+                                            <Button
+                                                onClick={() => decide('accepted')}
+                                                disabled={processing}
+                                                className="h-11 bg-[#4c8a1f] font-bold hover:bg-[#3f751a]"
+                                            >
+                                                <Check className="size-4" />
+                                                Accept abstract
+                                            </Button>
+                                            <Button
+                                                onClick={() => decide('revision_requested')}
+                                                disabled={processing || !notes.trim()}
+                                                variant="outline"
+                                                className="h-11 border-[#135eeb]/35 font-bold text-[#135eeb] hover:bg-[#135eeb]/5"
+                                            >
+                                                <FilePenLine className="size-4" />
+                                                Request revision
+                                            </Button>
+                                            <Button
+                                                onClick={() => decide('rejected')}
+                                                disabled={processing || !notes.trim()}
+                                                variant="outline"
+                                                className="h-11 border-red-200 font-bold text-red-700 hover:bg-red-50 hover:text-red-800"
+                                            >
+                                                <X className="size-4" />
+                                                Reject permanently
+                                            </Button>
+                                        </div>
+                                        <p className="text-muted-foreground mt-4 text-center text-xs">Accept and permanent rejection are final.</p>
+                                    </>
+                                ) : submission.status === 'submitted' ? (
+                                    <div className="mt-4 rounded-xl bg-slate-50 p-4 dark:bg-slate-900">
+                                        <div className="flex items-center gap-2 font-semibold">
+                                            <Clock3 className="size-4 text-[#4c8a1f]" />
+                                            Waiting on reviewers
+                                        </div>
+                                        <p className="text-muted-foreground mt-2 text-sm leading-6">
+                                            {!bothReviewersAssigned
+                                                ? 'Assign two reviewers above to start the review.'
+                                                : 'Both assigned reviewers must submit a recommendation before you can decide.'}
+                                        </p>
+                                    </div>
+                                ) : (
+                                    <div className="mt-4 rounded-xl bg-slate-50 p-4 dark:bg-slate-900">
+                                        <div className="flex items-center gap-2 font-semibold">
+                                            <Clock3 className="size-4 text-[#4c8a1f]" />
+                                            {status.label}
+                                        </div>
+                                        {submission.decision_notes && (
+                                            <p className="text-muted-foreground mt-3 text-sm leading-6">{submission.decision_notes}</p>
+                                        )}
+                                        {submission.reviewer && (
+                                            <p className="text-muted-foreground mt-3 text-xs">Reviewed by {submission.reviewer.name}</p>
+                                        )}
+                                    </div>
+                                )}
+                            </section>
+                        )}
                     </aside>
                 </div>
             </div>

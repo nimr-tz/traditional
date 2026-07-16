@@ -15,7 +15,7 @@ class RegistrationController extends Controller
 {
     public function index(Request $request): Response
     {
-        $query = User::where('is_admin', false)
+        $query = User::where('role', User::ROLE_USER)
             ->when($request->payment_status, fn ($q, $status) => $q->where('payment_status', $status))
             ->when($request->search, fn ($q, $search) => $q->where(function ($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%")
@@ -27,10 +27,10 @@ class RegistrationController extends Controller
             'registrations' => $query->latest()->paginate(20)->withQueryString(),
             'filters' => $request->only(['payment_status', 'search']),
             'counts' => [
-                'total' => User::where('is_admin', false)->count(),
-                'pending' => User::where('is_admin', false)->where('payment_status', 'pending')->count(),
-                'submitted' => User::where('is_admin', false)->where('payment_status', 'submitted')->count(),
-                'verified' => User::where('is_admin', false)->where('payment_status', 'verified')->count(),
+                'total' => User::where('role', User::ROLE_USER)->count(),
+                'pending' => User::where('role', User::ROLE_USER)->where('payment_status', 'pending')->count(),
+                'submitted' => User::where('role', User::ROLE_USER)->where('payment_status', 'submitted')->count(),
+                'verified' => User::where('role', User::ROLE_USER)->where('payment_status', 'verified')->count(),
             ],
         ]);
     }
@@ -43,7 +43,7 @@ class RegistrationController extends Controller
         $headers = ['Name', 'Email', 'Institution', 'Phone', 'Country', 'Participant Type', 'Fee Category', 'Amount', 'Currency', 'Payment Status', 'Paid At', 'Checked In'];
         $sheet->fromArray($headers, null, 'A1');
 
-        $rows = User::where('is_admin', false)->with('attendance')->get()->map(fn (User $user) => [
+        $rows = User::where('role', User::ROLE_USER)->with('attendance')->get()->map(fn (User $user) => [
             $user->name,
             $user->email,
             $user->institution,

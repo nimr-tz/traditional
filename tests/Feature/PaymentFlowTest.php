@@ -142,7 +142,7 @@ class PaymentFlowTest extends TestCase
     {
         Mail::fake();
 
-        $admin = User::factory()->create(['is_admin' => true]);
+        $admin = User::factory()->admin()->create();
         $user = User::factory()->create(['payment_status' => 'submitted', 'control_number' => '123456789012']);
 
         $this->actingAs($admin)->post("/admin/registrations/{$user->id}/verify")->assertNotFound();

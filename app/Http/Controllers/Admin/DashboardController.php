@@ -12,9 +12,9 @@ class DashboardController extends Controller
 {
     public function index(): Response
     {
-        $registrants = User::where('is_admin', false);
+        $registrants = User::where('role', User::ROLE_USER);
         $students = User::query()
-            ->where('is_admin', false)
+            ->where('role', User::ROLE_USER)
             ->whereIn('fee_category', ['student_east_africa', 'student_non_east_africa']);
 
         return Inertia::render('admin/dashboard', [

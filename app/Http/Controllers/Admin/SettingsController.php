@@ -15,28 +15,38 @@ use Inertia\Response;
 
 class SettingsController extends Controller
 {
-    public function edit(): Response
+    public function edit(Request $request): Response
     {
+        // This action is admin/super_admin only (see routes/admin.php), so team
+        // management is always visible here — both roles can grant any role.
+        $canManageTeam = $request->user()->isAdmin();
+
         return Inertia::render('admin/settings/index', [
             'feeCategories' => FeeCategory::orderBy('sort_order')->get(),
             'subthemes' => Subtheme::orderBy('sort_order')->get(),
             'institutions' => Institution::orderBy('sort_order')->get(),
             'conferenceSettings' => ConferenceSetting::allSettings(),
-            'administrators' => User::query()
-                ->where('is_admin', true)
-                ->orderBy('name')
-                ->get(['id', 'name', 'email']),
-            'administratorAccessChanges' => AdministratorAccessChange::query()
-                ->latest()
-                ->limit(10)
-                ->get([
-                    'id',
-                    'target_name',
-                    'target_email',
-                    'changed_by_name',
-                    'action',
-                    'created_at',
-                ]),
+            'canManageTeam' => $canManageTeam,
+            'team' => $canManageTeam
+                ? User::query()
+                    ->where('role', '!=', User::ROLE_USER)
+                    ->orderBy('name')
+                    ->get(['id', 'name', 'email', 'role'])
+                : [],
+            'teamAccessChanges' => $canManageTeam
+                ? AdministratorAccessChange::query()
+                    ->latest()
+                    ->limit(10)
+                    ->get([
+                        'id',
+                        'target_name',
+                        'target_email',
+                        'changed_by_name',
+                        'action',
+                        'role',
+                        'created_at',
+                    ])
+                : [],
         ]);
     }
 

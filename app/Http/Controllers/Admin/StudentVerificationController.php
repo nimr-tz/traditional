@@ -25,7 +25,7 @@ class StudentVerificationController extends Controller
     public function index(Request $request): Response
     {
         $students = User::query()
-            ->where('is_admin', false)
+            ->where('role', User::ROLE_USER)
             ->whereIn('fee_category', self::STUDENT_FEE_CATEGORIES)
             ->when($request->status && $request->status !== 'all', fn ($query) => $query
                 ->where('student_verification_status', $request->status))
@@ -39,7 +39,7 @@ class StudentVerificationController extends Controller
             ->withQueryString();
 
         $studentQuery = User::query()
-            ->where('is_admin', false)
+            ->where('role', User::ROLE_USER)
             ->whereIn('fee_category', self::STUDENT_FEE_CATEGORIES);
 
         return Inertia::render('admin/students/index', [

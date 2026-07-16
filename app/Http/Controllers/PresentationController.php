@@ -73,7 +73,7 @@ class PresentationController extends Controller
         Mail::to($abstract->user->email)->send(new PresentationUploaded($abstract, $isReplacement));
 
         User::query()
-            ->where('is_admin', true)
+            ->whereIn('role', User::ABSTRACT_REVIEWER_ROLES)
             ->pluck('email')
             ->each(fn (string $email) => Mail::to($email)->send(new PresentationSubmittedForReview($abstract, $isReplacement)));
 
@@ -101,7 +101,7 @@ class PresentationController extends Controller
     {
         $user = Auth::user();
 
-        abort_unless($abstract->user_id === $user->id || $user->is_admin, 403);
+        abort_unless($abstract->user_id === $user->id || $user->canReviewAbstracts(), 403);
         abort_unless($abstract->presentation_file, 404);
 
         return Storage::disk('local')->download($abstract->presentation_file, $abstract->presentation_original_name);

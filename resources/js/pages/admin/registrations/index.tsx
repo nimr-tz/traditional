@@ -1,10 +1,13 @@
+import { IconTile } from '@/components/dashboard-card';
+import { StatusPill, type PillTone } from '@/components/status-pill';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import AppLayout from '@/layouts/app-layout';
+import { cn } from '@/lib/utils';
 import { type BreadcrumbItem } from '@/types';
 import { Head, Link, router } from '@inertiajs/react';
-import { Download, Search } from 'lucide-react';
+import { ClipboardList, Download, Search } from 'lucide-react';
 import { FormEventHandler, useState } from 'react';
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -44,12 +47,28 @@ interface RegistrationsIndexProps {
     counts: { total: number; pending: number; submitted: number; verified: number };
 }
 
-const paymentConfig: Record<PaymentStatus, { label: string; className: string }> = {
-    pending: { label: 'Not started', className: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300' },
-    submitted: { label: 'Awaiting payment', className: 'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300' },
-    verified: { label: 'Paid', className: 'bg-green-50 text-green-800 dark:bg-green-950/40 dark:text-green-300' },
-    rejected: { label: 'Payment issue', className: 'bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300' },
+const paymentConfig: Record<PaymentStatus, { label: string; tone: PillTone }> = {
+    pending: { label: 'Not started', tone: 'neutral' },
+    submitted: { label: 'Awaiting payment', tone: 'attention' },
+    verified: { label: 'Paid', tone: 'positive' },
+    rejected: { label: 'Payment issue', tone: 'negative' },
 };
+
+const statTiles: { key: keyof RegistrationsIndexProps['counts']; label: string }[] = [
+    { key: 'total', label: 'Total registrants' },
+    { key: 'pending', label: 'Not started' },
+    { key: 'submitted', label: 'Awaiting payment' },
+    { key: 'verified', label: 'Paid' },
+];
+
+function initials(name: string): string {
+    return name
+        .split(' ')
+        .filter(Boolean)
+        .slice(0, 2)
+        .map((part) => part[0]?.toUpperCase())
+        .join('');
+}
 
 function formatDate(value: string | null) {
     if (!value) return '—';
@@ -78,12 +97,17 @@ export default function RegistrationsIndex({ registrations, filters, counts }: R
 
             <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 p-4 pb-10 md:p-6">
                 <header className="flex flex-col gap-4 border-b pb-5 md:flex-row md:items-end md:justify-between">
-                    <div>
-                        <p className="text-xs font-bold tracking-[0.18em] text-[#4c8a1f] uppercase">Conference operations</p>
-                        <h1 className="mt-2 font-serif text-3xl font-semibold">Registrations</h1>
-                        <p className="text-muted-foreground mt-2 text-sm">
-                            Payment status is updated automatically from GePG. This page is read-only.
-                        </p>
+                    <div className="flex items-start gap-4">
+                        <IconTile tone="blue">
+                            <ClipboardList className="size-5" />
+                        </IconTile>
+                        <div>
+                            <p className="text-xs font-bold tracking-[0.18em] text-[#4c8a1f] uppercase">Conference operations</p>
+                            <h1 className="mt-2 font-serif text-3xl font-semibold">Registrations</h1>
+                            <p className="text-muted-foreground mt-2 text-sm">
+                                Payment status is updated automatically from GePG. This page is read-only.
+                            </p>
+                        </div>
                     </div>
                     <Button asChild variant="outline">
                         <a href={route('admin.registrations.export')}>
@@ -93,21 +117,28 @@ export default function RegistrationsIndex({ registrations, filters, counts }: R
                     </Button>
                 </header>
 
-                <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-                    {[
-                        ['Total registrants', counts.total],
-                        ['Not started', counts.pending],
-                        ['Awaiting payment', counts.submitted],
-                        ['Paid', counts.verified],
-                    ].map(([label, value]) => (
-                        <div key={String(label)} className="bg-card rounded-2xl border p-4">
-                            <div className="text-2xl font-bold tabular-nums">{value}</div>
-                            <div className="text-muted-foreground mt-1 text-xs font-semibold">{label}</div>
-                        </div>
-                    ))}
+                <section className="grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label="Registration totals">
+                    {statTiles.map(({ key, label }) => {
+                        const selected = filters.payment_status === key || (key === 'total' && !filters.payment_status);
+
+                        return (
+                            <button
+                                key={key}
+                                type="button"
+                                onClick={() => setStatusFilter(key === 'total' ? 'all' : key)}
+                                className={cn(
+                                    'rounded-2xl border p-4 text-left transition',
+                                    selected ? 'border-[#4c8a1f] bg-[#f3f9ee] shadow-sm dark:bg-[#4c8a1f]/10' : 'bg-card hover:border-[#4c8a1f]/40',
+                                )}
+                            >
+                                <div className="text-2xl font-bold tabular-nums">{counts[key]}</div>
+                                <div className="text-muted-foreground mt-1 text-xs font-semibold">{label}</div>
+                            </button>
+                        );
+                    })}
                 </section>
 
-                <section className="bg-card rounded-2xl border">
+                <section className="bg-card overflow-hidden rounded-2xl border">
                     <div className="grid gap-3 border-b p-4 md:grid-cols-[minmax(0,1fr)_220px]">
                         <form onSubmit={applyFilters} className="flex gap-2">
                             <div className="relative flex-1">
@@ -150,40 +181,57 @@ export default function RegistrationsIndex({ registrations, filters, counts }: R
                                 </tr>
                             </thead>
                             <tbody className="divide-y">
-                                {registrations.data.map((registration) => {
-                                    const payment = paymentConfig[registration.payment_status];
-                                    const isStudent = registration.fee_category?.startsWith('student_');
+                                {registrations.data.length ? (
+                                    registrations.data.map((registration) => {
+                                        const payment = paymentConfig[registration.payment_status];
+                                        const isStudent = registration.fee_category?.startsWith('student_');
 
-                                    return (
-                                        <tr key={registration.id}>
-                                            <td className="p-4">
-                                                <div className="font-semibold">{registration.name}</div>
-                                                <div className="text-muted-foreground mt-1 text-xs">{registration.email}</div>
-                                                <div className="text-muted-foreground mt-1 max-w-64 truncate text-xs">{registration.institution}</div>
-                                            </td>
-                                            <td className="p-4">
-                                                <div className="capitalize">{registration.fee_category?.replaceAll('_', ' ') || '—'}</div>
-                                                {isStudent && (
-                                                    <div className="text-muted-foreground mt-1 text-xs capitalize">
-                                                        Student: {registration.student_verification_status || 'document not submitted'}
+                                        return (
+                                            <tr key={registration.id} className="hover:bg-muted/30">
+                                                <td className="p-4">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-[#eaf1ff] font-serif text-xs font-bold text-[#135eeb] dark:bg-[#135eeb]/15">
+                                                            {initials(registration.name)}
+                                                        </div>
+                                                        <div className="min-w-0">
+                                                            <div className="font-semibold">{registration.name}</div>
+                                                            <div className="text-muted-foreground mt-0.5 truncate text-xs">{registration.email}</div>
+                                                            <div className="text-muted-foreground mt-0.5 max-w-56 truncate text-xs">
+                                                                {registration.institution}
+                                                            </div>
+                                                        </div>
                                                     </div>
-                                                )}
-                                            </td>
-                                            <td className="p-4 font-semibold tabular-nums">
-                                                {registration.fee_amount
-                                                    ? `${registration.currency} ${Number(registration.fee_amount).toLocaleString()}`
-                                                    : '—'}
-                                            </td>
-                                            <td className="p-4 font-mono text-xs">{registration.control_number || 'Not issued'}</td>
-                                            <td className="p-4">
-                                                <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-bold ${payment.className}`}>
-                                                    {payment.label}
-                                                </span>
-                                            </td>
-                                            <td className="text-muted-foreground p-4 text-xs">{formatDate(registration.paid_at)}</td>
-                                        </tr>
-                                    );
-                                })}
+                                                </td>
+                                                <td className="p-4">
+                                                    <div className="capitalize">{registration.fee_category?.replaceAll('_', ' ') || '—'}</div>
+                                                    {isStudent && (
+                                                        <div className="text-muted-foreground mt-1 text-xs capitalize">
+                                                            Student: {registration.student_verification_status || 'document not submitted'}
+                                                        </div>
+                                                    )}
+                                                </td>
+                                                <td className="p-4 font-semibold tabular-nums">
+                                                    {registration.fee_amount
+                                                        ? `${registration.currency} ${Number(registration.fee_amount).toLocaleString()}`
+                                                        : '—'}
+                                                </td>
+                                                <td className="p-4 font-mono text-xs">{registration.control_number || 'Not issued'}</td>
+                                                <td className="p-4">
+                                                    <StatusPill tone={payment.tone}>{payment.label}</StatusPill>
+                                                </td>
+                                                <td className="text-muted-foreground p-4 text-xs">{formatDate(registration.paid_at)}</td>
+                                            </tr>
+                                        );
+                                    })
+                                ) : (
+                                    <tr>
+                                        <td colSpan={6} className="p-12 text-center">
+                                            <Search className="text-muted-foreground mx-auto size-7" />
+                                            <p className="mt-3 font-semibold">No registrations match these filters</p>
+                                            <p className="text-muted-foreground mt-1 text-sm">Clear a filter or try a different search.</p>
+                                        </td>
+                                    </tr>
+                                )}
                             </tbody>
                         </table>
                     </div>
@@ -196,7 +244,11 @@ export default function RegistrationsIndex({ registrations, filters, counts }: R
                                 key={index}
                                 href={link.url ?? '#'}
                                 preserveState
-                                className={`rounded-lg px-3 py-1.5 text-sm ${link.active ? 'bg-[#4c8a1f] text-white' : 'text-muted-foreground hover:bg-muted'} ${!link.url ? 'pointer-events-none opacity-40' : ''}`}
+                                className={cn(
+                                    'rounded-lg px-3 py-1.5 text-sm',
+                                    link.active ? 'bg-[#4c8a1f] text-white' : 'text-muted-foreground hover:bg-muted',
+                                    !link.url && 'pointer-events-none opacity-40',
+                                )}
                                 dangerouslySetInnerHTML={{ __html: link.label }}
                             />
                         ))}

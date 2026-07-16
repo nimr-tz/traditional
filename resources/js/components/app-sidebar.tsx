@@ -21,12 +21,20 @@ const adminNavItems: NavItem[] = [
     { title: 'Conference Settings', url: '/admin/settings', icon: Settings },
 ];
 
+const reviewerNavItems: NavItem[] = [
+    { title: 'Admin Dashboard', url: '/admin', icon: BadgeCheck },
+    { title: 'Abstracts Review', url: '/admin/abstracts', icon: ScrollText },
+];
+
 const footerNavItems: NavItem[] = [];
 
 export function AppSidebar() {
     const { auth } = usePage<SharedData>().props;
-    const isAdmin = auth.user.is_admin;
-    const homeUrl = isAdmin ? '/admin' : '/dashboard';
+    const role = auth.user.role;
+    const isAdmin = role === 'admin' || role === 'super_admin';
+    const isReviewer = role === 'reviewer';
+    const homeUrl = isAdmin || isReviewer ? '/admin' : '/dashboard';
+    const navItems = isAdmin ? adminNavItems : isReviewer ? reviewerNavItems : mainNavItems;
 
     return (
         <Sidebar collapsible="icon" variant="inset">
@@ -43,7 +51,7 @@ export function AppSidebar() {
             </SidebarHeader>
 
             <SidebarContent>
-                <NavMain items={isAdmin ? adminNavItems : mainNavItems} />
+                <NavMain items={navItems} />
             </SidebarContent>
 
             <SidebarFooter>

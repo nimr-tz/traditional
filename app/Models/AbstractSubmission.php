@@ -13,6 +13,7 @@ class AbstractSubmission extends Model
         'background', 'objective', 'methods', 'results', 'conclusion',
         'presentation_type', 'status', 'reviewer_id', 'decision_notes',
         'revision_requested_at', 'resubmitted_at', 'decided_at',
+        'reviewer_one_id', 'reviewer_two_id',
     ];
 
     public const SECTIONS = ['background', 'objective', 'methods', 'results', 'conclusion'];
@@ -74,13 +75,57 @@ class AbstractSubmission extends Model
         return $this->belongsTo(User::class, 'reviewer_id');
     }
 
+    public function reviewerOne(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'reviewer_one_id');
+    }
+
+    public function reviewerTwo(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'reviewer_two_id');
+    }
+
     public function reviewHistory(): HasMany
     {
         return $this->hasMany(AbstractReviewHistory::class)->oldest();
     }
 
+    public function reviewerDecisions(): HasMany
+    {
+        return $this->hasMany(AbstractReviewerDecision::class);
+    }
+
     public function presenter(): ?array
     {
         return collect($this->authors)->firstWhere('is_presenter', true) ?? $this->authors[0] ?? null;
+    }
+
+    public function hasReviewersAssigned(): bool
+    {
+        return $this->reviewer_one_id !== null && $this->reviewer_two_id !== null;
+    }
+
+    public function isAssignedReviewer(User $user): bool
+    {
+        return $user->id === $this->reviewer_one_id || $user->id === $this->reviewer_two_id;
+    }
+
+    public function bothReviewersDecided(): bool
+    {
+        return $this->hasReviewersAssigned()
+            && $this->reviewerDecisions()->whereIn('reviewer_id', [$this->reviewer_one_id, $this->reviewer_two_id])->count() === 2;
+    }
+
+    /**
+     * Anonymised label ("Reviewer A"/"Reviewer B") shown to the author, who
+     * shouldn't see which named reviewer left which comment.
+     */
+    public function reviewerLabelFor(int $reviewerId): ?string
+    {
+        return match ($reviewerId) {
+            $this->reviewer_one_id => 'Reviewer A',
+            $this->reviewer_two_id => 'Reviewer B',
+            default => null,
+        };
     }
 }
