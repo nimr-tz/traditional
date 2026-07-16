@@ -4,11 +4,12 @@ import { Textarea } from '@/components/ui/textarea';
 import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem } from '@/types';
 import { Head, Link, router } from '@inertiajs/react';
-import { ArrowLeft, Check, Clock3, FilePenLine, Presentation, UserRound, X } from 'lucide-react';
+import { ArrowLeft, Check, Clock3, Download, FilePenLine, FileUp, Presentation, UserRound, X } from 'lucide-react';
 import { useState } from 'react';
 
 type AbstractStatus = 'submitted' | 'revision_requested' | 'accepted' | 'rejected';
 type ReviewAction = 'accepted' | 'revision_requested' | 'rejected';
+type PresentationStatus = 'pending' | 'uploaded' | 'approved';
 
 interface Author {
     name: string;
@@ -26,12 +27,29 @@ interface History {
     actor: { name: string } | null;
 }
 
+const ABSTRACT_SECTIONS = [
+    { key: 'background', label: 'Background' },
+    { key: 'objective', label: 'Objective' },
+    { key: 'methods', label: 'Methods' },
+    { key: 'results', label: 'Results' },
+    { key: 'conclusion', label: 'Conclusion' },
+] as const;
+
 interface Submission {
     id: number;
     title: string;
-    abstract_text: string;
+    background: string;
+    objective: string;
+    methods: string;
+    results: string;
+    conclusion: string;
     authors: Author[];
     presentation_type: 'oral' | 'poster';
+    presentation_status: PresentationStatus;
+    presentation_original_name: string | null;
+    presentation_uploaded_at: string | null;
+    presentation_notes: string | null;
+    presentation_review_notes: string | null;
     status: AbstractStatus;
     decision_notes: string | null;
     created_at: string;
@@ -72,8 +90,13 @@ export default function AbstractReviewShow({ submission }: { submission: Submiss
     const [notes, setNotes] = useState('');
     const [processing, setProcessing] = useState(false);
     const [errors, setErrors] = useState<Record<string, string>>({});
+    const [presentationNotes, setPresentationNotes] = useState('');
+    const [presentationProcessing, setPresentationProcessing] = useState(false);
     const status = statusConfig[submission.status];
-    const wordCount = submission.abstract_text.trim() ? submission.abstract_text.trim().split(/\s+/).length : 0;
+    const wordCount = ABSTRACT_SECTIONS.reduce((total, { key }) => {
+        const value = submission[key];
+        return total + (value.trim() ? value.trim().split(/\s+/).length : 0);
+    }, 0);
     const canDecide = submission.status === 'submitted';
     const breadcrumbs: BreadcrumbItem[] = [
         { title: 'Admin', href: '/admin' },
@@ -105,6 +128,31 @@ export default function AbstractReviewShow({ submission }: { submission: Submiss
                 },
                 onError: (validationErrors) => setErrors(validationErrors),
                 onFinish: () => setProcessing(false),
+            },
+        );
+    };
+
+    const approvePresentation = () => {
+        if (!window.confirm('Approve this presentation file?')) return;
+
+        router.post(
+            route('admin.abstracts.presentation.approve', submission.id),
+            {},
+            { preserveScroll: true, onStart: () => setPresentationProcessing(true), onFinish: () => setPresentationProcessing(false) },
+        );
+    };
+
+    const rejectPresentation = () => {
+        if (!presentationNotes.trim()) return;
+
+        router.post(
+            route('admin.abstracts.presentation.reject', submission.id),
+            { notes: presentationNotes },
+            {
+                preserveScroll: true,
+                onStart: () => setPresentationProcessing(true),
+                onSuccess: () => setPresentationNotes(''),
+                onFinish: () => setPresentationProcessing(false),
             },
         );
     };
@@ -148,13 +196,98 @@ export default function AbstractReviewShow({ submission }: { submission: Submiss
                             <section className="p-6 md:p-8">
                                 <div className="mb-5 flex items-end justify-between border-b pb-3">
                                     <h2 className="text-sm font-bold tracking-[0.14em] uppercase">Abstract</h2>
-                                    <span className="text-muted-foreground text-xs tabular-nums">{wordCount} words</span>
+                                    <span className="text-muted-foreground text-xs tabular-nums">{wordCount} words combined</span>
                                 </div>
-                                <div className="text-[15px] leading-8 whitespace-pre-wrap text-slate-800 dark:text-slate-200">
-                                    {submission.abstract_text}
+                                <div className="space-y-6">
+                                    {ABSTRACT_SECTIONS.map(({ key, label }) => (
+                                        <div key={key}>
+                                            <h3 className="text-xs font-bold tracking-[0.1em] text-[#4c8a1f] uppercase">{label}</h3>
+                                            <div className="mt-2 text-[15px] leading-8 whitespace-pre-wrap text-slate-800 dark:text-slate-200">
+                                                {submission[key]}
+                                            </div>
+                                        </div>
+                                    ))}
                                 </div>
                             </section>
                         </article>
+
+                        {submission.status === 'accepted' && (
+                            <section className="bg-card rounded-2xl border p-6 md:p-8">
+                                <div className="flex items-start gap-4">
+                                    <span className="flex size-10 items-center justify-center rounded-xl bg-[#eaf1ff] text-[#135eeb] dark:bg-[#135eeb]/15">
+                                        <FileUp className="size-5" />
+                                    </span>
+                                    <div>
+                                        <h2 className="text-lg font-semibold">Presentation file</h2>
+                                        <p className="text-muted-foreground mt-1 text-sm">
+                                            {submission.presentation_status === 'pending' && !submission.presentation_original_name
+                                                ? 'Not uploaded yet.'
+                                                : submission.presentation_status === 'pending'
+                                                  ? 'Rejected — waiting for a replacement.'
+                                                  : submission.presentation_status === 'uploaded'
+                                                    ? 'Awaiting review.'
+                                                    : 'Approved.'}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                {submission.presentation_original_name && (
+                                    <div className="dark:bg-muted/40 mt-5 flex items-center justify-between gap-4 rounded-xl bg-slate-50 p-4">
+                                        <div className="min-w-0">
+                                            <p className="truncate text-sm font-semibold">{submission.presentation_original_name}</p>
+                                            {submission.presentation_uploaded_at && (
+                                                <p className="text-muted-foreground mt-0.5 text-xs">
+                                                    Uploaded {formatDate(submission.presentation_uploaded_at)}
+                                                </p>
+                                            )}
+                                            {submission.presentation_notes && (
+                                                <p className="text-muted-foreground mt-2 text-sm leading-6">
+                                                    Presenter notes: {submission.presentation_notes}
+                                                </p>
+                                            )}
+                                        </div>
+                                        <Button asChild variant="outline" size="sm" className="shrink-0">
+                                            <a href={route('admin.abstracts.presentation.download', submission.id)}>
+                                                <Download className="size-4" />
+                                                Download
+                                            </a>
+                                        </Button>
+                                    </div>
+                                )}
+
+                                {submission.presentation_status === 'uploaded' && (
+                                    <div className="mt-5 space-y-3">
+                                        <Button
+                                            onClick={approvePresentation}
+                                            disabled={presentationProcessing}
+                                            className="bg-[#4c8a1f] font-bold hover:bg-[#3f751a]"
+                                        >
+                                            <Check className="size-4" />
+                                            Approve presentation
+                                        </Button>
+
+                                        <div className="grid gap-2">
+                                            <Textarea
+                                                value={presentationNotes}
+                                                onChange={(e) => setPresentationNotes(e.target.value)}
+                                                rows={3}
+                                                placeholder="Explain what needs to change before this can be approved."
+                                            />
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                onClick={rejectPresentation}
+                                                disabled={presentationProcessing || !presentationNotes.trim()}
+                                                className="w-fit border-red-200 font-bold text-red-700 hover:bg-red-50 hover:text-red-800"
+                                            >
+                                                <X className="size-4" />
+                                                Reject presentation
+                                            </Button>
+                                        </div>
+                                    </div>
+                                )}
+                            </section>
+                        )}
 
                         <section className="bg-card rounded-2xl border p-6 md:p-8">
                             <h2 className="text-lg font-semibold">Authors</h2>

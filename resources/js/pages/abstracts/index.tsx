@@ -4,18 +4,27 @@ import { Button } from '@/components/ui/button';
 import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem } from '@/types';
 import { Head, Link } from '@inertiajs/react';
-import { ArrowRight, CalendarDays, FileText, Plus, Presentation } from 'lucide-react';
+import { ArrowRight, CalendarDays, FileText, FileUp, Plus, Presentation } from 'lucide-react';
 
 const breadcrumbs: BreadcrumbItem[] = [{ title: 'My Abstracts', href: '/abstracts' }];
+
+type PresentationStatus = 'pending' | 'uploaded' | 'approved';
 
 interface Submission {
     id: number;
     title: string;
     status: 'submitted' | 'revision_requested' | 'accepted' | 'rejected';
     presentation_type: string;
+    presentation_status: PresentationStatus;
     subtheme: { title: string } | null;
     created_at: string;
 }
+
+const presentationLabel: Record<PresentationStatus, string> = {
+    pending: 'Upload presentation',
+    uploaded: 'Presentation submitted',
+    approved: 'Presentation approved',
+};
 
 interface AbstractIndexProps {
     submissions: Submission[];
@@ -140,7 +149,16 @@ export default function AbstractIndex({ submissions }: AbstractIndexProps) {
                                     </div>
                                 </div>
 
-                                <div className="flex justify-end border-t border-slate-100 bg-slate-50/70 px-6 py-4 dark:border-slate-800 dark:bg-slate-900/40">
+                                <div className="flex flex-wrap justify-end gap-3 border-t border-slate-100 bg-slate-50/70 px-6 py-4 dark:border-slate-800 dark:bg-slate-900/40">
+                                    {submission.status === 'accepted' && (
+                                        <Link
+                                            href={route('abstracts.presentation.show', submission.id)}
+                                            className="group inline-flex min-h-10 items-center gap-3 rounded-xl border border-[#4c8a1f]/25 bg-white px-4 py-2 text-sm font-bold text-[#4c8a1f] shadow-sm transition hover:-translate-y-0.5 hover:bg-[#eef7e6] dark:bg-transparent"
+                                        >
+                                            <FileUp className="size-4" />
+                                            {presentationLabel[submission.presentation_status]}
+                                        </Link>
+                                    )}
                                     <Link
                                         href={route('abstracts.edit', submission.id)}
                                         className="group inline-flex min-h-10 items-center gap-3 rounded-xl bg-[#135eeb] px-4 py-2 text-sm font-bold text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-[#0d4fca] hover:shadow-md focus-visible:ring-2 focus-visible:ring-[#135eeb] focus-visible:ring-offset-2 focus-visible:outline-none"

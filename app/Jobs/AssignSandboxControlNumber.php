@@ -24,5 +24,7 @@ class AssignSandboxControlNumber implements ShouldQueue
         }
 
         $user->forceFill(['control_number' => $gepg->generateControlNumber()])->save();
+
+        $gepg->notifyControlNumberIssued($user);
     }
 }

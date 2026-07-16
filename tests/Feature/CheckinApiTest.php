@@ -27,6 +27,23 @@ class CheckinApiTest extends TestCase
         ])->assertOk()->assertJsonStructure(['token', 'user']);
     }
 
+    public function test_checkin_login_is_rate_limited_after_repeated_failed_attempts(): void
+    {
+        $staff = User::factory()->create(['is_admin' => true, 'password' => 'password123']);
+
+        for ($i = 0; $i < 5; $i++) {
+            $this->postJson('/api/checkin/login', [
+                'email' => $staff->email,
+                'password' => 'wrong-password',
+            ])->assertUnprocessable();
+        }
+
+        $this->postJson('/api/checkin/login', [
+            'email' => $staff->email,
+            'password' => 'password123',
+        ])->assertStatus(429);
+    }
+
     public function test_scanning_a_paid_registrants_code_checks_them_in(): void
     {
         $staff = User::factory()->create(['is_admin' => true]);

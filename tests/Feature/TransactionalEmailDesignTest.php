@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Mail\AbstractDecision;
 use App\Mail\AbstractSubmitted;
+use App\Mail\ControlNumberIssued;
 use App\Mail\PaymentConfirmed;
 use App\Mail\RegistrationConfirmed;
 use App\Models\AbstractSubmission;
@@ -34,12 +35,14 @@ class TransactionalEmailDesignTest extends TestCase
             'fee_category' => 'participant_east_africa',
             'currency' => 'TZS',
             'fee_amount' => 250000,
+            'control_number' => '123456789012',
         ]);
 
         $registration = new RegistrationConfirmed($user);
         $payment = new PaymentConfirmed($user);
+        $controlNumber = new ControlNumberIssued($user);
 
-        foreach ([$registration, $payment] as $mail) {
+        foreach ([$registration, $payment, $controlNumber] as $mail) {
             $html = (string) $mail->render();
 
             $this->assertStringContainsString('alt="NIMR"', $html);
@@ -68,7 +71,11 @@ class TransactionalEmailDesignTest extends TestCase
             'subtheme_id' => $subtheme->id,
             'title' => 'Herbal Innovations',
             'authors' => [['name' => 'Abstract Author', 'is_presenter' => true]],
-            'abstract_text' => 'A short abstract.',
+            'background' => 'Background.',
+            'objective' => 'Objective.',
+            'methods' => 'Methods.',
+            'results' => 'Results.',
+            'conclusion' => 'Conclusion.',
             'presentation_type' => 'oral',
             'status' => 'accepted',
             'decision_notes' => 'Great work.',

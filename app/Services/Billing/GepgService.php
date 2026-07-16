@@ -3,6 +3,7 @@
 namespace App\Services\Billing;
 
 use App\Jobs\AssignSandboxControlNumber;
+use App\Mail\ControlNumberIssued;
 use App\Mail\PaymentConfirmed;
 use App\Models\User;
 use Illuminate\Support\Facades\Http;
@@ -107,6 +108,16 @@ class GepgService
         } while (User::where('control_number', $number)->exists());
 
         return $number;
+    }
+
+    /**
+     * Notify a registrant their control number is ready to pay — called once
+     * from the sandbox job or the real control-number-assigned callback,
+     * whichever path assigned it.
+     */
+    public function notifyControlNumberIssued(User $user): void
+    {
+        Mail::to($user->email)->send(new ControlNumberIssued($user));
     }
 
     /**

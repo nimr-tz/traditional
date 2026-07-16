@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -121,7 +122,7 @@ class AbstractController extends Controller
 
     private function validateSubmission(Request $request): array
     {
-        return $request->validate([
+        $data = $request->validate([
             'title' => 'required|string|max:255',
             'subtheme_id' => ['required', Rule::exists('subthemes', 'id')->where('active', true)],
             'presentation_type' => ['required', Rule::in(array_keys(config('tmsc.presentation_types')))],
@@ -129,15 +130,26 @@ class AbstractController extends Controller
             'authors.*.name' => 'required|string|max:255',
             'authors.*.institution' => 'required|string|max:255',
             'authors.*.is_presenter' => 'boolean',
-            'abstract_text' => [
-                'required', 'string',
-                function ($attribute, $value, $fail) {
-                    if (str_word_count($value) > 300) {
-                        $fail('The abstract must not exceed 300 words.');
-                    }
-                },
-            ],
+            'background' => 'required|string',
+            'objective' => 'required|string',
+            'methods' => 'required|string',
+            'results' => 'required|string',
+            'conclusion' => 'required|string',
         ]);
+
+        // The 300-word cap applies to all five sections combined, not per section.
+        $wordCount = str_word_count(implode(' ', array_map(
+            fn (string $section) => $data[$section],
+            AbstractSubmission::SECTIONS,
+        )));
+
+        if ($wordCount > 300) {
+            throw ValidationException::withMessages([
+                'background' => 'The abstract must not exceed 300 words across Background, Objective, Methods, Results, and Conclusion combined.',
+            ]);
+        }
+
+        return $data;
     }
 
     private function notifyReviewers(AbstractSubmission $submission, bool $isRevision = false): void

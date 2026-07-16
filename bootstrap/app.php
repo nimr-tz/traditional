@@ -20,6 +20,8 @@ return Application::configure(basePath: dirname(__DIR__))
             AddLinkHeadersForPreloadedAssets::class,
         ]);
 
+        $middleware->throttleApi();
+
         $middleware->alias([
             'admin' => EnsureUserIsAdmin::class,
         ]);

@@ -77,14 +77,12 @@ function formatConferenceDate(value: string | null | undefined): string {
 
 const FORMAT_FACTS = [
     { k: 'Word limit', v: '300 words + 5 keywords' },
-    { k: 'Font', v: '12pt Arial, 1.5 spacing' },
     { k: 'Title', v: 'Bold capital letters' },
     { k: 'Structure', v: 'Background, Objective, Methods, Results, Conclusion' },
 ];
 
 const INSTRUCTIONS = [
     'Abstracts must not exceed 300 words, including five keywords.',
-    'Font size 12 points Arial with 1.5 line spacing.',
     'The title should be in bold capital letters, followed by a blank line.',
     "The presenting author's name must be bolded and underlined.",
     'Author names should be written as initials followed by surname, e.g. H Malinye; JJ Kayumba.',
@@ -482,7 +480,6 @@ export default function Welcome({ conference, subthemes, feeCategories, seo }: W
                                                 >
                                                     {fee.currency} {Number(fee.amount).toLocaleString()}
                                                 </p>
-                                                <p className="text-muted-foreground mt-1 text-xs">one-time registration fee</p>
                                             </div>
                                         );
                                     })}

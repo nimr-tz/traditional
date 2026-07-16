@@ -4,9 +4,11 @@ import SettingsLayout from '@/layouts/settings/layout';
 import { type BreadcrumbItem } from '@/types';
 import { Transition } from '@headlessui/react';
 import { Head, useForm } from '@inertiajs/react';
+import { ShieldCheck } from 'lucide-react';
 import { FormEventHandler, useRef } from 'react';
 
-import HeadingSmall from '@/components/heading-small';
+import { DashboardCard } from '@/components/dashboard-card';
+import SettingsSectionHeader from '@/components/settings-section-header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -53,10 +55,15 @@ export default function Password() {
             <Head title="Profile settings" />
 
             <SettingsLayout>
-                <div className="space-y-6">
-                    <HeadingSmall title="Update password" description="Ensure your account is using a long, random password to stay secure" />
+                <DashboardCard>
+                    <SettingsSectionHeader
+                        icon={ShieldCheck}
+                        tone="blue"
+                        title="Update password"
+                        description="Ensure your account is using a long, random password to stay secure."
+                    />
 
-                    <form onSubmit={updatePassword} className="space-y-6">
+                    <form onSubmit={updatePassword} className="mt-6 space-y-5">
                         <div className="grid gap-2">
                             <Label htmlFor="current_password">Current password</Label>
 
@@ -66,7 +73,6 @@ export default function Password() {
                                 value={data.current_password}
                                 onChange={(e) => setData('current_password', e.target.value)}
                                 type="password"
-                                className="mt-1 block w-full"
                                 autoComplete="current-password"
                                 placeholder="Current password"
                             />
@@ -83,7 +89,6 @@ export default function Password() {
                                 value={data.password}
                                 onChange={(e) => setData('password', e.target.value)}
                                 type="password"
-                                className="mt-1 block w-full"
                                 autoComplete="new-password"
                                 placeholder="New password"
                             />
@@ -99,7 +104,6 @@ export default function Password() {
                                 value={data.password_confirmation}
                                 onChange={(e) => setData('password_confirmation', e.target.value)}
                                 type="password"
-                                className="mt-1 block w-full"
                                 autoComplete="new-password"
                                 placeholder="Confirm password"
                             />
@@ -107,8 +111,10 @@ export default function Password() {
                             <InputError message={errors.password_confirmation} />
                         </div>
 
-                        <div className="flex items-center gap-4">
-                            <Button disabled={processing}>Save password</Button>
+                        <div className="flex items-center gap-4 pt-1">
+                            <Button disabled={processing} className="bg-[#135eeb] font-bold hover:bg-[#0e4bc2]">
+                                Save password
+                            </Button>
 
                             <Transition
                                 show={recentlySuccessful}
@@ -117,11 +123,11 @@ export default function Password() {
                                 leave="transition ease-in-out"
                                 leaveTo="opacity-0"
                             >
-                                <p className="text-sm text-neutral-600">Saved</p>
+                                <p className="text-sm font-semibold text-[#4c8a1f]">Saved</p>
                             </Transition>
                         </div>
                     </form>
-                </div>
+                </DashboardCard>
             </SettingsLayout>
         </AppLayout>
     );

@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Mail\AbstractDecision;
+use App\Mail\PresentationApproved;
+use App\Mail\PresentationRejected;
 use App\Models\AbstractSubmission;
 use App\Models\Subtheme;
 use Illuminate\Http\RedirectResponse;
@@ -11,9 +13,11 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class AbstractController extends Controller
 {
@@ -101,5 +105,39 @@ class AbstractController extends Controller
         };
 
         return to_route('admin.abstracts.show', $abstract)->with('success', $message);
+    }
+
+    public function downloadPresentation(AbstractSubmission $abstract): StreamedResponse
+    {
+        abort_unless($abstract->presentation_file, 404);
+
+        return Storage::disk('local')->download($abstract->presentation_file, $abstract->presentation_original_name);
+    }
+
+    public function approvePresentation(AbstractSubmission $abstract): RedirectResponse
+    {
+        abort_unless($abstract->presentation_status === 'uploaded', 422, 'Only an uploaded presentation can be approved.');
+
+        $abstract->forceFill(['presentation_status' => 'approved', 'presentation_review_notes' => null])->save();
+
+        Mail::to($abstract->user->email)->send(new PresentationApproved($abstract));
+
+        return back()->with('success', 'Presentation approved.');
+    }
+
+    public function rejectPresentation(Request $request, AbstractSubmission $abstract): RedirectResponse
+    {
+        abort_unless($abstract->presentation_status === 'uploaded', 422, 'Only an uploaded presentation can be rejected.');
+
+        $data = $request->validate(['notes' => ['required', 'string', 'max:2000']]);
+
+        $abstract->forceFill([
+            'presentation_status' => 'pending',
+            'presentation_review_notes' => $data['notes'],
+        ])->save();
+
+        Mail::to($abstract->user->email)->send(new PresentationRejected($abstract->fresh()));
+
+        return back()->with('success', 'Presentation rejected — the presenter has been notified.');
     }
 }

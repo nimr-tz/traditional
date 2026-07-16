@@ -42,6 +42,8 @@ class BillingCallbackController extends Controller
             'payment_notes' => 'Control number assigned: '.$request->cntrl_num,
         ])->save();
 
+        $this->gepg->notifyControlNumberIssued($user);
+
         return response()->json(['received' => true]);
     }
 

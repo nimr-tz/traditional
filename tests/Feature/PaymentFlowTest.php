@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Mail\ControlNumberIssued;
 use App\Mail\PaymentConfirmed;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -32,6 +33,8 @@ class PaymentFlowTest extends TestCase
 
     public function test_east_africa_registrant_can_request_and_receive_a_sandbox_control_number(): void
     {
+        Mail::fake();
+
         $user = User::factory()->create(['is_east_africa' => true, 'fee_amount' => 150000]);
 
         $this->actingAs($user)->post('/payment/control-number')->assertRedirect();
@@ -40,6 +43,7 @@ class PaymentFlowTest extends TestCase
         $this->assertSame('submitted', $user->payment_status);
         // Sync queue connection in testing runs the sandbox assignment job inline.
         $this->assertNotNull($user->control_number);
+        Mail::assertQueued(ControlNumberIssued::class, fn ($mail) => $mail->hasTo($user->email));
     }
 
     public function test_sandbox_gepg_callback_marks_payment_verified_and_generates_a_registration_code(): void
@@ -57,6 +61,25 @@ class PaymentFlowTest extends TestCase
         Mail::assertQueued(PaymentConfirmed::class);
     }
 
+    public function test_requesting_a_control_number_twice_does_not_create_a_duplicate_billing_request(): void
+    {
+        $user = User::factory()->create(['is_east_africa' => true, 'fee_amount' => 150000]);
+
+        $this->actingAs($user)->post('/payment/control-number');
+
+        $user->refresh();
+        $firstBillingRequestId = $user->billing_request_id;
+        $firstControlNumber = $user->control_number;
+        $this->assertNotNull($firstBillingRequestId);
+        $this->assertNotNull($firstControlNumber);
+
+        $this->actingAs($user)->post('/payment/control-number')->assertRedirect();
+
+        $user->refresh();
+        $this->assertSame($firstBillingRequestId, $user->billing_request_id);
+        $this->assertSame($firstControlNumber, $user->control_number);
+    }
+
     public function test_non_east_africa_registrant_can_also_request_a_control_number(): void
     {
         $user = User::factory()->create(['is_east_africa' => false, 'fee_amount' => 150]);
@@ -70,6 +93,8 @@ class PaymentFlowTest extends TestCase
 
     public function test_control_number_callback_matches_api_md_shape(): void
     {
+        Mail::fake();
+
         $user = User::factory()->create(['billing_request_id' => 'BILL1']);
 
         $response = $this->post('/api/billing/control-number-callback', [
@@ -82,6 +107,7 @@ class PaymentFlowTest extends TestCase
         $response->assertOk();
         $user->refresh();
         $this->assertSame('CNTRL1', $user->control_number);
+        Mail::assertQueued(ControlNumberIssued::class, fn ($mail) => $mail->hasTo($user->email));
     }
 
     public function test_payment_callback_matches_api_md_shape(): void

@@ -1,7 +1,9 @@
 import { Head } from '@inertiajs/react';
+import { Palette } from 'lucide-react';
 
 import AppearanceTabs from '@/components/appearance-tabs';
-import HeadingSmall from '@/components/heading-small';
+import { DashboardCard } from '@/components/dashboard-card';
+import SettingsSectionHeader from '@/components/settings-section-header';
 import { type BreadcrumbItem } from '@/types';
 
 import AppLayout from '@/layouts/app-layout';
@@ -20,10 +22,18 @@ export default function Appearance() {
             <Head title="Appearance settings" />
 
             <SettingsLayout>
-                <div className="space-y-6">
-                    <HeadingSmall title="Appearance settings" description="Update your account's appearance settings" />
-                    <AppearanceTabs />
-                </div>
+                <DashboardCard>
+                    <SettingsSectionHeader
+                        icon={Palette}
+                        tone="green"
+                        title="Appearance"
+                        description="Choose how the conference portal looks on this device."
+                    />
+
+                    <div className="mt-6">
+                        <AppearanceTabs />
+                    </div>
+                </DashboardCard>
             </SettingsLayout>
         </AppLayout>
     );

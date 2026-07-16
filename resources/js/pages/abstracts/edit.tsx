@@ -17,13 +17,31 @@ interface Subtheme {
     title: string;
 }
 
+const ABSTRACT_SECTIONS = [
+    { key: 'background', label: 'Background' },
+    { key: 'objective', label: 'Objective' },
+    { key: 'methods', label: 'Methods' },
+    { key: 'results', label: 'Results' },
+    { key: 'conclusion', label: 'Conclusion' },
+] as const;
+
+type SectionKey = (typeof ABSTRACT_SECTIONS)[number]['key'];
+
+function countWords(value: string): number {
+    return value.trim() ? value.trim().split(/\s+/).length : 0;
+}
+
 interface Submission {
     id: number;
     title: string;
     subtheme_id: number;
     presentation_type: string;
     authors: Author[];
-    abstract_text: string;
+    background: string;
+    objective: string;
+    methods: string;
+    results: string;
+    conclusion: string;
     status: 'submitted' | 'revision_requested' | 'accepted' | 'rejected';
     decision_notes: string | null;
 }
@@ -39,7 +57,11 @@ interface AbstractFormData {
     subtheme_id: string;
     presentation_type: string;
     authors: Author[];
-    abstract_text: string;
+    background: string;
+    objective: string;
+    methods: string;
+    results: string;
+    conclusion: string;
     [key: string]: string | Author[];
 }
 
@@ -57,10 +79,14 @@ export default function EditAbstract({ submission, subthemes, presentationTypes 
         subtheme_id: String(submission.subtheme_id),
         presentation_type: submission.presentation_type,
         authors: submission.authors,
-        abstract_text: submission.abstract_text,
+        background: submission.background,
+        objective: submission.objective,
+        methods: submission.methods,
+        results: submission.results,
+        conclusion: submission.conclusion,
     });
 
-    const wordCount = data.abstract_text.trim() ? data.abstract_text.trim().split(/\s+/).length : 0;
+    const wordCount = ABSTRACT_SECTIONS.reduce((total, { key }) => total + countWords(data[key as SectionKey]), 0);
 
     const submit: FormEventHandler = (e) => {
         e.preventDefault();
@@ -137,16 +163,24 @@ export default function EditAbstract({ submission, subthemes, presentationTypes 
                         <AbstractAuthorsField authors={data.authors} onChange={(authors) => setData('authors', authors)} errors={errors} />
 
                         <div className="grid gap-2">
-                            <Label htmlFor="abstract_text">Abstract (max 300 words)</Label>
-                            <Textarea
-                                id="abstract_text"
-                                rows={10}
-                                value={data.abstract_text}
-                                onChange={(e) => setData('abstract_text', e.target.value)}
-                            />
-                            <p className={`text-xs ${wordCount > 300 ? 'text-destructive' : 'text-muted-foreground'}`}>{wordCount} / 300 words</p>
-                            <InputError message={errors.abstract_text} />
+                            <div className="flex items-center justify-between">
+                                <Label>Abstract</Label>
+                                <p className={`text-xs ${wordCount > 300 ? 'text-destructive' : 'text-muted-foreground'}`}>
+                                    {wordCount} / 300 words combined
+                                </p>
+                            </div>
+                            <p className="text-muted-foreground text-xs">
+                                Fill in each section separately. The 300-word limit applies to all five sections combined.
+                            </p>
                         </div>
+
+                        {ABSTRACT_SECTIONS.map(({ key, label }) => (
+                            <div key={key} className="grid gap-2">
+                                <Label htmlFor={key}>{label}</Label>
+                                <Textarea id={key} rows={4} value={data[key]} onChange={(e) => setData(key, e.target.value)} disabled={!editable} />
+                                <InputError message={errors[key]} />
+                            </div>
+                        ))}
                     </fieldset>
 
                     {editable && (

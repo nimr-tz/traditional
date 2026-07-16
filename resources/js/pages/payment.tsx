@@ -1,10 +1,9 @@
 import { StatusPill, type PillTone } from '@/components/status-pill';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem } from '@/types';
-import { Head, useForm, usePage } from '@inertiajs/react';
+import { Head, Link, useForm, usePage } from '@inertiajs/react';
 import { ArrowRight, Check, CheckCircle2, Clock3, Copy, FileCheck2, LoaderCircle, ReceiptText, ShieldCheck, Wallet } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
@@ -89,7 +88,6 @@ export default function Payment({ user, registrationCategory, gepgPayeeName, req
     }, [status.payment_status]);
 
     const { post: postControlNumber, processing: requestingControlNumber } = useForm({});
-    const studentDocumentForm = useForm<{ student_document: File | null }>({ student_document: null });
 
     const studentVerificationComplete = !requiresStudentVerification || status.student_verification_status === 'verified';
     const formattedAmount = status.fee_amount
@@ -106,14 +104,6 @@ export default function Payment({ user, registrationCategory, gepgPayeeName, req
         await navigator.clipboard.writeText(status.control_number);
         setCopied(true);
         window.setTimeout(() => setCopied(false), 2000);
-    };
-
-    const submitStudentDocument = () => {
-        studentDocumentForm.post(route('student-verification.document'), {
-            preserveScroll: true,
-            forceFormData: true,
-            onSuccess: () => studentDocumentForm.reset(),
-        });
     };
 
     return (
@@ -186,26 +176,12 @@ export default function Payment({ user, registrationCategory, gepgPayeeName, req
                         <AlertTitle>Please provide another student document</AlertTitle>
                         <AlertDescription>
                             {status.student_verification_notes && <p>{status.student_verification_notes}</p>}
-                            <div className="mt-4 grid max-w-xl gap-2">
-                                <Input
-                                    type="file"
-                                    accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
-                                    onChange={(event) => studentDocumentForm.setData('student_document', event.target.files?.[0] ?? null)}
-                                />
-                                {studentDocumentForm.errors.student_document && (
-                                    <p className="text-xs">{studentDocumentForm.errors.student_document}</p>
-                                )}
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    className="mt-1 w-fit"
-                                    disabled={!studentDocumentForm.data.student_document || studentDocumentForm.processing}
-                                    onClick={submitStudentDocument}
-                                >
-                                    {studentDocumentForm.processing && <LoaderCircle className="h-4 w-4 animate-spin" />}
-                                    Submit replacement document
-                                </Button>
-                            </div>
+                            <Link
+                                href={route('profile.edit')}
+                                className="mt-3 inline-block font-semibold underline underline-offset-2 hover:no-underline"
+                            >
+                                Upload a replacement document in Settings
+                            </Link>
                         </AlertDescription>
                     </Alert>
                 )}

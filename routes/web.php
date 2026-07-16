@@ -4,6 +4,7 @@ use App\Http\Controllers\AbstractController;
 use App\Http\Controllers\CertificateController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\PaymentController;
+use App\Http\Controllers\PresentationController;
 use App\Http\Controllers\StudentVerificationController;
 use App\Http\Controllers\WelcomeController;
 use Illuminate\Support\Facades\Route;
@@ -32,6 +33,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('abstracts', [AbstractController::class, 'store'])->name('abstracts.store');
     Route::get('abstracts/{abstract}/edit', [AbstractController::class, 'edit'])->name('abstracts.edit');
     Route::put('abstracts/{abstract}', [AbstractController::class, 'update'])->name('abstracts.update');
+
+    Route::get('abstracts/{abstract}/presentation', [PresentationController::class, 'show'])->name('abstracts.presentation.show');
+    Route::post('abstracts/{abstract}/presentation', [PresentationController::class, 'store'])->name('abstracts.presentation.store');
+    Route::delete('abstracts/{abstract}/presentation', [PresentationController::class, 'destroy'])->name('abstracts.presentation.destroy');
+    Route::get('abstracts/{abstract}/presentation/download', [PresentationController::class, 'download'])->name('abstracts.presentation.download');
 
     Route::get('certificate', [CertificateController::class, 'download'])->name('certificate.download');
 });

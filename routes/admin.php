@@ -22,6 +22,9 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
     Route::get('abstracts', [AdminAbstractController::class, 'index'])->name('abstracts.index');
     Route::get('abstracts/{abstract}', [AdminAbstractController::class, 'show'])->name('abstracts.show');
     Route::post('abstracts/{abstract}/decide', [AdminAbstractController::class, 'decide'])->name('abstracts.decide');
+    Route::get('abstracts/{abstract}/presentation/download', [AdminAbstractController::class, 'downloadPresentation'])->name('abstracts.presentation.download');
+    Route::post('abstracts/{abstract}/presentation/approve', [AdminAbstractController::class, 'approvePresentation'])->name('abstracts.presentation.approve');
+    Route::post('abstracts/{abstract}/presentation/reject', [AdminAbstractController::class, 'rejectPresentation'])->name('abstracts.presentation.reject');
 
     Route::get('settings', [AdminSettingsController::class, 'edit'])->name('settings.edit');
     Route::get('settings/administrators/search', [AdminAdministratorController::class, 'search'])->name('settings.administrators.search');

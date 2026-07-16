@@ -17,7 +17,9 @@ Route::post('billing/sandbox/simulate/{user}', [BillingCallbackController::class
 
 // Staff check-in app. Login issues a Sanctum token restricted to admin/staff
 // accounts; every other endpoint here requires that token.
-Route::post('checkin/login', [AuthController::class, 'login'])->name('checkin.login');
+Route::post('checkin/login', [AuthController::class, 'login'])
+    ->middleware('throttle:checkin-login')
+    ->name('checkin.login');
 
 Route::middleware('auth:sanctum')->prefix('checkin')->name('checkin.')->group(function () {
     Route::post('logout', [AuthController::class, 'logout'])->name('logout');

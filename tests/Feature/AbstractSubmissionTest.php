@@ -29,7 +29,11 @@ class AbstractSubmissionTest extends TestCase
             'authors' => [
                 ['name' => 'A. Presenter', 'institution' => 'NIMR', 'is_presenter' => true],
             ],
-            'abstract_text' => 'Background. Objective. Methods. Results. Conclusion.',
+            'background' => 'Traditional medicine remains widely used across the region.',
+            'objective' => 'To document current practices among local healers.',
+            'methods' => 'A cross-sectional survey of licensed practitioners.',
+            'results' => 'Most practitioners combine herbal and modern treatments.',
+            'conclusion' => 'Integration with formal healthcare should be strengthened.',
         ]);
 
         $response->assertRedirect(route('abstracts.index'));
@@ -49,7 +53,11 @@ class AbstractSubmissionTest extends TestCase
             'subtheme_id' => $subtheme->id,
             'title' => 'Original title',
             'authors' => [['name' => 'A. Author', 'institution' => 'NIMR', 'is_presenter' => true]],
-            'abstract_text' => 'Original abstract.',
+            'background' => 'Original background.',
+            'objective' => 'Original objective.',
+            'methods' => 'Original methods.',
+            'results' => 'Original results.',
+            'conclusion' => 'Original conclusion.',
             'presentation_type' => 'poster',
             'status' => 'revision_requested',
             'decision_notes' => 'Clarify the conclusion.',
@@ -62,7 +70,11 @@ class AbstractSubmissionTest extends TestCase
             'subtheme_id' => $subtheme->id,
             'presentation_type' => 'poster',
             'authors' => [['name' => 'A. Author', 'institution' => 'NIMR', 'is_presenter' => true]],
-            'abstract_text' => 'Revised abstract with a clearer conclusion.',
+            'background' => 'Revised background.',
+            'objective' => 'Revised objective.',
+            'methods' => 'Revised methods.',
+            'results' => 'Revised results.',
+            'conclusion' => 'Revised conclusion with more clarity.',
         ])->assertRedirect(route('abstracts.index'));
 
         $submission->refresh();
@@ -77,12 +89,12 @@ class AbstractSubmissionTest extends TestCase
         Mail::assertQueued(AbstractReviewRequested::class, fn ($mail) => $mail->isRevision && $mail->hasTo($admin->email));
     }
 
-    public function test_abstract_text_over_300_words_is_rejected(): void
+    public function test_abstract_sections_over_300_words_combined_are_rejected(): void
     {
         $subtheme = Subtheme::create(['title' => 'Policy and Governance', 'active' => true, 'sort_order' => 1]);
         $user = User::factory()->create();
 
-        $longText = implode(' ', array_fill(0, 301, 'word'));
+        $longBackground = implode(' ', array_fill(0, 301, 'word'));
 
         $response = $this->actingAs($user)->post('/abstracts', [
             'title' => 'Too Long',
@@ -91,9 +103,38 @@ class AbstractSubmissionTest extends TestCase
             'authors' => [
                 ['name' => 'A. Presenter', 'institution' => 'NIMR', 'is_presenter' => true],
             ],
-            'abstract_text' => $longText,
+            'background' => $longBackground,
+            'objective' => 'One.',
+            'methods' => 'One.',
+            'results' => 'One.',
+            'conclusion' => 'One.',
         ]);
 
-        $response->assertSessionHasErrors('abstract_text');
+        $response->assertSessionHasErrors('background');
+    }
+
+    public function test_abstract_sections_under_300_words_combined_are_accepted_even_if_lopsided(): void
+    {
+        Mail::fake();
+
+        $subtheme = Subtheme::create(['title' => 'Policy and Governance', 'active' => true, 'sort_order' => 1]);
+        $user = User::factory()->create();
+
+        $response = $this->actingAs($user)->post('/abstracts', [
+            'title' => 'Lopsided But Fine',
+            'subtheme_id' => $subtheme->id,
+            'presentation_type' => 'poster',
+            'authors' => [
+                ['name' => 'A. Presenter', 'institution' => 'NIMR', 'is_presenter' => true],
+            ],
+            'background' => implode(' ', array_fill(0, 250, 'word')),
+            'objective' => 'One.',
+            'methods' => 'One.',
+            'results' => 'One.',
+            'conclusion' => 'One.',
+        ]);
+
+        $response->assertRedirect(route('abstracts.index'));
+        $this->assertDatabaseHas('abstract_submissions', ['title' => 'Lopsided But Fine']);
     }
 }

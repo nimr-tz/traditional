@@ -5,8 +5,12 @@ namespace App\Providers;
 use App\Support\ConferenceEmail;
 use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Auth\Notifications\VerifyEmail;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
 use Illuminate\Notifications\Messages\MailMessage;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
+use Illuminate\Support\Str;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -23,6 +27,14 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        RateLimiter::for('api', function (Request $request) {
+            return Limit::perMinute(60)->by($request->user()?->id ?: $request->ip());
+        });
+
+        RateLimiter::for('checkin-login', function (Request $request) {
+            return Limit::perMinute(5)->by(Str::lower((string) $request->input('email')).'|'.$request->ip());
+        });
+
         VerifyEmail::toMailUsing(function (object $notifiable, string $verificationUrl): MailMessage {
             $emailAddress = $notifiable->getEmailForVerification();
             $expiryMinutes = (int) config('auth.verification.expire', 60);
