@@ -79,6 +79,8 @@ class User extends Authenticatable implements MustVerifyEmailContract
             'is_east_africa' => 'boolean',
             'fee_amount' => 'decimal:2',
             'paid_at' => 'datetime',
+            'billing_requested_at' => 'datetime',
+            'payment_received_amount' => 'decimal:2',
             'student_verified_at' => 'datetime',
         ];
     }

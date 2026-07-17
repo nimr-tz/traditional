@@ -16,6 +16,10 @@ return [
     'api_key' => env('BILLING_API_KEY', ''),
     'bill_dept' => env('BILLING_DEPT', 'NIMR HQ'),
     'payee_name' => env('GEPG_PAYEE_NAME', 'NATIONAL INSTITUTE FOR MEDICAL RESEARCH'),
+    'callback_token' => env('BILLING_CALLBACK_TOKEN'),
+    'request_retry_minutes' => (int) env('BILLING_REQUEST_RETRY_MINUTES', 10),
+    'connect_timeout' => (int) env('BILLING_CONNECT_TIMEOUT', 5),
+    'request_timeout' => (int) env('BILLING_REQUEST_TIMEOUT', 20),
 
     /*
     |--------------------------------------------------------------------------

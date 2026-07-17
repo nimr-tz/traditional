@@ -9,7 +9,7 @@ import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem } from '@/types';
 import { Head, Link, useForm, usePage } from '@inertiajs/react';
 import { BadgeCheck, Clock3, Download, FileUp, LoaderCircle, ShieldAlert, Trash2, XCircle } from 'lucide-react';
-import { FormEventHandler } from 'react';
+import { FormEventHandler, useState } from 'react';
 
 type PresentationStatus = 'pending' | 'uploaded' | 'approved';
 
@@ -42,6 +42,7 @@ function formatDate(value: string) {
 export default function Presentation({ submission, requirements }: PresentationProps) {
     const { props } = usePage<{ flash: { success?: string; error?: string } }>();
     const wasRejected = submission.presentation_status === 'pending' && Boolean(submission.presentation_review_notes);
+    const [uploadFailure, setUploadFailure] = useState<string | null>(null);
 
     const breadcrumbs: BreadcrumbItem[] = [
         { title: 'My Abstracts', href: '/abstracts' },
@@ -58,8 +59,39 @@ export default function Presentation({ submission, requirements }: PresentationP
         uploadForm.post(route('abstracts.presentation.store', submission.id), {
             preserveScroll: true,
             forceFormData: true,
+            onStart: () => setUploadFailure(null),
             onSuccess: () => uploadForm.setData('presentation_file', null),
+            onError: (errors) => {
+                if (!errors.presentation_file) {
+                    setUploadFailure('The upload could not be completed. Check your connection and try again.');
+                }
+            },
         });
+    };
+
+    const selectFile = (file: File | null) => {
+        uploadForm.clearErrors('presentation_file');
+        setUploadFailure(null);
+
+        if (!file) {
+            uploadForm.setData('presentation_file', null);
+            return;
+        }
+
+        const extension = file.name.split('.').pop()?.toLowerCase() ?? '';
+        if (!requirements.extensions.includes(extension)) {
+            uploadForm.setError('presentation_file', `Choose a ${requirements.extensions.join(', ').toUpperCase()} file.`);
+            uploadForm.setData('presentation_file', null);
+            return;
+        }
+
+        if (file.size > requirements.max_kb * 1024) {
+            uploadForm.setError('presentation_file', `The selected file exceeds the ${Math.round(requirements.max_kb / 1024)} MB limit.`);
+            uploadForm.setData('presentation_file', null);
+            return;
+        }
+
+        uploadForm.setData('presentation_file', file);
     };
 
     const removeFile = () => {
@@ -85,6 +117,7 @@ export default function Presentation({ submission, requirements }: PresentationP
                 {props.flash?.error && (
                     <StatusBanner tone="negative" icon={XCircle} title="We could not complete that request" description={props.flash.error} />
                 )}
+                {uploadFailure && <StatusBanner tone="negative" icon={XCircle} title="Upload failed" description={uploadFailure} />}
 
                 {submission.presentation_status === 'approved' && (
                     <StatusBanner
@@ -169,10 +202,25 @@ export default function Presentation({ submission, requirements }: PresentationP
                                     id="presentation_file"
                                     type="file"
                                     accept={requirements.extensions.map((ext) => `.${ext}`).join(',')}
-                                    onChange={(e) => uploadForm.setData('presentation_file', e.target.files?.[0] ?? null)}
+                                    onChange={(e) => selectFile(e.target.files?.[0] ?? null)}
                                 />
                                 <InputError message={uploadForm.errors.presentation_file} />
                             </div>
+
+                            {uploadForm.processing && uploadForm.progress && (
+                                <div aria-live="polite">
+                                    <div className="mb-2 flex items-center justify-between text-xs font-semibold">
+                                        <span>Uploading</span>
+                                        <span>{uploadForm.progress.percentage}%</span>
+                                    </div>
+                                    <div className="h-2 overflow-hidden rounded-full bg-slate-200">
+                                        <div
+                                            className="h-full bg-[#135eeb] transition-[width]"
+                                            style={{ width: `${uploadForm.progress.percentage}%` }}
+                                        />
+                                    </div>
+                                </div>
+                            )}
 
                             <div className="grid gap-2">
                                 <Label htmlFor="presentation_notes">Notes for the organizers (optional)</Label>

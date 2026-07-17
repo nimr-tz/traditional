@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   quality:
-    runs-on: ubuntu-latest
+    runs-on: nimr-msmt02
     steps:
       - uses: actions/checkout@v4
 
