@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 
 class ConferenceSetting extends Model
@@ -28,7 +29,7 @@ class ConferenceSetting extends Model
         Cache::forget("conference_setting:{$key}");
     }
 
-    public static function allSettings(): \Illuminate\Support\Collection
+    public static function allSettings(): Collection
     {
         return static::query()->pluck('value', 'key');
     }

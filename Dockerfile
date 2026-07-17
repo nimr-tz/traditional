@@ -5,10 +5,16 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund
 
-COPY components.json tsconfig.json vite.config.js ./
+COPY components.json eslint.config.js .prettierignore .prettierrc tsconfig.json vite.config.js ./
 COPY resources ./resources
 COPY public ./public
 RUN npm run build
+
+
+FROM frontend AS frontend-quality
+
+RUN npm run format \
+    && npm run lint:check
 
 
 FROM php:8.4-fpm AS runtime
