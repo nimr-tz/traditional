@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   quality:
-    runs-on: nimr-msmt02
+    runs-on: tmsc-msmt02
     steps:
       - uses: actions/checkout@v4
 

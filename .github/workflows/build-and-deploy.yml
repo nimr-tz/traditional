@@ -24,7 +24,7 @@ permissions:
 
 jobs:
   test:
-    runs-on: nimr-msmt02
+    runs-on: tmsc-msmt02
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -36,7 +36,7 @@ jobs:
         run: docker run --rm tmsc-test:${GITHUB_SHA}
 
   build:
-    runs-on: nimr-msmt02
+    runs-on: tmsc-msmt02
     timeout-minutes: 45
     needs: test
     outputs:
@@ -76,7 +76,7 @@ jobs:
           sbom: false
 
   update-gitops:
-    runs-on: nimr-msmt02
+    runs-on: tmsc-msmt02
     timeout-minutes: 15
     needs: build
     if: github.ref == 'refs/heads/main'
