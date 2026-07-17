@@ -25,6 +25,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('payment', [PaymentController::class, 'show'])->name('payment.show');
     Route::post('payment/control-number', [PaymentController::class, 'requestControlNumber'])->name('payment.control-number');
     Route::get('payment/status', [PaymentController::class, 'pollStatus'])->name('payment.status');
+    Route::get('payment/invoice', [PaymentController::class, 'downloadInvoice'])->name('payment.invoice');
+    Route::get('payment/receipt', [PaymentController::class, 'downloadReceipt'])->name('payment.receipt');
     Route::post('student-verification/document', [StudentVerificationController::class, 'store'])
         ->name('student-verification.document');
 

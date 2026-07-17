@@ -5,16 +5,29 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\AbstractSubmission;
 use App\Models\User;
+use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class DashboardController extends Controller
 {
-    public function index(): Response
+    public function index(Request $request): Response
     {
-        $registrants = User::where('role', User::ROLE_USER);
+        return $request->user()->isAdmin()
+            ? $this->adminDashboard()
+            : $this->reviewerDashboard($request->user());
+    }
+
+    /**
+     * Full conference-operations view: registrations, payments, students, and
+     * the global abstract queue. Only admin/super_admin have routes to act on
+     * any of this, so only they should see it.
+     */
+    private function adminDashboard(): Response
+    {
+        $registrants = User::withRole(User::ROLE_USER);
         $students = User::query()
-            ->where('role', User::ROLE_USER)
+            ->withRole(User::ROLE_USER)
             ->whereIn('fee_category', ['student_east_africa', 'student_non_east_africa']);
 
         return Inertia::render('admin/dashboard', [
@@ -42,6 +55,37 @@ class DashboardController extends Controller
                 ->oldest()
                 ->limit(5)
                 ->get(['id', 'name', 'email', 'institution', 'fee_category', 'created_at']),
+        ]);
+    }
+
+    /**
+     * Plain reviewers only have routes for abstracts assigned to them
+     * (routes/admin.php) — no registrations, payments, or student
+     * verification — so their dashboard shows nothing beyond that.
+     */
+    private function reviewerDashboard(User $user): Response
+    {
+        $assigned = AbstractSubmission::query()->where(function ($query) use ($user) {
+            $query->where('reviewer_one_id', $user->id)->orWhere('reviewer_two_id', $user->id);
+        });
+
+        $awaitingMyDecision = (clone $assigned)
+            ->where('status', 'submitted')
+            ->whereDoesntHave('reviewerDecisions', fn ($query) => $query->where('reviewer_id', $user->id));
+
+        return Inertia::render('admin/reviewer-dashboard', [
+            'stats' => [
+                'assigned_total' => (clone $assigned)->count(),
+                'awaiting_my_decision' => (clone $awaitingMyDecision)->count(),
+                'accepted' => (clone $assigned)->where('status', 'accepted')->count(),
+                'revision_requested' => (clone $assigned)->where('status', 'revision_requested')->count(),
+            ],
+            'reviewQueue' => (clone $awaitingMyDecision)
+                ->with(['user:id,name,institution', 'subtheme:id,title'])
+                ->oldest('resubmitted_at')
+                ->oldest('created_at')
+                ->limit(10)
+                ->get(),
         ]);
     }
 }

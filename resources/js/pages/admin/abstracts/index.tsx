@@ -5,7 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem } from '@/types';
 import { Head, Link, router } from '@inertiajs/react';
-import { ArrowRight, FileCheck2, FileClock, FilePenLine, FileX2, ScrollText, Search } from 'lucide-react';
+import { ArrowRight, FileCheck2, FileClock, FilePenLine, FileStack, FileX2, ScrollText, Search } from 'lucide-react';
 import { FormEventHandler, useState } from 'react';
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -45,7 +45,7 @@ interface AdminAbstractsIndexProps {
     submissions: Paginated<Submission>;
     subthemes: Subtheme[];
     filters: { status?: string; subtheme_id?: string; search?: string };
-    counts: Record<AbstractStatus, number>;
+    counts: Record<AbstractStatus, number> & { total: number };
 }
 
 const statusConfig: Record<AbstractStatus, { label: string; badge: string; icon: typeof FileClock; countLabel: string }> = {
@@ -112,7 +112,20 @@ export default function AdminAbstractsIndex({ submissions, subthemes, filters, c
                     </p>
                 </header>
 
-                <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" aria-label="Abstract status totals">
+                <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5" aria-label="Abstract status totals">
+                    <button
+                        type="button"
+                        onClick={() => visit({ status: undefined })}
+                        className={`flex min-h-24 items-center justify-between rounded-2xl border p-4 text-left transition ${
+                            !filters.status ? 'border-[#135eeb] bg-[#eaf1ff] shadow-sm dark:bg-[#135eeb]/10' : 'bg-card hover:border-[#135eeb]/40'
+                        }`}
+                    >
+                        <div>
+                            <div className="text-2xl font-bold tabular-nums">{counts.total}</div>
+                            <div className="text-muted-foreground mt-1 text-xs font-semibold">Total</div>
+                        </div>
+                        <FileStack className="size-5 text-[#135eeb]" />
+                    </button>
                     {(Object.keys(statusConfig) as AbstractStatus[]).map((status) => {
                         const item = statusConfig[status];
                         const Icon = item.icon;

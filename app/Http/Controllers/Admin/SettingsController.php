@@ -8,45 +8,32 @@ use App\Models\ConferenceSetting;
 use App\Models\FeeCategory;
 use App\Models\Institution;
 use App\Models\Subtheme;
-use App\Models\User;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class SettingsController extends Controller
 {
-    public function edit(Request $request): Response
+    public function edit(): Response
     {
-        // This action is admin/super_admin only (see routes/admin.php), so team
-        // management is always visible here — both roles can grant any role.
-        $canManageTeam = $request->user()->isAdmin();
-
+        // This whole page is super_admin only (see routes/admin.php).
         return Inertia::render('admin/settings/index', [
             'feeCategories' => FeeCategory::orderBy('sort_order')->get(),
             'subthemes' => Subtheme::orderBy('sort_order')->get(),
             'institutions' => Institution::orderBy('sort_order')->get(),
             'conferenceSettings' => ConferenceSetting::allSettings(),
-            'canManageTeam' => $canManageTeam,
-            'team' => $canManageTeam
-                ? User::query()
-                    ->where('role', '!=', User::ROLE_USER)
-                    ->orderBy('name')
-                    ->get(['id', 'name', 'email', 'role'])
-                : [],
-            'teamAccessChanges' => $canManageTeam
-                ? AdministratorAccessChange::query()
-                    ->latest()
-                    ->limit(10)
-                    ->get([
-                        'id',
-                        'target_name',
-                        'target_email',
-                        'changed_by_name',
-                        'action',
-                        'role',
-                        'created_at',
-                    ])
-                : [],
+            'roleAccessChanges' => AdministratorAccessChange::query()
+                ->latest()
+                ->limit(10)
+                ->get([
+                    'id',
+                    'target_name',
+                    'target_email',
+                    'changed_by_name',
+                    'action',
+                    'role',
+                    'created_at',
+                ]),
         ]);
     }
 

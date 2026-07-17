@@ -67,4 +67,27 @@ class PaymentController extends Controller
             'registration_code' => $user->registration_code,
         ]);
     }
+
+    public function downloadInvoice(): RedirectResponse|\Illuminate\Http\Response
+    {
+        return $this->downloadBillingDocument('invoice');
+    }
+
+    public function downloadReceipt(): RedirectResponse|\Illuminate\Http\Response
+    {
+        return $this->downloadBillingDocument('receipt');
+    }
+
+    private function downloadBillingDocument(string $documentType): RedirectResponse|\Illuminate\Http\Response
+    {
+        $document = $this->gepg->fetchBillDocument(Auth::user(), $documentType);
+
+        if (! $document['success']) {
+            return back()->with('error', $document['message'] ?? "Unable to download {$documentType}.");
+        }
+
+        return response($document['body'])
+            ->header('Content-Type', $document['content_type'])
+            ->header('Content-Disposition', 'attachment; filename="'.$document['filename'].'"');
+    }
 }

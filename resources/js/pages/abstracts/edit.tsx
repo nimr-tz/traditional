@@ -165,47 +165,59 @@ export default function EditAbstract({ submission, subthemes, presentationTypes,
                     <form onSubmit={submit} className="flex flex-col gap-6">
                         <fieldset disabled={!editable} className="contents">
                             <div className="grid gap-2">
-                                <Label htmlFor="title">Abstract title</Label>
-                                <Input id="title" value={data.title} onChange={(e) => setData('title', e.target.value)} />
+                                <Label htmlFor="title">Abstract title *</Label>
+                                <Input
+                                    id="title"
+                                    className="font-semibold uppercase"
+                                    value={data.title}
+                                    onChange={(e) => setData('title', e.target.value)}
+                                />
+                                <p className="text-muted-foreground text-xs">The title should be in bold capital letters.</p>
                                 <InputError message={errors.title} />
                             </div>
 
-                            <div className="grid gap-2">
-                                <Label htmlFor="subtheme_id">Sub-theme</Label>
-                                <Select value={data.subtheme_id} onValueChange={(value) => setData('subtheme_id', value)} disabled={!editable}>
-                                    <SelectTrigger id="subtheme_id">
-                                        <SelectValue placeholder="Select a sub-theme" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {subthemes.map((s) => (
-                                            <SelectItem key={s.id} value={String(s.id)}>
-                                                {s.title}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                                <InputError message={errors.subtheme_id} />
-                            </div>
+                            <div className="grid gap-6 sm:grid-cols-[1fr_auto]">
+                                <div className="grid gap-2">
+                                    <Label htmlFor="subtheme_id">Sub-theme *</Label>
+                                    <Select value={data.subtheme_id} onValueChange={(value) => setData('subtheme_id', value)} disabled={!editable}>
+                                        <SelectTrigger id="subtheme_id" className="h-11">
+                                            <SelectValue placeholder="Select a sub-theme" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {subthemes.map((s) => (
+                                                <SelectItem key={s.id} value={String(s.id)}>
+                                                    {s.title}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                    <InputError message={errors.subtheme_id} />
+                                </div>
 
-                            <div className="grid gap-2">
-                                <Label htmlFor="presentation_type">Presentation type</Label>
-                                <Select
-                                    value={data.presentation_type}
-                                    onValueChange={(value) => setData('presentation_type', value)}
-                                    disabled={!editable}
-                                >
-                                    <SelectTrigger id="presentation_type">
-                                        <SelectValue placeholder="Oral or Poster" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {Object.entries(presentationTypes).map(([key, label]) => (
-                                            <SelectItem key={key} value={key}>
-                                                {label}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                                <InputError message={errors.presentation_type} />
+                                <div className="grid gap-2">
+                                    <Label>Presentation type *</Label>
+                                    <div className="flex gap-2">
+                                        {Object.entries(presentationTypes).map(([key, label]) => {
+                                            const selected = data.presentation_type === key;
+                                            return (
+                                                <button
+                                                    key={key}
+                                                    type="button"
+                                                    disabled={!editable}
+                                                    onClick={() => setData('presentation_type', key)}
+                                                    className={`h-11 flex-1 rounded-md border px-5 text-sm font-semibold whitespace-nowrap transition-colors disabled:cursor-not-allowed disabled:opacity-70 ${
+                                                        selected
+                                                            ? 'border-[#4c8a1f] bg-[#eef7e6] text-[#4c8a1f]'
+                                                            : 'border-input bg-background text-foreground'
+                                                    }`}
+                                                >
+                                                    {label}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                    <InputError message={errors.presentation_type} />
+                                </div>
                             </div>
 
                             <AbstractAuthorsField authors={data.authors} onChange={(authors) => setData('authors', authors)} errors={errors} />
@@ -227,13 +239,18 @@ export default function EditAbstract({ submission, subthemes, presentationTypes,
 
                                 return (
                                     <div key={key} className="grid gap-2">
-                                        <div className="flex items-center gap-2">
-                                            <Label htmlFor={key}>{label}</Label>
-                                            {count > 0 && (
-                                                <span className="inline-flex items-center gap-1 rounded-full border border-amber-300/50 bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
-                                                    {count} {count === 1 ? 'comment' : 'comments'}
-                                                </span>
-                                            )}
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                                <Label htmlFor={key} className="text-[#4c8a1f]">
+                                                    {label}
+                                                </Label>
+                                                {count > 0 && (
+                                                    <span className="inline-flex items-center gap-1 rounded-full border border-amber-300/50 bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+                                                        {count} {count === 1 ? 'comment' : 'comments'}
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <span className="text-muted-foreground text-[11px] tabular-nums">{countWords(data[key])} words</span>
                                         </div>
                                         <Textarea
                                             id={key}

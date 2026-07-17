@@ -100,43 +100,59 @@ export default function CreateAbstract({ subthemes, presentationTypes }: CreateA
                         className="dark:bg-card flex flex-col gap-6 rounded-2xl border border-[#135eeb]/10 bg-white p-6 shadow-[0_1px_2px_rgba(19,94,235,0.06)] md:p-7"
                     >
                         <div className="grid gap-2">
-                            <Label htmlFor="title">Abstract title</Label>
-                            <Input id="title" value={data.title} onChange={(e) => setData('title', e.target.value)} />
+                            <Label htmlFor="title">Abstract title *</Label>
+                            <Input
+                                id="title"
+                                className="font-semibold uppercase"
+                                placeholder="BOLD CAPITAL LETTERS, e.g. ANTIMICROBIAL ACTIVITY OF…"
+                                value={data.title}
+                                onChange={(e) => setData('title', e.target.value)}
+                            />
+                            <p className="text-muted-foreground text-xs">The title should be in bold capital letters.</p>
                             <InputError message={errors.title} />
                         </div>
 
-                        <div className="grid gap-2">
-                            <Label htmlFor="subtheme_id">Sub-theme</Label>
-                            <Select value={data.subtheme_id} onValueChange={(value) => setData('subtheme_id', value)}>
-                                <SelectTrigger id="subtheme_id">
-                                    <SelectValue placeholder="Select a sub-theme" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {subthemes.map((s) => (
-                                        <SelectItem key={s.id} value={String(s.id)}>
-                                            {s.title}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                            <InputError message={errors.subtheme_id} />
-                        </div>
+                        <div className="grid gap-6 sm:grid-cols-[1fr_auto]">
+                            <div className="grid gap-2">
+                                <Label htmlFor="subtheme_id">Sub-theme *</Label>
+                                <Select value={data.subtheme_id} onValueChange={(value) => setData('subtheme_id', value)}>
+                                    <SelectTrigger id="subtheme_id" className="h-11">
+                                        <SelectValue placeholder="Select a sub-theme" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {subthemes.map((s) => (
+                                            <SelectItem key={s.id} value={String(s.id)}>
+                                                {s.title}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                <InputError message={errors.subtheme_id} />
+                            </div>
 
-                        <div className="grid gap-2">
-                            <Label htmlFor="presentation_type">Presentation type</Label>
-                            <Select value={data.presentation_type} onValueChange={(value) => setData('presentation_type', value)}>
-                                <SelectTrigger id="presentation_type">
-                                    <SelectValue placeholder="Oral or Poster" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {Object.entries(presentationTypes).map(([key, label]) => (
-                                        <SelectItem key={key} value={key}>
-                                            {label}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                            <InputError message={errors.presentation_type} />
+                            <div className="grid gap-2">
+                                <Label>Presentation type *</Label>
+                                <div className="flex gap-2">
+                                    {Object.entries(presentationTypes).map(([key, label]) => {
+                                        const selected = data.presentation_type === key;
+                                        return (
+                                            <button
+                                                key={key}
+                                                type="button"
+                                                onClick={() => setData('presentation_type', key)}
+                                                className={`h-11 flex-1 rounded-md border px-5 text-sm font-semibold whitespace-nowrap transition-colors ${
+                                                    selected
+                                                        ? 'border-[#4c8a1f] bg-[#eef7e6] text-[#4c8a1f]'
+                                                        : 'border-input bg-background text-foreground'
+                                                }`}
+                                            >
+                                                {label}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                                <InputError message={errors.presentation_type} />
+                            </div>
                         </div>
 
                         <AbstractAuthorsField authors={data.authors} onChange={(authors) => setData('authors', authors)} errors={errors} />
@@ -155,7 +171,12 @@ export default function CreateAbstract({ subthemes, presentationTypes }: CreateA
 
                         {ABSTRACT_SECTIONS.map(({ key, label, placeholder }) => (
                             <div key={key} className="grid gap-2">
-                                <Label htmlFor={key}>{label}</Label>
+                                <div className="flex items-baseline justify-between">
+                                    <Label htmlFor={key} className="text-[#4c8a1f]">
+                                        {label}
+                                    </Label>
+                                    <span className="text-muted-foreground text-[11px] tabular-nums">{countWords(data[key])} words</span>
+                                </div>
                                 <Textarea
                                     id={key}
                                     rows={4}
@@ -184,14 +205,18 @@ export default function CreateAbstract({ subthemes, presentationTypes }: CreateA
                             <p className="mt-2 font-serif text-sm leading-6 font-semibold">300 words + 5 keywords</p>
                         </div>
                         <div className="rounded-xl bg-[#eef7e6] p-4.5">
-                            <div className="text-[11px] font-semibold tracking-wide text-[#4c8a1f] uppercase">Structure</div>
+                            <div className="text-[11px] font-semibold tracking-wide text-[#4c8a1f] uppercase">Title</div>
+                            <p className="mt-2 font-serif text-sm leading-6 font-semibold">Bold capital letters</p>
+                        </div>
+                        <div className="rounded-xl bg-[#eaf1ff] p-4.5">
+                            <div className="text-[11px] font-semibold tracking-wide text-[#135eeb] uppercase">Structure</div>
                             <p className="mt-2 font-serif text-sm leading-6 font-semibold">Background, Objective, Methods, Results, Conclusion</p>
                         </div>
                         <div className="dark:bg-card rounded-xl border border-[#135eeb]/10 bg-white p-4.5">
                             <div className="text-muted-foreground text-[11px] font-semibold tracking-wide uppercase">Author format</div>
                             <p className="text-muted-foreground mt-2 text-sm leading-6">
-                                Write names as initials followed by surname, e.g. <strong className="text-foreground">H Malinye</strong>. The
-                                presenting author should be marked in the authors list above.
+                                Write names as initials followed by surname, e.g. <strong className="text-foreground">H Malinye; JJ Kayumba</strong>.
+                                The presenting author's name must be bolded and underlined in the programme.
                             </p>
                         </div>
                         {deadline && (

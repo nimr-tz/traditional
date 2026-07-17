@@ -14,112 +14,146 @@ use Illuminate\Validation\ValidationException;
 
 class AdministratorController extends Controller
 {
-    /** Roles that can be granted to a plain user via this panel. */
-    private const ASSIGNABLE_ROLES = [
-        User::ROLE_REVIEWER,
-        User::ROLE_STAFF,
-        User::ROLE_ADMIN,
-        User::ROLE_SUPER_ADMIN,
-    ];
-
-    public function search(Request $request): JsonResponse
+    /**
+     * Browse/search every user for the super admin's role-management panel —
+     * unlike the old grant-only flow, this is not scoped to plain 'user'
+     * accounts, since a super admin can change anyone's role directly.
+     */
+    public function index(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'query' => ['required', 'string', 'min:2', 'max:100'],
+            'query' => ['nullable', 'string', 'max:100'],
+            'role' => ['nullable', Rule::in(User::ROLES)],
         ]);
 
         $users = User::query()
-            ->where('role', User::ROLE_USER)
-            ->whereNotNull('email_verified_at')
-            ->where(function ($query) use ($data) {
-                $query->where('name', 'like', "%{$data['query']}%")
-                    ->orWhere('email', 'like', "%{$data['query']}%");
-            })
+            ->with('roleAssignments')
+            ->when($data['query'] ?? null, fn ($query, $search) => $query->where(function ($query) use ($search) {
+                $query->where('name', 'like', "%{$search}%")
+                    ->orWhere('email', 'like', "%{$search}%");
+            }))
+            ->when($data['role'] ?? null, fn ($query, $role) => $query->withRole($role))
             ->orderBy('name')
-            ->limit(8)
-            ->get(['id', 'name', 'email']);
+            ->paginate(15)
+            ->withQueryString()
+            ->through(fn (User $user) => [
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'role' => $user->role,
+                'roles' => $user->roles(),
+                'email_verified' => $user->hasVerifiedEmail(),
+            ]);
 
-        return response()->json(['users' => $users]);
+        return response()->json($users);
     }
 
-    public function store(Request $request): RedirectResponse
+    /**
+     * Assigns a user's full set of roles at once (not just a single role) —
+     * one of the assigned roles is designated "primary", which decides their
+     * default nav/home dashboard and is what legacy single-role displays
+     * (exports, audit log) show.
+     */
+    public function updateRoles(Request $request, User $user): RedirectResponse
     {
+        $target = $user;
+
         $data = $request->validate([
-            'user_id' => ['required', 'integer', 'exists:users,id'],
-            'role' => ['required', Rule::in(self::ASSIGNABLE_ROLES)],
+            'roles' => ['required', 'array', 'min:1'],
+            'roles.*' => [Rule::in(User::ROLES)],
+            'primary_role' => ['required', Rule::in(User::ROLES)],
         ]);
 
-        DB::transaction(function () use ($data, $request) {
-            $target = User::query()->lockForUpdate()->findOrFail($data['user_id']);
+        $newRoles = array_values(array_unique($data['roles']));
+        $primaryRole = $data['primary_role'];
 
-            if ($target->role !== User::ROLE_USER) {
+        if (! in_array($primaryRole, $newRoles, true)) {
+            throw ValidationException::withMessages([
+                'primary_role' => 'The primary role must be one of the assigned roles.',
+            ]);
+        }
+
+        if ($target->is($request->user())) {
+            throw ValidationException::withMessages([
+                'roles' => 'You cannot change your own roles. Ask another super admin.',
+            ]);
+        }
+
+        $oldRoles = $target->roles();
+
+        $sortedOld = $oldRoles;
+        sort($sortedOld);
+        $sortedNew = $newRoles;
+        sort($sortedNew);
+
+        if ($sortedOld === $sortedNew && $primaryRole === $target->role) {
+            return back();
+        }
+
+        $losingSuperAdmin = in_array(User::ROLE_SUPER_ADMIN, $oldRoles, true)
+            && ! in_array(User::ROLE_SUPER_ADMIN, $newRoles, true);
+
+        if ($losingSuperAdmin) {
+            $remainingSuperAdmins = User::withRole(User::ROLE_SUPER_ADMIN)
+                ->where('id', '!=', $target->id)
+                ->count();
+
+            if ($remainingSuperAdmins === 0) {
                 throw ValidationException::withMessages([
-                    'user_id' => 'This user already has an elevated role. Remove it before assigning a new one.',
+                    'roles' => 'The final super admin cannot lose the super admin role.',
+                ]);
+            }
+        }
+
+        $grantsElevatedRole = array_diff($newRoles, [User::ROLE_USER]) !== [];
+
+        if ($grantsElevatedRole && ! $target->hasVerifiedEmail()) {
+            throw ValidationException::withMessages([
+                'roles' => 'The user must verify their email before receiving a role.',
+            ]);
+        }
+
+        DB::transaction(function () use ($request, $target, $newRoles, $primaryRole, $oldRoles) {
+            $addedRoles = array_diff($newRoles, $oldRoles);
+            $removedRoles = array_diff($oldRoles, $newRoles);
+
+            $target->roleAssignments()->whereIn('role', $removedRoles)->delete();
+            foreach ($addedRoles as $role) {
+                $target->roleAssignments()->firstOrCreate(['role' => $role]);
+            }
+
+            $target->forceFill([
+                'role' => $primaryRole,
+                'active_role' => in_array($target->active_role, $newRoles, true) ? $target->active_role : null,
+            ])->save();
+
+            foreach ($addedRoles as $role) {
+                AdministratorAccessChange::create([
+                    'target_user_id' => $target->id,
+                    'target_name' => $target->name,
+                    'target_email' => $target->email,
+                    'changed_by' => $request->user()->id,
+                    'changed_by_name' => $request->user()->name,
+                    'changed_by_email' => $request->user()->email,
+                    'action' => 'granted',
+                    'role' => $role,
                 ]);
             }
 
-            if (! $target->hasVerifiedEmail()) {
-                throw ValidationException::withMessages([
-                    'user_id' => 'The user must verify their email before receiving a role.',
+            foreach ($removedRoles as $role) {
+                AdministratorAccessChange::create([
+                    'target_user_id' => $target->id,
+                    'target_name' => $target->name,
+                    'target_email' => $target->email,
+                    'changed_by' => $request->user()->id,
+                    'changed_by_name' => $request->user()->name,
+                    'changed_by_email' => $request->user()->email,
+                    'action' => 'revoked',
+                    'role' => $role,
                 ]);
             }
-
-            $target->forceFill(['role' => $data['role']])->save();
-            $this->recordChange($target, $request->user(), 'granted', $data['role']);
         });
 
-        return back()->with('success', 'Role granted.');
-    }
-
-    public function destroy(Request $request, User $user): RedirectResponse
-    {
-        DB::transaction(function () use ($request, $user) {
-            $target = User::query()->lockForUpdate()->findOrFail($user->id);
-
-            if ($target->role === User::ROLE_USER) {
-                throw ValidationException::withMessages([
-                    'administrator' => 'This user does not have an elevated role.',
-                ]);
-            }
-
-            if ($target->is($request->user())) {
-                throw ValidationException::withMessages([
-                    'administrator' => 'You cannot remove your own role. Ask another admin to remove it.',
-                ]);
-            }
-
-            if ($target->role === User::ROLE_SUPER_ADMIN) {
-                $superAdmins = User::query()
-                    ->where('role', User::ROLE_SUPER_ADMIN)
-                    ->lockForUpdate()
-                    ->get(['id']);
-
-                if ($superAdmins->count() <= 1) {
-                    throw ValidationException::withMessages([
-                        'administrator' => 'The final super admin cannot be removed.',
-                    ]);
-                }
-            }
-
-            $revokedRole = $target->role;
-            $target->forceFill(['role' => User::ROLE_USER])->save();
-            $this->recordChange($target, $request->user(), 'revoked', $revokedRole);
-        });
-
-        return back()->with('success', 'Role removed.');
-    }
-
-    private function recordChange(User $target, User $actor, string $action, string $role): void
-    {
-        AdministratorAccessChange::create([
-            'target_user_id' => $target->id,
-            'target_name' => $target->name,
-            'target_email' => $target->email,
-            'changed_by' => $actor->id,
-            'changed_by_name' => $actor->name,
-            'changed_by_email' => $actor->email,
-            'action' => $action,
-            'role' => $role,
-        ]);
+        return back()->with('success', "{$target->name}'s roles were updated.");
     }
 }

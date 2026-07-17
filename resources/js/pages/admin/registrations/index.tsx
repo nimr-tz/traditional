@@ -15,7 +15,7 @@ const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Registrations', href: '/admin/registrations' },
 ];
 
-type PaymentStatus = 'pending' | 'submitted' | 'verified' | 'rejected';
+type PaymentStatus = 'pending' | 'submitted' | 'verified' | 'rejected' | 'waived';
 
 interface Registration {
     id: number;
@@ -52,6 +52,7 @@ const paymentConfig: Record<PaymentStatus, { label: string; tone: PillTone }> = 
     submitted: { label: 'Awaiting payment', tone: 'attention' },
     verified: { label: 'Paid', tone: 'positive' },
     rejected: { label: 'Payment issue', tone: 'negative' },
+    waived: { label: 'Waived', tone: 'neutral' },
 };
 
 const statTiles: { key: keyof RegistrationsIndexProps['counts']; label: string }[] = [
@@ -164,6 +165,7 @@ export default function RegistrationsIndex({ registrations, filters, counts }: R
                                 <SelectItem value="submitted">Awaiting payment</SelectItem>
                                 <SelectItem value="verified">Paid</SelectItem>
                                 <SelectItem value="rejected">Payment issue</SelectItem>
+                                <SelectItem value="waived">Waived</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>

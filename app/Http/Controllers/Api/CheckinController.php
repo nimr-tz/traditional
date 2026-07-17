@@ -67,8 +67,8 @@ class CheckinController extends Controller
     {
         $request->validate(['q' => 'required|string|min:2']);
 
-        $users = User::where('role', User::ROLE_USER)
-            ->where('payment_status', 'verified')
+        $users = User::withRole(User::ROLE_USER)
+            ->whereIn('payment_status', ['verified', 'waived'])
             ->where(function ($query) use ($request) {
                 $query->where('name', 'like', "%{$request->q}%")
                     ->orWhere('email', 'like', "%{$request->q}%");

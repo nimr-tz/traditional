@@ -255,31 +255,72 @@ class AbstractDecisionTest extends TestCase
         ])->assertForbidden();
     }
 
-    public function test_admin_can_accept_an_abstract_once_both_reviewers_recommend_it_and_the_presenter_is_emailed(): void
+    public function test_abstract_is_automatically_accepted_once_both_reviewers_recommend_acceptance(): void
     {
         Mail::fake();
 
         $admin = User::factory()->admin()->create();
         $submission = $this->submission();
+
+        // Both reviewers recommending acceptance should finalize the abstract
+        // by itself — no separate admin decision is needed or possible.
         $this->readyForDecision($submission, $admin, 'accepted');
 
-        $response = $this->actingAs($admin)->post(route('admin.abstracts.decide', $submission), [
-            'action' => 'accepted',
-            'decision_notes' => 'Great work.',
-        ]);
-
-        $response->assertRedirect();
         $submission->refresh();
 
         $this->assertSame('accepted', $submission->status);
-        $this->assertSame($admin->id, $submission->reviewer_id);
+        $this->assertNull($submission->reviewer_id);
         $this->assertNotNull($submission->decided_at);
         $this->assertDatabaseHas('abstract_review_histories', [
             'abstract_submission_id' => $submission->id,
-            'acted_by' => $admin->id,
+            'acted_by' => null,
             'action' => 'accepted',
         ]);
-        Mail::assertQueued(AbstractDecision::class);
+        Mail::assertQueued(AbstractDecision::class, fn ($mail) => $mail->hasTo($submission->user->email));
+
+        // The abstract already left the 'submitted' state automatically, so
+        // the manual decision endpoint is no longer reachable.
+        $this->actingAs($admin)->post(route('admin.abstracts.decide', $submission), [
+            'action' => 'accepted',
+        ])->assertStatus(422);
+    }
+
+    public function test_admin_still_decides_when_reviewers_disagree(): void
+    {
+        Mail::fake();
+
+        $admin = User::factory()->admin()->create();
+        $submission = $this->submission();
+        $reviewerA = User::factory()->reviewer()->create();
+        $reviewerB = User::factory()->reviewer()->create();
+
+        $this->actingAs($admin)->post(route('admin.abstracts.reviewers.assign', $submission), [
+            'reviewer_one_id' => $reviewerA->id,
+            'reviewer_two_id' => $reviewerB->id,
+        ])->assertRedirect();
+
+        $this->actingAs($reviewerA)->post(route('admin.abstracts.reviewer-decision', $submission), [
+            'recommendation' => 'accepted',
+        ])->assertRedirect();
+
+        $this->actingAs($reviewerB)->post(route('admin.abstracts.reviewer-decision', $submission), [
+            'recommendation' => 'rejected',
+            'comments' => [['section' => null, 'body' => 'Not novel enough.']],
+        ])->assertRedirect();
+
+        // Disagreement doesn't auto-resolve — the abstract stays 'submitted'
+        // and waits for the admin's manual call.
+        $this->assertSame('submitted', $submission->fresh()->status);
+
+        $this->actingAs($admin)->post(route('admin.abstracts.decide', $submission), [
+            'action' => 'accepted',
+            'decision_notes' => 'Great work.',
+        ])->assertRedirect();
+
+        $submission->refresh();
+        $this->assertSame('accepted', $submission->status);
+        $this->assertSame($admin->id, $submission->reviewer_id);
+        Mail::assertQueued(AbstractDecision::class, fn ($mail) => $mail->hasTo($submission->user->email));
     }
 
     public function test_revision_requires_a_comment_and_returns_the_abstract_to_the_author(): void
@@ -326,5 +367,42 @@ class AbstractDecisionTest extends TestCase
         $user = User::factory()->create();
 
         $this->actingAs($user)->get('/admin/abstracts')->assertForbidden();
+    }
+
+    public function test_a_reviewer_cannot_see_the_other_reviewers_recommendation_or_comments(): void
+    {
+        $admin = User::factory()->admin()->create();
+        $submission = $this->submission();
+        $reviewerA = User::factory()->reviewer()->create();
+        $reviewerB = User::factory()->reviewer()->create();
+
+        $this->actingAs($admin)->post(route('admin.abstracts.reviewers.assign', $submission), [
+            'reviewer_one_id' => $reviewerA->id,
+            'reviewer_two_id' => $reviewerB->id,
+        ])->assertRedirect();
+
+        $this->actingAs($reviewerB)->post(route('admin.abstracts.reviewer-decision', $submission), [
+            'recommendation' => 'revision_requested',
+            'comments' => [['section' => null, 'body' => 'Reviewer B is not happy about the methods section.']],
+        ])->assertRedirect();
+
+        // Reviewer A: their own (still-pending) slot is visible, but Reviewer B's
+        // recommendation and comment text must not leak into the page props.
+        $this->actingAs($reviewerA)
+            ->get(route('admin.abstracts.show', $submission))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('submission.reviewer_decisions.0.reviewer_id', $reviewerB->id)
+                ->where('submission.reviewer_decisions.0.recommendation', null)
+                ->where('submission.reviewer_decisions.0.comments', []));
+
+        // Admin sees everything, needed to weigh both recommendations.
+        $this->actingAs($admin)
+            ->get(route('admin.abstracts.show', $submission))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('submission.reviewer_decisions.0.reviewer_id', $reviewerB->id)
+                ->where('submission.reviewer_decisions.0.recommendation', 'revision_requested')
+                ->where('submission.reviewer_decisions.0.comments.0.body', 'Reviewer B is not happy about the methods section.'));
     }
 }

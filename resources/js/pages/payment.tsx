@@ -4,7 +4,20 @@ import { Button } from '@/components/ui/button';
 import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem } from '@/types';
 import { Head, Link, useForm, usePage } from '@inertiajs/react';
-import { ArrowRight, Check, CheckCircle2, Clock3, Copy, FileCheck2, LoaderCircle, ReceiptText, ShieldCheck, Wallet, XCircle } from 'lucide-react';
+import {
+    ArrowRight,
+    Check,
+    CheckCircle2,
+    Clock3,
+    Copy,
+    Download,
+    FileCheck2,
+    LoaderCircle,
+    ReceiptText,
+    ShieldCheck,
+    Wallet,
+    XCircle,
+} from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 const breadcrumbs: BreadcrumbItem[] = [{ title: 'Payment', href: '/payment' }];
@@ -13,7 +26,7 @@ interface PaymentUser {
     fee_amount: string | null;
     currency: string;
     control_number: string | null;
-    payment_status: 'pending' | 'submitted' | 'verified' | 'rejected';
+    payment_status: 'pending' | 'submitted' | 'verified' | 'rejected' | 'waived';
     paid_at: string | null;
     registration_code: string | null;
     student_verification_status: 'pending' | 'verified' | 'rejected' | null;
@@ -32,6 +45,7 @@ const statusLabel: Record<PaymentUser['payment_status'], string> = {
     submitted: 'Payment pending',
     verified: 'Paid',
     rejected: 'Action required',
+    waived: 'Fee waived',
 };
 
 const statusTone: Record<PaymentUser['payment_status'], PillTone> = {
@@ -39,6 +53,7 @@ const statusTone: Record<PaymentUser['payment_status'], PillTone> = {
     submitted: 'neutral',
     verified: 'positive',
     rejected: 'negative',
+    waived: 'positive',
 };
 
 function SummaryRow({ label, value }: { label: string; value: React.ReactNode }) {
@@ -185,7 +200,7 @@ export default function Payment({ user, registrationCategory, gepgPayeeName, req
                             </div>
                         </div>
 
-                        {status.payment_status === 'verified' ? (
+                        {status.payment_status === 'verified' || status.payment_status === 'waived' ? (
                             <div className="py-8">
                                 <div className="rounded-2xl border border-[#67b52f]/20 bg-[#f3f9ee] p-6 dark:bg-[#67b52f]/10">
                                     <div className="flex gap-4">
@@ -193,16 +208,25 @@ export default function Payment({ user, registrationCategory, gepgPayeeName, req
                                             <Check className="h-5 w-5" />
                                         </span>
                                         <div>
-                                            <h3 className="text-foreground text-lg font-semibold">Payment confirmed</h3>
+                                            <h3 className="text-foreground text-lg font-semibold">
+                                                {status.payment_status === 'waived' ? 'Registration fee waived' : 'Payment confirmed'}
+                                            </h3>
                                             <p className="text-muted-foreground mt-1 text-sm leading-6">
-                                                Your registration fee has been received
-                                                {status.paid_at ? ` on ${new Date(status.paid_at).toLocaleDateString()}` : ''}.
+                                                {status.payment_status === 'waived'
+                                                    ? 'Your registration fee has been waived. No payment is required.'
+                                                    : `Your registration fee has been received${status.paid_at ? ` on ${new Date(status.paid_at).toLocaleDateString()}` : ''}.`}
                                             </p>
                                             {status.registration_code && (
                                                 <p className="mt-3 text-sm">
                                                     Registration code: <strong className="font-mono">{status.registration_code}</strong>
                                                 </p>
                                             )}
+                                            <Button asChild variant="outline" size="sm" className="mt-4">
+                                                <a href={route('payment.receipt')} target="_blank" rel="noreferrer">
+                                                    <Download className="h-4 w-4" />
+                                                    Download receipt
+                                                </a>
+                                            </Button>
                                         </div>
                                     </div>
                                 </div>
@@ -240,10 +264,18 @@ export default function Payment({ user, registrationCategory, gepgPayeeName, req
                                             <p className="text-foreground mt-4 font-mono text-2xl font-bold tracking-wide break-all tabular-nums">
                                                 {status.control_number}
                                             </p>
-                                            <Button type="button" variant="outline" size="sm" className="mt-4" onClick={copyControlNumber}>
-                                                {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                                                {copied ? 'Copied' : 'Copy number'}
-                                            </Button>
+                                            <div className="mt-4 flex gap-2">
+                                                <Button type="button" variant="outline" size="sm" onClick={copyControlNumber}>
+                                                    {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                                                    {copied ? 'Copied' : 'Copy number'}
+                                                </Button>
+                                                <Button asChild variant="outline" size="sm">
+                                                    <a href={route('payment.invoice')} target="_blank" rel="noreferrer">
+                                                        <Download className="h-4 w-4" />
+                                                        Invoice
+                                                    </a>
+                                                </Button>
+                                            </div>
                                             <div className="text-muted-foreground dark:border-border mt-6 flex items-start gap-2 border-t border-slate-200 pt-5 text-sm">
                                                 <LoaderCircle className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-[#135eeb]" />
                                                 <p>Waiting for payment confirmation. You may leave this page and return later.</p>

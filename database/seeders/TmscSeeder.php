@@ -20,6 +20,22 @@ class TmscSeeder extends Seeder
         $this->seedConferenceSettings();
         $this->seedUsers();
         $this->seedAbstracts();
+        $this->seedReviewWorkflowTestData();
+    }
+
+    /**
+     * `role` and `payment_status` aren't in User::$fillable (they're only meant
+     * to be set via forceFill from trusted server-side code, never mass
+     * assignment from a form), so a plain create()/updateOrCreate() call
+     * silently drops them. Every place in this seeder that sets a role goes
+     * through here so the `users.role` column and the `user_roles` pivot
+     * (the actual source of truth for authorization) stay in sync.
+     */
+    private function setRole(User $user, string $role): void
+    {
+        $user->forceFill(['role' => $role])->save();
+        $user->roleAssignments()->delete();
+        $user->roleAssignments()->create(['role' => $role]);
     }
 
     /**
@@ -141,8 +157,8 @@ class TmscSeeder extends Seeder
             'conference_year' => '2026',
             'theme' => 'Accelerating evidence informed Traditional, Complementary and Integrative Medicine in formal Healthcare System: the role of multisectoral collaboration',
             'venue' => 'Mbeya, Tanzania',
-            'start_date' => '2026-08-26',
-            'end_date' => '2026-08-26',
+            'start_date' => '2026-08-28',
+            'end_date' => '2026-08-28',
             'submission_deadline' => '2026-08-06',
             'abstract_notification_date' => '2026-08-08',
             'tm_week_dates' => '26–31 August 2026',
@@ -174,23 +190,22 @@ class TmscSeeder extends Seeder
         ];
 
         foreach ($accounts as $account) {
-            User::updateOrCreate(
+            $user = User::updateOrCreate(
                 ['email' => $account['email']],
                 [
                     'name' => $account['name'],
                     'password' => 'password',
-                    'role' => $account['role'],
                     'email_verified_at' => now(),
-                    'payment_status' => 'verified',
                 ]
             );
+            $this->setRole($user, $account['role']);
+            $user->forceFill(['payment_status' => 'verified'])->save();
         }
 
         $participant = User::updateOrCreate(
             ['email' => 'participant@tmsc.nimr.or.tz'],
             [
                 'name' => 'Test Participant',
-                'role' => User::ROLE_USER,
                 'password' => 'password',
                 'email_verified_at' => now(),
                 'salutation' => 'Dr.',
@@ -199,11 +214,11 @@ class TmscSeeder extends Seeder
                 'country' => 'Tanzania',
                 'is_east_africa' => true,
                 'participant_type' => 'researcher',
-                'payment_status' => 'pending',
             ]
         );
+        $this->setRole($participant, User::ROLE_USER);
         $participant->assignFeeCategory('participant_east_africa');
-        $participant->save();
+        $participant->forceFill(['payment_status' => 'pending'])->save();
     }
 
     /**
@@ -272,6 +287,332 @@ class TmscSeeder extends Seeder
                     ],
                 ])
             );
+        }
+    }
+
+    /**
+     * Extra reviewer + author accounts, plus 40 abstracts spread across
+     * every review-workflow state (auto-accept on unanimous acceptance,
+     * admin tie-break on disagreement, selective re-notification on
+     * resubmission) so that logic has real, clickable data behind it —
+     * not just the three hand-picked examples in seedAbstracts().
+     */
+    private function seedReviewWorkflowTestData(): void
+    {
+        $reviewers = $this->seedTestReviewers();
+        $authors = $this->seedTestAuthors();
+        $admin = User::where('email', 'admin2@tmsc.nimr.or.tz')->first();
+        $subthemes = Subtheme::where('active', true)->orderBy('sort_order')->get();
+
+        if ($subthemes->isEmpty()) {
+            return;
+        }
+
+        $topics = [
+            'integration of traditional birth attendants into antenatal referral pathways',
+            'collaborative care models between traditional healers and primary health facilities',
+            'traditional medicine curricula in university-based clinical education',
+            'evidence-based triage protocols for traditional and biomedical co-management',
+            'regulatory frameworks for traditional medicine practitioner licensing',
+            'governance structures for herbal product quality standards',
+            'community-based oversight of traditional medicine practice',
+            'policy barriers to traditional medicine integration in district health plans',
+            'traditional remedies for management of hypertension in rural clinics',
+            'herbal adjuncts in tuberculosis treatment adherence programs',
+            'traditional practices in maternal and postpartum care',
+            'zoonotic disease awareness among traditional livestock healers',
+            'traditional approaches to non-communicable disease self-management',
+            'vector-borne disease prevention knowledge among traditional healers',
+            'mobile applications for traditional remedy documentation',
+            'machine learning screening of medicinal plant compounds',
+            'digital informatics systems for traditional medicine records',
+            'ICT-enabled access to traditional medicine services in remote areas',
+            'commercialization pathways for traditional herbal products',
+            'artificial intelligence-assisted identification of medicinal plant species',
+            'sustainable harvesting practices for threatened medicinal plant species',
+            'community-led conservation of medicinal plant biodiversity',
+            'cultivation trials for at-risk traditional medicine plant species',
+            'climate change adaptation in medicinal plant sourcing',
+            'biodiversity monitoring in traditional medicine harvesting zones',
+            'traditional bone-setting practice outcomes in rural districts',
+            'antimicrobial screening of indigenous medicinal plant extracts',
+            'traditional healer referral networks and early disease detection',
+            'safety profiling of commonly used herbal preparations',
+            'practitioner perspectives on integrating traditional and modern diagnostics',
+            'traditional medicine knowledge transfer between generations of healers',
+            'economic value chains for cultivated medicinal plants',
+            'quality control practices among herbal product manufacturers',
+            'traditional medicine documentation using participatory mapping',
+            'patient experiences navigating traditional and formal care pathways',
+            'traditional remedies for post-surgical wound care',
+            'gender dynamics in traditional medicine practitioner networks',
+            'traditional medicine practitioner training and certification pathways',
+            'cross-border trade in medicinal plant raw materials',
+            "traditional medicine's role in universal health coverage strategies",
+        ];
+
+        // Every state the review workflow can be in, weighted so the two new
+        // behaviours (auto-accept on consensus, selective re-review after a
+        // revision) each have several examples to test against.
+        $stateCounts = [
+            'unassigned' => 4,
+            'assigned_no_decisions' => 5,
+            'one_decided_accept_pending' => 5,
+            'one_decided_revision_pending' => 3,
+            'one_decided_reject_pending' => 2,
+            'both_accepted_auto' => 6,
+            'disagree_ready_for_admin' => 5,
+            'both_reject_ready_for_admin' => 2,
+            'revision_requested_mixed' => 4,
+            'revision_requested_both' => 2,
+            'accepted_manual_final' => 1,
+            'rejected_final' => 1,
+        ];
+
+        $states = [];
+        foreach ($stateCounts as $state => $count) {
+            $states = array_merge($states, array_fill(0, $count, $state));
+        }
+
+        foreach ($states as $index => $state) {
+            $this->seedScenarioAbstract(
+                index: $index,
+                state: $state,
+                topic: $topics[$index % count($topics)],
+                author: $authors[$index % count($authors)],
+                subtheme: $subthemes[$index % $subthemes->count()],
+                reviewerOne: $reviewers[$index % count($reviewers)],
+                reviewerTwo: $reviewers[($index + 1) % count($reviewers)],
+                admin: $admin,
+            );
+        }
+    }
+
+    /** @return list<User> */
+    private function seedTestReviewers(): array
+    {
+        $reviewers = [
+            'reviewer1@tmsc.nimr.or.tz' => 'Amina Reviewer',
+            'reviewer2@tmsc.nimr.or.tz' => 'Baraka Reviewer',
+            'reviewer3@tmsc.nimr.or.tz' => 'Consolata Mushi',
+            'reviewer4@tmsc.nimr.or.tz' => 'Daudi Kessy',
+            'reviewer5@tmsc.nimr.or.tz' => 'Esther Mwakalinga',
+            'reviewer6@tmsc.nimr.or.tz' => 'Frank Sanga',
+        ];
+
+        return collect($reviewers)->map(function (string $name, string $email) {
+            $user = User::updateOrCreate(
+                ['email' => $email],
+                ['name' => $name, 'password' => 'password', 'email_verified_at' => now()]
+            );
+            $this->setRole($user, User::ROLE_REVIEWER);
+            $user->forceFill(['payment_status' => 'verified'])->save();
+
+            return $user;
+        })->values()->all();
+    }
+
+    /** @return list<User> */
+    private function seedTestAuthors(): array
+    {
+        $names = [
+            'Grace Mwambene', 'Hamisi Juma', 'Irene Kileo', 'John Mgaya', 'Khadija Salum',
+            'Lucas Mrema', 'Mary Chuma', 'Nasra Idi', 'Omary Kalulu', 'Pendo Massawe',
+            'Qamar Athumani', 'Rehema Ngowi', 'Salum Bakari', 'Tumaini Shirima', 'Upendo Msigwa',
+            'Victor Nyoni', 'Winnie Kimaro', 'Yusuf Rashidi', 'Zainab Hassan', 'Elias Mwanri',
+        ];
+
+        return collect($names)->map(function (string $name, int $i) {
+            $email = 'author'.($i + 1).'@tmsc.nimr.or.tz';
+
+            $user = User::updateOrCreate(
+                ['email' => $email],
+                [
+                    'name' => $name,
+                    'password' => 'password',
+                    'email_verified_at' => now(),
+                    'institution' => 'National Institute for Medical Research (NIMR)',
+                    'phone' => '+255 700 000 '.str_pad((string) ($i + 100), 3, '0', STR_PAD_LEFT),
+                    'country' => 'Tanzania',
+                    'is_east_africa' => true,
+                    'participant_type' => 'researcher',
+                ]
+            );
+            $this->setRole($user, User::ROLE_USER);
+            $user->assignFeeCategory('participant_east_africa');
+            $user->forceFill(['payment_status' => $i % 4 === 0 ? 'pending' : 'verified'])->save();
+
+            return $user;
+        })->values()->all();
+    }
+
+    /** Short, generic-but-on-topic section text — well under the 300-word cap. */
+    private function scenarioContent(string $topic): array
+    {
+        return [
+            'background' => "Limited documented evidence exists on {$topic}, despite its relevance to community health practice in Tanzania.",
+            'objective' => "To assess {$topic} and generate evidence to inform practice and policy at the 5th TMSC.",
+            'methods' => 'A mixed-methods approach combining structured interviews, facility record review, and field observation across selected sites.',
+            'results' => 'Preliminary findings show measurable practice-level effects, with variation linked to local context and resource availability.',
+            'conclusion' => "Findings support further investment in {$topic}, with attention to local adaptation and ongoing monitoring.",
+        ];
+    }
+
+    /**
+     * Builds one seeded abstract and drives it through whichever
+     * review-workflow state $state describes — assigning reviewers,
+     * recording their recommendations, and (for the terminal states)
+     * finalizing the decision — mirroring exactly what the controllers do,
+     * so the seeded rows are indistinguishable from ones produced by
+     * clicking through the real flow.
+     */
+    private function seedScenarioAbstract(
+        int $index,
+        string $state,
+        string $topic,
+        User $author,
+        Subtheme $subtheme,
+        User $reviewerOne,
+        User $reviewerTwo,
+        ?User $admin,
+    ): void {
+        $title = sprintf('TMSC Test #%02d — %s', $index + 1, ucfirst($topic));
+        $content = $this->scenarioContent($topic);
+
+        $abstract = AbstractSubmission::updateOrCreate(
+            ['user_id' => $author->id, 'title' => $title],
+            array_merge($content, [
+                'subtheme_id' => $subtheme->id,
+                'presentation_type' => $index % 2 === 0 ? 'oral' : 'poster',
+                'authors' => [
+                    ['name' => $author->name, 'institution' => $author->institution, 'is_presenter' => true],
+                ],
+                'status' => 'submitted',
+                'reviewer_id' => null,
+                'reviewer_one_id' => null,
+                'reviewer_two_id' => null,
+                'decision_notes' => null,
+                'revision_requested_at' => null,
+                'resubmitted_at' => null,
+                'decided_at' => null,
+            ])
+        );
+
+        // Reset review state so re-running the seeder is idempotent.
+        $abstract->reviewerDecisions->each(fn ($decision) => $decision->comments()->delete());
+        $abstract->reviewerDecisions()->delete();
+        $abstract->reviewHistory()->delete();
+
+        $abstract->reviewHistory()->create([
+            'acted_by' => $author->id,
+            'action' => 'submitted',
+            'from_status' => null,
+            'to_status' => 'submitted',
+        ]);
+
+        $assign = function () use ($abstract, $reviewerOne, $reviewerTwo) {
+            $abstract->update(['reviewer_one_id' => $reviewerOne->id, 'reviewer_two_id' => $reviewerTwo->id]);
+        };
+
+        $decide = function (User $reviewer, string $recommendation, ?string $comment = null) use ($abstract) {
+            $decision = $abstract->reviewerDecisions()->create([
+                'reviewer_id' => $reviewer->id,
+                'recommendation' => $recommendation,
+                'decided_at' => now()->subHours(random_int(1, 72)),
+            ]);
+
+            if ($comment) {
+                $decision->comments()->create(['section' => null, 'body' => $comment]);
+            }
+        };
+
+        $finalize = function (string $status, ?int $deciderId, ?string $notes) use ($abstract) {
+            $now = now();
+            $abstract->update([
+                'status' => $status,
+                'reviewer_id' => $deciderId,
+                'decision_notes' => $notes,
+                'revision_requested_at' => $status === 'revision_requested' ? $now : null,
+                'decided_at' => in_array($status, ['accepted', 'rejected'], true) ? $now : null,
+            ]);
+            $abstract->reviewHistory()->create([
+                'acted_by' => $deciderId,
+                'action' => $status,
+                'from_status' => 'submitted',
+                'to_status' => $status,
+                'notes' => $notes,
+            ]);
+        };
+
+        switch ($state) {
+            case 'unassigned':
+                break;
+
+            case 'assigned_no_decisions':
+                $assign();
+                break;
+
+            case 'one_decided_accept_pending':
+                $assign();
+                $decide($reviewerOne, 'accepted');
+                break;
+
+            case 'one_decided_revision_pending':
+                $assign();
+                $decide($reviewerOne, 'revision_requested', 'The methods section needs more detail on sample selection.');
+                break;
+
+            case 'one_decided_reject_pending':
+                $assign();
+                $decide($reviewerOne, 'rejected', 'Scope overlaps substantially with prior published work.');
+                break;
+
+            case 'both_accepted_auto':
+                $assign();
+                $decide($reviewerOne, 'accepted');
+                $decide($reviewerTwo, 'accepted');
+                $finalize('accepted', null, 'Automatically accepted — both assigned reviewers recommended acceptance.');
+                break;
+
+            case 'disagree_ready_for_admin':
+                $assign();
+                $decide($reviewerOne, 'accepted');
+                $decide($reviewerTwo, 'revision_requested', 'Please clarify the ethical approval reference.');
+                break;
+
+            case 'both_reject_ready_for_admin':
+                $assign();
+                $decide($reviewerOne, 'rejected', 'Insufficient evidence for the stated conclusion.');
+                $decide($reviewerTwo, 'rejected', 'Methodology is not clearly described.');
+                break;
+
+            case 'revision_requested_mixed':
+                $assign();
+                $decide($reviewerOne, 'accepted');
+                $decide($reviewerTwo, 'revision_requested', 'Results section needs a clearer statement of the primary outcome.');
+                $finalize('revision_requested', $admin?->id, 'One reviewer requested changes to the results — please address and resubmit.');
+                break;
+
+            case 'revision_requested_both':
+                $assign();
+                $decide($reviewerOne, 'revision_requested', 'Background needs more local context.');
+                $decide($reviewerTwo, 'rejected', 'Conclusion is not supported by the results presented.');
+                $finalize('revision_requested', $admin?->id, 'Please strengthen the background and align the conclusion with your results.');
+                break;
+
+            case 'accepted_manual_final':
+                $assign();
+                $decide($reviewerOne, 'accepted');
+                $decide($reviewerTwo, 'rejected', 'Concerned about generalizability.');
+                $finalize('accepted', $admin?->id, 'Accepted on balance — the concern raised is addressable at the presentation stage.');
+                break;
+
+            case 'rejected_final':
+                $assign();
+                $decide($reviewerOne, 'rejected', 'Out of scope for this conference.');
+                $decide($reviewerTwo, 'rejected', 'Duplicate of prior submission.');
+                $finalize('rejected', $admin?->id, 'Both reviewers recommended rejection; out of scope for TMSC 2026.');
+                break;
         }
     }
 }

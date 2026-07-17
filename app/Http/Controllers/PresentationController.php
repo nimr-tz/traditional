@@ -73,7 +73,7 @@ class PresentationController extends Controller
         Mail::to($abstract->user->email)->send(new PresentationUploaded($abstract, $isReplacement));
 
         User::query()
-            ->whereIn('role', User::ABSTRACT_REVIEWER_ROLES)
+            ->withRole(User::ABSTRACT_REVIEWER_ROLES)
             ->pluck('email')
             ->each(fn (string $email) => Mail::to($email)->send(new PresentationSubmittedForReview($abstract, $isReplacement)));
 

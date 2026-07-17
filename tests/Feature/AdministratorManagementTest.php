@@ -11,55 +11,93 @@ class AdministratorManagementTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_a_super_admin_can_search_verified_plain_user_accounts(): void
+    public function test_a_super_admin_can_browse_every_user_regardless_of_role(): void
     {
         $superAdmin = User::factory()->superAdmin()->create();
-        $candidate = User::factory()->create([
-            'name' => 'Amina Mushi',
-            'email' => 'amina@example.com',
-        ]);
-        User::factory()->unverified()->create([
-            'name' => 'Amina Unverified',
-            'email' => 'unverified@example.com',
-        ]);
-        User::factory()->reviewer()->create([
-            'name' => 'Amina Reviewer',
-            'email' => 'reviewer@example.com',
-        ]);
+        $participant = User::factory()->create(['name' => 'Amina Mushi', 'email' => 'amina@example.com']);
+        $reviewer = User::factory()->reviewer()->create(['name' => 'Amina Reviewer', 'email' => 'reviewer@example.com']);
 
-        $response = $this->actingAs($superAdmin)->getJson(route('admin.settings.administrators.search', [
-            'query' => 'Amina',
-        ]));
+        $response = $this->actingAs($superAdmin)->getJson(route('admin.settings.users.index', ['query' => 'Amina']));
 
-        $response->assertOk()
-            ->assertJsonCount(1, 'users')
-            ->assertJsonPath('users.0.id', $candidate->id)
-            ->assertJsonPath('users.0.email', 'amina@example.com');
+        $response->assertOk()->assertJsonCount(2, 'data');
+        $ids = collect($response->json('data'))->pluck('id')->all();
+        $this->assertContains($participant->id, $ids);
+        $this->assertContains($reviewer->id, $ids);
     }
 
-    public function test_a_super_admin_can_grant_a_role_and_the_change_is_audited(): void
+    public function test_a_super_admin_can_filter_users_by_role(): void
     {
-        $superAdmin = User::factory()->superAdmin()->create([
-            'name' => 'First Administrator',
-            'email' => 'first-admin@example.com',
-        ]);
-        $candidate = User::factory()->create([
-            'name' => 'New Reviewer',
-            'email' => 'new-reviewer@example.com',
-        ]);
+        $superAdmin = User::factory()->superAdmin()->create();
+        User::factory()->create();
+        User::factory()->reviewer()->create();
+
+        $response = $this->actingAs($superAdmin)->getJson(route('admin.settings.users.index', ['role' => 'reviewer']));
+
+        $response->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.role', 'reviewer');
+    }
+
+    public function test_a_super_admin_can_change_any_users_role_directly(): void
+    {
+        $superAdmin = User::factory()->superAdmin()->create(['name' => 'First Administrator']);
+        $reviewer = User::factory()->reviewer()->create(['name' => 'Existing Reviewer']);
 
         $this->actingAs($superAdmin)
-            ->post(route('admin.settings.administrators.store'), ['user_id' => $candidate->id, 'role' => 'reviewer'])
+            ->patch(route('admin.settings.users.update-roles', $reviewer), ['roles' => ['admin'], 'primary_role' => 'admin'])
             ->assertRedirect()
-            ->assertSessionHas('success', 'Role granted.');
+            ->assertSessionHas('success');
 
-        $this->assertSame('reviewer', $candidate->fresh()->role);
+        $fresh = $reviewer->fresh();
+        $this->assertSame('admin', $fresh->role);
+        $this->assertSame(['admin'], $fresh->roles());
         $this->assertDatabaseHas('administrator_access_changes', [
-            'target_user_id' => $candidate->id,
-            'target_name' => 'New Reviewer',
+            'target_user_id' => $reviewer->id,
             'changed_by' => $superAdmin->id,
-            'changed_by_name' => 'First Administrator',
             'action' => 'granted',
+            'role' => 'admin',
+        ]);
+        $this->assertDatabaseHas('administrator_access_changes', [
+            'target_user_id' => $reviewer->id,
+            'changed_by' => $superAdmin->id,
+            'action' => 'revoked',
+            'role' => 'reviewer',
+        ]);
+    }
+
+    public function test_a_super_admin_can_grant_a_user_more_than_one_role(): void
+    {
+        $superAdmin = User::factory()->superAdmin()->create();
+        $participant = User::factory()->create();
+
+        $this->actingAs($superAdmin)
+            ->patch(route('admin.settings.users.update-roles', $participant), [
+                'roles' => ['user', 'reviewer'],
+                'primary_role' => 'reviewer',
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $fresh = $participant->fresh();
+        $this->assertSame('reviewer', $fresh->role);
+        $this->assertEqualsCanonicalizing(['user', 'reviewer'], $fresh->roles());
+        $this->assertTrue($fresh->canReviewAbstracts());
+        $this->assertTrue($fresh->hasRole('user'));
+    }
+
+    public function test_setting_a_users_role_back_to_user_revokes_it_and_is_audited(): void
+    {
+        $superAdmin = User::factory()->superAdmin()->create();
+        $reviewer = User::factory()->reviewer()->create(['name' => 'Removed Reviewer']);
+
+        $this->actingAs($superAdmin)
+            ->patch(route('admin.settings.users.update-roles', $reviewer), ['roles' => ['user'], 'primary_role' => 'user'])
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $this->assertSame('user', $reviewer->fresh()->role);
+        $this->assertDatabaseHas('administrator_access_changes', [
+            'target_user_id' => $reviewer->id,
+            'changed_by' => $superAdmin->id,
+            'action' => 'revoked',
             'role' => 'reviewer',
         ]);
     }
@@ -70,61 +108,36 @@ class AdministratorManagementTest extends TestCase
         $candidate = User::factory()->unverified()->create();
 
         $this->actingAs($superAdmin)
-            ->post(route('admin.settings.administrators.store'), ['user_id' => $candidate->id, 'role' => 'reviewer'])
-            ->assertSessionHasErrors('user_id');
+            ->patch(route('admin.settings.users.update-roles', $candidate), ['roles' => ['reviewer'], 'primary_role' => 'reviewer'])
+            ->assertSessionHasErrors('roles');
 
         $this->assertSame('user', $candidate->fresh()->role);
         $this->assertSame(0, AdministratorAccessChange::count());
     }
 
-    public function test_a_super_admin_can_remove_another_users_role_and_the_change_is_audited(): void
-    {
-        $superAdmin = User::factory()->superAdmin()->create([
-            'name' => 'Retained Administrator',
-        ]);
-        $reviewer = User::factory()->reviewer()->create([
-            'name' => 'Removed Reviewer',
-        ]);
-
-        $this->actingAs($superAdmin)
-            ->delete(route('admin.settings.administrators.destroy', $reviewer))
-            ->assertRedirect()
-            ->assertSessionHas('success', 'Role removed.');
-
-        $this->assertSame('user', $reviewer->fresh()->role);
-        $this->assertSame('super_admin', $superAdmin->fresh()->role);
-        $this->assertDatabaseHas('administrator_access_changes', [
-            'target_user_id' => $reviewer->id,
-            'changed_by' => $superAdmin->id,
-            'action' => 'revoked',
-            'role' => 'reviewer',
-        ]);
-    }
-
-    public function test_a_super_admin_cannot_remove_their_own_role(): void
+    public function test_a_super_admin_cannot_change_their_own_role(): void
     {
         $superAdmin = User::factory()->superAdmin()->create();
         User::factory()->superAdmin()->create();
 
         $this->actingAs($superAdmin)
-            ->delete(route('admin.settings.administrators.destroy', $superAdmin))
-            ->assertSessionHasErrors('administrator');
+            ->patch(route('admin.settings.users.update-roles', $superAdmin), ['roles' => ['admin'], 'primary_role' => 'admin'])
+            ->assertSessionHasErrors('roles');
 
         $this->assertSame('super_admin', $superAdmin->fresh()->role);
         $this->assertSame(0, AdministratorAccessChange::count());
     }
 
-    public function test_a_plain_admin_can_also_grant_roles(): void
+    public function test_a_plain_admin_cannot_manage_roles(): void
     {
         $admin = User::factory()->admin()->create();
         $candidate = User::factory()->create();
 
         $this->actingAs($admin)
-            ->post(route('admin.settings.administrators.store'), ['user_id' => $candidate->id, 'role' => 'reviewer'])
-            ->assertRedirect()
-            ->assertSessionHas('success', 'Role granted.');
+            ->patch(route('admin.settings.users.update-roles', $candidate), ['roles' => ['reviewer'], 'primary_role' => 'reviewer'])
+            ->assertForbidden();
 
-        $this->assertSame('reviewer', $candidate->fresh()->role);
+        $this->assertSame('user', $candidate->fresh()->role);
     }
 
     public function test_a_non_administrator_cannot_manage_roles(): void
@@ -133,9 +146,27 @@ class AdministratorManagementTest extends TestCase
         $candidate = User::factory()->create();
 
         $this->actingAs($user)
-            ->post(route('admin.settings.administrators.store'), ['user_id' => $candidate->id, 'role' => 'reviewer'])
+            ->patch(route('admin.settings.users.update-roles', $candidate), ['roles' => ['reviewer'], 'primary_role' => 'reviewer'])
             ->assertForbidden();
 
         $this->assertSame('user', $candidate->fresh()->role);
+    }
+
+    public function test_only_super_admin_can_reach_conference_settings(): void
+    {
+        $superAdmin = User::factory()->superAdmin()->create();
+        $admin = User::factory()->admin()->create();
+
+        $this->actingAs($superAdmin)->get(route('admin.settings.edit'))->assertOk();
+        $this->actingAs($admin)->get(route('admin.settings.edit'))->assertForbidden();
+    }
+
+    public function test_a_plain_admin_can_still_assign_reviewers_and_verify_students(): void
+    {
+        $admin = User::factory()->admin()->create();
+
+        $this->actingAs($admin)->get(route('admin.registrations.index'))->assertOk();
+        $this->actingAs($admin)->get(route('admin.students.index'))->assertOk();
+        $this->actingAs($admin)->get(route('admin.abstracts.index'))->assertOk();
     }
 }

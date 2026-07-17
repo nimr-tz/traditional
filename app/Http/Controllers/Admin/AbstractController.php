@@ -50,6 +50,7 @@ class AbstractController extends Controller
             'subthemes' => Subtheme::orderBy('sort_order')->get(['id', 'title']),
             'filters' => $request->only(['status', 'subtheme_id', 'search']),
             'counts' => [
+                'total' => (clone $countsBase)->count(),
                 'submitted' => (clone $countsBase)->where('status', 'submitted')->count(),
                 'revision_requested' => (clone $countsBase)->where('status', 'revision_requested')->count(),
                 'accepted' => (clone $countsBase)->where('status', 'accepted')->count(),
@@ -74,10 +75,28 @@ class AbstractController extends Controller
             'reviewHistory.actor:id,name,email',
         ]);
 
+        // Blind review: a reviewer may see THAT the other assigned reviewer has
+        // decided, but never what they recommended or wrote — only admins (who
+        // weigh both to make the final call) get the full recommendation/comments.
+        $isAdmin = $user->isAdmin();
+        $decisions = $abstract->reviewerDecisions->map(fn ($decision) => $isAdmin || $decision->reviewer_id === $user->id
+            ? $decision
+            : [
+                'id' => $decision->id,
+                'reviewer_id' => $decision->reviewer_id,
+                'decided_at' => $decision->decided_at,
+                'reviewer' => $decision->reviewer,
+                'recommendation' => null,
+                'comments' => [],
+            ]);
+
         return Inertia::render('admin/abstracts/show', [
-            'submission' => $abstract,
-            'eligibleReviewers' => $user->isAdmin()
-                ? User::whereIn('role', User::ABSTRACT_REVIEWER_ROLES)
+            'submission' => [
+                ...$abstract->toArray(),
+                'reviewer_decisions' => $decisions,
+            ],
+            'eligibleReviewers' => $isAdmin
+                ? User::withRole(User::ABSTRACT_REVIEWER_ROLES)
                     ->where('id', '!=', $abstract->user_id)
                     ->orderBy('name')
                     ->get(['id', 'name', 'email'])
@@ -153,7 +172,30 @@ class AbstractController extends Controller
             }
         });
 
+        // If both assigned reviewers now recommend acceptance, skip the
+        // admin's manual decision step entirely — anything else (a reject,
+        // a revision request, or a still-pending reviewer) is left for the
+        // admin to weigh and decide on.
+        if ($abstract->refresh()->bothReviewersDecided() && $this->bothReviewersAccepted($abstract)) {
+            $this->finalizeDecision(
+                $abstract,
+                'accepted',
+                'Automatically accepted — both assigned reviewers recommended acceptance.',
+                null,
+            );
+
+            return back()->with('success', 'Your recommendation has been recorded. Both reviewers accepted, so the abstract has been automatically accepted.');
+        }
+
         return back()->with('success', 'Your recommendation has been recorded.');
+    }
+
+    private function bothReviewersAccepted(AbstractSubmission $abstract): bool
+    {
+        return $abstract->reviewerDecisions()
+            ->whereIn('reviewer_id', [$abstract->reviewer_one_id, $abstract->reviewer_two_id])
+            ->pluck('recommendation')
+            ->every(fn (string $recommendation) => $recommendation === 'accepted');
     }
 
     public function decide(Request $request, AbstractSubmission $abstract): RedirectResponse
@@ -172,29 +214,7 @@ class AbstractController extends Controller
             ],
         ]);
 
-        DB::transaction(function () use ($abstract, $data) {
-            $action = $data['action'];
-            $now = now();
-
-            $abstract->update([
-                'status' => $action,
-                'reviewer_id' => Auth::id(),
-                'decision_notes' => $data['decision_notes'] ?? null,
-                'revision_requested_at' => $action === 'revision_requested' ? $now : $abstract->revision_requested_at,
-                'decided_at' => in_array($action, ['accepted', 'rejected'], true) ? $now : null,
-            ]);
-
-            $abstract->reviewHistory()->create([
-                'acted_by' => Auth::id(),
-                'action' => $action,
-                'from_status' => 'submitted',
-                'to_status' => $action,
-                'notes' => $data['decision_notes'] ?? null,
-            ]);
-        });
-
-        $abstract->load('user');
-        Mail::to($abstract->user->email)->send(new AbstractDecision($abstract->fresh(['user', 'subtheme', 'reviewer'])));
+        $this->finalizeDecision($abstract, $data['action'], $data['decision_notes'] ?? null, Auth::id());
 
         $message = match ($data['action']) {
             'accepted' => 'Abstract accepted and the author has been notified.',
@@ -203,6 +223,36 @@ class AbstractController extends Controller
         };
 
         return to_route('admin.abstracts.show', $abstract)->with('success', $message);
+    }
+
+    /**
+     * Shared by the admin's manual decision and the automatic accept-on-consensus
+     * path — $actorId is null for the latter, which the UI renders as "System".
+     */
+    private function finalizeDecision(AbstractSubmission $abstract, string $action, ?string $notes, ?int $actorId): void
+    {
+        DB::transaction(function () use ($abstract, $action, $notes, $actorId) {
+            $now = now();
+
+            $abstract->update([
+                'status' => $action,
+                'reviewer_id' => $actorId,
+                'decision_notes' => $notes,
+                'revision_requested_at' => $action === 'revision_requested' ? $now : $abstract->revision_requested_at,
+                'decided_at' => in_array($action, ['accepted', 'rejected'], true) ? $now : null,
+            ]);
+
+            $abstract->reviewHistory()->create([
+                'acted_by' => $actorId,
+                'action' => $action,
+                'from_status' => 'submitted',
+                'to_status' => $action,
+                'notes' => $notes,
+            ]);
+        });
+
+        $abstract->load('user');
+        Mail::to($abstract->user->email)->send(new AbstractDecision($abstract->fresh(['user', 'subtheme', 'reviewer'])));
     }
 
     public function downloadPresentation(AbstractSubmission $abstract): StreamedResponse

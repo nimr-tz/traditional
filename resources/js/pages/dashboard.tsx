@@ -8,7 +8,7 @@ import { ArrowRight, Award, BadgeCheck, CalendarDays, FileText, MapPin, Sparkles
 
 const breadcrumbs: BreadcrumbItem[] = [{ title: 'Dashboard', href: '/dashboard' }];
 
-type PaymentStatus = 'pending' | 'submitted' | 'verified' | 'rejected';
+type PaymentStatus = 'pending' | 'submitted' | 'verified' | 'rejected' | 'waived';
 type AbstractStatus = 'submitted' | 'revision_requested' | 'accepted' | 'rejected';
 
 interface Abstract {
@@ -45,18 +45,20 @@ const paymentStatusLabel: Record<PaymentStatus, string> = {
     submitted: 'Awaiting payment',
     verified: 'Paid',
     rejected: 'Action required',
+    waived: 'Waived',
 };
 
 const paymentStatusTone: Record<PaymentStatus, PillTone> = {
     pending: 'neutral',
     submitted: 'neutral',
-    revision_requested: 'attention',
     verified: 'positive',
     rejected: 'negative',
+    waived: 'positive',
 };
 
 const abstractStatusTone: Record<AbstractStatus, PillTone> = {
     submitted: 'neutral',
+    revision_requested: 'attention',
     accepted: 'positive',
     rejected: 'negative',
 };
@@ -161,9 +163,12 @@ export default function Dashboard({
     const hasAbstract = abstractsCount > 0;
     const formattedConferenceDate = formatDate(conferenceStartDate);
     const formattedSubmissionDeadline = formatDate(submissionDeadline);
-    const formattedFee = registration.fee_amount
-        ? `${registration.currency} ${Number(registration.fee_amount).toLocaleString(undefined, { maximumFractionDigits: 2 })}`
-        : 'To be confirmed';
+    const formattedFee =
+        registration.payment_status === 'waived'
+            ? 'Waived'
+            : registration.fee_amount
+              ? `${registration.currency} ${Number(registration.fee_amount).toLocaleString(undefined, { maximumFractionDigits: 2 })}`
+              : 'To be confirmed';
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
@@ -220,18 +225,18 @@ export default function Dashboard({
                             className={cn(
                                 'flex flex-col',
                                 registration.is_paid &&
-                                    'dark:from-card dark:via-card border-[#67b52f]/35 bg-gradient-to-br from-white via-white to-[#f1f9eb] shadow-[0_10px_30px_rgba(76,138,31,0.12)] dark:to-[#18291b]',
+                                    'dark:from-card dark:via-card border-[#135eeb]/25 bg-gradient-to-br from-white via-white to-[#eaf1ff] shadow-[0_10px_30px_rgba(19,94,235,0.12)] dark:to-[#0f1f3d]',
                             )}
                         >
                             <div className="flex items-start justify-between gap-4">
-                                <IconTile tone={registration.is_paid ? 'green' : 'blue'}>
+                                <IconTile tone="blue">
                                     {registration.is_paid ? <BadgeCheck className="size-6" /> : <Wallet className="size-5" />}
                                 </IconTile>
                                 <StatusPill
                                     tone={paymentStatusTone[registration.payment_status]}
                                     className={
                                         registration.is_paid
-                                            ? 'bg-[#4c8a1f] px-3 text-white shadow-sm dark:bg-[#67b52f] dark:text-[#10220b]'
+                                            ? 'bg-[#135eeb] px-3 text-white shadow-sm dark:bg-[#135eeb] dark:text-white'
                                             : registration.payment_status === 'pending'
                                               ? 'bg-[#eaf1ff] text-[#135eeb] dark:bg-[#135eeb]/20 dark:text-[#8db4ff]'
                                               : undefined
@@ -246,7 +251,7 @@ export default function Dashboard({
                                 className={cn(
                                     'mt-6 rounded-2xl border p-5',
                                     registration.is_paid
-                                        ? 'border-[#4c8a1f] bg-[#4c8a1f] text-white shadow-[0_8px_20px_rgba(76,138,31,0.2)]'
+                                        ? 'border-[#135eeb] bg-[#135eeb] text-white shadow-[0_8px_20px_rgba(19,94,235,0.25)]'
                                         : 'dark:border-border border-slate-100 bg-slate-50 dark:bg-slate-900/50',
                                 )}
                             >
@@ -262,7 +267,7 @@ export default function Dashboard({
                                 {registration.is_paid && (
                                     <div className="mt-4 flex items-center gap-2 border-t border-white/20 pt-3 text-sm font-semibold text-white/90">
                                         <BadgeCheck className="size-4" />
-                                        Payment confirmed
+                                        {registration.payment_status === 'waived' ? 'Registration fee waived' : 'Payment confirmed'}
                                     </div>
                                 )}
                             </div>
@@ -278,7 +283,6 @@ export default function Dashboard({
                                               ? 'View payment status'
                                               : 'Pay'
                                     }
-                                    tone={registration.is_paid ? 'green' : 'blue'}
                                 />
                             </div>
                         </DashboardCard>

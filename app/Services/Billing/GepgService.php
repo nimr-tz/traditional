@@ -5,7 +5,9 @@ namespace App\Services\Billing;
 use App\Jobs\AssignSandboxControlNumber;
 use App\Mail\ControlNumberIssued;
 use App\Mail\PaymentConfirmed;
+use App\Models\FeeCategory;
 use App\Models\User;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -137,6 +139,93 @@ class GepgService
         $user->save();
 
         Mail::to($user->email)->send(new PaymentConfirmed($user));
+    }
+
+    /**
+     * Fetch an invoice or receipt PDF for a registrant's bill (see api.md's
+     * `/api/billing/bills/{bill_id}/invoice/` and `.../receipt/`). Readiness rules
+     * mirror api.md's 409 cases: an invoice needs a control number, a receipt needs
+     * a recorded payment. In sandbox mode there is no real bill to fetch from, so
+     * we render the same document locally with dompdf instead of calling out.
+     *
+     * @return array{success: bool, body?: string, content_type?: string, filename?: string, message?: string}
+     */
+    public function fetchBillDocument(User $user, string $documentType): array
+    {
+        if (! $user->billing_request_id) {
+            return ['success' => false, 'message' => 'No billing ID found for this registrant.'];
+        }
+
+        if ($documentType === 'invoice' && ! $user->control_number) {
+            return ['success' => false, 'message' => 'The invoice is not ready yet — no control number has been assigned.'];
+        }
+
+        if ($documentType === 'receipt' && ! in_array($user->payment_status, ['verified', 'waived'], true)) {
+            return ['success' => false, 'message' => 'The receipt is only available after payment has been verified.'];
+        }
+
+        if (config('billing.sandbox')) {
+            return $this->renderSandboxDocument($user, $documentType);
+        }
+
+        $billId = $user->billing_request_id;
+
+        $response = Http::withHeaders(['Authorization' => 'Api-Key '.config('billing.api_key')])
+            ->get(rtrim(config('billing.system_url'), '/')."/api/billing/bills/{$billId}/{$documentType}/");
+
+        if ($response->status() === 404) {
+            return ['success' => false, 'message' => 'Bill not found.'];
+        }
+
+        if ($response->status() === 409) {
+            $reason = $response->json('reason');
+
+            return ['success' => false, 'message' => $reason === 'missing_control_number'
+                ? 'The invoice is not ready yet — no control number has been assigned.'
+                : 'The receipt is not ready yet — no payment has been recorded.'];
+        }
+
+        if (! $response->successful()) {
+            Log::error('NIMR Billing document download failed', [
+                'status' => $response->status(),
+                'bill_id' => $billId,
+                'document_type' => $documentType,
+            ]);
+
+            return ['success' => false, 'message' => 'Unable to download the document right now.'];
+        }
+
+        return [
+            'success' => true,
+            'body' => $response->body(),
+            'content_type' => 'application/pdf',
+            'filename' => "{$documentType}-{$billId}.pdf",
+        ];
+    }
+
+    /**
+     * Sandbox stand-in for the real NIMR document endpoints: renders the same
+     * invoice/receipt shape locally with dompdf so finance and registrants can
+     * use the feature end-to-end before real credentials are provisioned.
+     *
+     * @return array{success: bool, body: string, content_type: string, filename: string}
+     */
+    private function renderSandboxDocument(User $user, string $documentType): array
+    {
+        $categoryLabel = FeeCategory::query()->where('key', $user->fee_category)->value('label') ?? $user->fee_category;
+
+        $pdf = Pdf::loadView("pdf.{$documentType}", [
+            'user' => $user,
+            'categoryLabel' => $categoryLabel,
+            'payeeName' => config('billing.payee_name'),
+        ])->setPaper('a4');
+
+        return [
+            'success' => true,
+            'body' => $pdf->output(),
+            'content_type' => 'application/pdf',
+            'filename' => "{$documentType}-{$user->billing_request_id}.pdf",
+        ];
     }
 
     /**

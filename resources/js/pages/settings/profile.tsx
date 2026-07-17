@@ -4,14 +4,14 @@ import { Head, Link, useForm, usePage } from '@inertiajs/react';
 import { BadgeCheck, Clock3, FileCheck2, GraduationCap, LoaderCircle, ShieldAlert, UserRound } from 'lucide-react';
 import { FormEventHandler } from 'react';
 
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Button } from '@/components/ui/button';
 import { DashboardCard } from '@/components/dashboard-card';
 import InputError from '@/components/input-error';
+import SettingsSectionHeader from '@/components/settings-section-header';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import SettingsSectionHeader from '@/components/settings-section-header';
 import AppLayout from '@/layouts/app-layout';
 import SettingsLayout from '@/layouts/settings/layout';
 
@@ -32,7 +32,7 @@ interface FeeCategory {
 interface RegistrationInfo {
     participant_type: string | null;
     fee_category: string | null;
-    payment_status: 'pending' | 'submitted' | 'verified' | 'rejected';
+    payment_status: 'pending' | 'submitted' | 'verified' | 'rejected' | 'waived';
     requires_student_verification: boolean;
     student_verification_status: 'pending' | 'verified' | 'rejected' | null;
     student_verification_notes: string | null;
@@ -132,8 +132,8 @@ export default function Profile({ mustVerifyEmail, status, participantTypes, fee
                                 )}
                             </div>
                             <p className="text-muted-foreground text-xs leading-5">
-                                Your email is verified and used for your badge, certificate, and all conference notifications, so it can't be
-                                changed here. Contact the organizers if it's wrong.
+                                Your email is verified and used for your badge, certificate, and all conference notifications, so it can't be changed
+                                here. Contact the organizers if it's wrong.
                             </p>
                         </div>
 
@@ -249,8 +249,8 @@ export default function Profile({ mustVerifyEmail, status, participantTypes, fee
                         </form>
                     ) : (
                         <p className="text-muted-foreground mt-6 text-sm leading-6">
-                            A control number has already been requested for your registration, so your category is locked in. Contact the
-                            organizers if it needs to change.
+                            A control number has already been requested for your registration, so your category is locked in. Contact the organizers
+                            if it needs to change.
                         </p>
                     )}
                 </DashboardCard>

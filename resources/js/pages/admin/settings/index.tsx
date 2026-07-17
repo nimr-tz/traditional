@@ -1,5 +1,15 @@
 import { IconTile } from '@/components/dashboard-card';
 import { Button } from '@/components/ui/button';
+import {
+    DropdownMenu,
+    DropdownMenuCheckboxItem,
+    DropdownMenuContent,
+    DropdownMenuLabel,
+    DropdownMenuRadioGroup,
+    DropdownMenuRadioItem,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -7,8 +17,9 @@ import { Textarea } from '@/components/ui/textarea';
 import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem, type SharedData } from '@/types';
 import { Head, router, useForm, usePage } from '@inertiajs/react';
-import { Building2, CalendarRange, FolderKanban, LucideIcon, Settings, UsersRound, Wallet } from 'lucide-react';
+import { Building2, CalendarRange, ChevronLeft, ChevronRight, FolderKanban, LucideIcon, Search, Settings, UsersRound, Wallet } from 'lucide-react';
 import { FormEventHandler, useEffect, useState } from 'react';
+import { toast } from 'sonner';
 
 const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Admin', href: '/admin' },
@@ -65,35 +76,44 @@ interface Institution {
     active: boolean;
 }
 
-type AssignableRole = 'reviewer' | 'staff' | 'admin' | 'super_admin';
+type UserRole = 'user' | 'reviewer' | 'staff' | 'finance' | 'admin' | 'super_admin';
 
-const ROLE_LABELS: Record<AssignableRole, string> = {
+const ROLE_LABELS: Record<UserRole, string> = {
+    user: 'Participant',
     reviewer: 'Reviewer',
     staff: 'Staff (check-in)',
+    finance: 'Finance',
     admin: 'Admin',
     super_admin: 'Super Admin',
 };
 
-interface Candidate {
+interface UserRow {
     id: number;
     name: string;
     email: string;
+    role: UserRole;
+    roles: UserRole[];
+    email_verified: boolean;
 }
 
-interface TeamMember {
-    id: number;
-    name: string;
-    email: string;
-    role: AssignableRole;
+const ALL_ROLES = Object.keys(ROLE_LABELS) as UserRole[];
+
+interface PaginatedUsers {
+    data: UserRow[];
+    current_page: number;
+    last_page: number;
+    total: number;
+    prev_page_url: string | null;
+    next_page_url: string | null;
 }
 
-interface TeamAccessChange {
+interface RoleAccessChange {
     id: number;
     target_name: string;
     target_email: string;
     changed_by_name: string;
     action: 'granted' | 'revoked';
-    role: AssignableRole | null;
+    role: UserRole | null;
     created_at: string;
 }
 
@@ -102,9 +122,7 @@ interface SettingsIndexProps {
     subthemes: Subtheme[];
     institutions: Institution[];
     conferenceSettings: Record<string, string | null>;
-    canManageTeam: boolean;
-    team: TeamMember[];
-    teamAccessChanges: TeamAccessChange[];
+    roleAccessChanges: RoleAccessChange[];
 }
 
 function SettingsSection({
@@ -143,209 +161,267 @@ function formatAccessChangeDate(value: string): string {
     }).format(new Date(value));
 }
 
-function TeamSection({ team, accessChanges }: { team: TeamMember[]; accessChanges: TeamAccessChange[] }) {
-    const { auth, flash } = usePage<SharedData & { flash?: { success?: string } }>().props;
-    const [search, setSearch] = useState('');
-    const [results, setResults] = useState<Candidate[]>([]);
-    const [searching, setSearching] = useState(false);
-    const [searchError, setSearchError] = useState<string | null>(null);
-    const [actionError, setActionError] = useState<string | null>(null);
-    const [newRole, setNewRole] = useState<AssignableRole>('reviewer');
-    const [grantingId, setGrantingId] = useState<number | null>(null);
-    const [revokingId, setRevokingId] = useState<number | null>(null);
+function RoleEditor({ user, locked, onSave }: { user: UserRow; locked: boolean; onSave: (roles: UserRole[], primaryRole: UserRole) => void }) {
+    const [open, setOpen] = useState(false);
+    const [selected, setSelected] = useState<UserRole[]>(user.roles);
+    const [primary, setPrimary] = useState<UserRole>(user.role);
 
     useEffect(() => {
-        const query = search.trim();
-
-        if (query.length < 2) {
-            setResults([]);
-            setSearching(false);
-            setSearchError(null);
-            return;
+        if (open) {
+            setSelected(user.roles);
+            setPrimary(user.role);
         }
+    }, [open, user.roles, user.role]);
 
-        const controller = new AbortController();
-        const timer = window.setTimeout(async () => {
-            setSearching(true);
-            setSearchError(null);
-
-            try {
-                const response = await fetch(route('admin.settings.administrators.search', { query }), {
-                    headers: { Accept: 'application/json' },
-                    signal: controller.signal,
-                });
-
-                if (!response.ok) throw new Error('Search failed');
-
-                const payload = (await response.json()) as { users: Candidate[] };
-                setResults(payload.users);
-            } catch (error) {
-                if (error instanceof DOMException && error.name === 'AbortError') return;
-                setSearchError('Could not search users. Please try again.');
-            } finally {
-                if (!controller.signal.aborted) setSearching(false);
+    const toggleRole = (role: UserRole) => {
+        setSelected((current) => {
+            const next = current.includes(role) ? current.filter((r) => r !== role) : [...current, role];
+            if (next.length > 0 && !next.includes(primary)) {
+                setPrimary(next[0]);
             }
-        }, 250);
+            return next;
+        });
+    };
 
-        return () => {
-            window.clearTimeout(timer);
-            controller.abort();
-        };
-    }, [search]);
+    return (
+        <DropdownMenu open={open} onOpenChange={setOpen}>
+            <DropdownMenuTrigger asChild>
+                <Button type="button" variant="outline" size="sm" disabled={locked} className="h-auto min-h-9 w-full justify-start sm:w-56">
+                    <div className="flex flex-wrap gap-1">
+                        {user.roles.map((role) => (
+                            <span key={role} className="bg-primary/10 text-primary rounded-full px-2 py-0.5 text-[11px] font-semibold">
+                                {ROLE_LABELS[role]}
+                            </span>
+                        ))}
+                    </div>
+                </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-64">
+                <DropdownMenuLabel>Assign roles</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {ALL_ROLES.map((role) => (
+                    <DropdownMenuCheckboxItem
+                        key={role}
+                        checked={selected.includes(role)}
+                        onSelect={(event) => event.preventDefault()}
+                        onCheckedChange={() => toggleRole(role)}
+                    >
+                        {ROLE_LABELS[role]}
+                    </DropdownMenuCheckboxItem>
+                ))}
+                {selected.length > 1 && (
+                    <>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuLabel className="text-muted-foreground text-xs font-normal">Primary role (default view)</DropdownMenuLabel>
+                        <DropdownMenuRadioGroup value={primary} onValueChange={(value) => setPrimary(value as UserRole)}>
+                            {selected.map((role) => (
+                                <DropdownMenuRadioItem key={role} value={role} onSelect={(event) => event.preventDefault()}>
+                                    {ROLE_LABELS[role]}
+                                </DropdownMenuRadioItem>
+                            ))}
+                        </DropdownMenuRadioGroup>
+                    </>
+                )}
+                <DropdownMenuSeparator />
+                <div className="p-1">
+                    <Button
+                        type="button"
+                        size="sm"
+                        className="w-full"
+                        disabled={selected.length === 0}
+                        onClick={() => {
+                            onSave(selected, primary);
+                            setOpen(false);
+                        }}
+                    >
+                        Save
+                    </Button>
+                </div>
+            </DropdownMenuContent>
+        </DropdownMenu>
+    );
+}
 
-    const grantRole = (user: Candidate) => {
+function UsersAndRolesSection({ accessChanges }: { accessChanges: RoleAccessChange[] }) {
+    const { auth } = usePage<SharedData>().props;
+    const [search, setSearch] = useState('');
+    const [roleFilter, setRoleFilter] = useState<UserRole | 'all'>('all');
+    const [page, setPage] = useState(1);
+    const [users, setUsers] = useState<PaginatedUsers | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
+    const [actionError, setActionError] = useState<string | null>(null);
+    const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+    const [updatingId, setUpdatingId] = useState<number | null>(null);
+
+    const fetchUsers = () => {
+        setLoading(true);
+        setLoadError(null);
+
+        const params: Record<string, string> = { page: String(page) };
+        if (search.trim()) params.query = search.trim();
+        if (roleFilter !== 'all') params.role = roleFilter;
+
+        fetch(route('admin.settings.users.index', params), { headers: { Accept: 'application/json' } })
+            .then((response) => {
+                if (!response.ok) throw new Error('Failed to load users');
+                return response.json() as Promise<PaginatedUsers>;
+            })
+            .then(setUsers)
+            .catch(() => setLoadError('Could not load users. Please try again.'))
+            .finally(() => setLoading(false));
+    };
+
+    useEffect(() => {
+        const timer = window.setTimeout(fetchUsers, search ? 250 : 0);
+        return () => window.clearTimeout(timer);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [search, roleFilter, page]);
+
+    useEffect(() => {
+        setPage(1);
+    }, [search, roleFilter]);
+
+    const superAdminCount = users?.data.filter((u) => u.roles.includes('super_admin')).length ?? 0;
+
+    const changeRoles = (user: UserRow, roles: UserRole[], primaryRole: UserRole) => {
         setActionError(null);
-        setGrantingId(user.id);
+        setActionSuccess(null);
+        setUpdatingId(user.id);
 
-        router.post(
-            route('admin.settings.administrators.store'),
-            { user_id: user.id, role: newRole },
+        router.patch(
+            route('admin.settings.users.update-roles', user.id),
+            { roles, primary_role: primaryRole },
             {
                 preserveScroll: true,
+                preserveState: true,
                 onSuccess: () => {
-                    setSearch('');
-                    setResults([]);
+                    setActionSuccess(`${user.name}'s roles were updated.`);
+                    fetchUsers();
                 },
-                onError: (errors) => setActionError(String(errors.user_id ?? errors.role ?? 'Role could not be granted.')),
-                onFinish: () => setGrantingId(null),
+                onError: (errors) => setActionError(String(errors.roles ?? errors.primary_role ?? 'Roles could not be updated.')),
+                onFinish: () => setUpdatingId(null),
             },
         );
     };
 
-    const revokeRole = (member: TeamMember) => {
-        if (!window.confirm(`Remove the ${ROLE_LABELS[member.role]} role from ${member.name}?`)) return;
-
-        setActionError(null);
-        setRevokingId(member.id);
-
-        router.delete(route('admin.settings.administrators.destroy', member.id), {
-            preserveScroll: true,
-            onError: (errors) => setActionError(String(errors.administrator ?? 'Role could not be removed.')),
-            onFinish: () => setRevokingId(null),
-        });
-    };
-
-    const superAdminCount = team.filter((member) => member.role === 'super_admin').length;
-
     return (
-        <SettingsSection icon={UsersRound} title="Team & roles" description="Grant or revoke reviewer, staff, admin, and super admin access.">
-            <div className="flex flex-col gap-8">
-                <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,0.72fr)]">
-                    <section>
-                        <h3 className="text-sm font-semibold">Current team</h3>
-                        <div className="mt-3 divide-y rounded-lg border">
-                            {team.map((member) => {
-                                const isCurrentUser = member.id === auth.user.id;
-                                const cannotRemove = isCurrentUser || (member.role === 'super_admin' && superAdminCount <= 1);
-
-                                return (
-                                    <div
-                                        key={member.id}
-                                        className="flex flex-col items-stretch gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
-                                    >
-                                        <div className="min-w-0">
-                                            <div className="flex items-center gap-2">
-                                                <p className="truncate text-sm font-medium">{member.name}</p>
-                                                <span className="bg-primary/10 text-primary rounded-full px-2 py-0.5 text-[11px] font-semibold">
-                                                    {ROLE_LABELS[member.role]}
-                                                </span>
-                                                {isCurrentUser && (
-                                                    <span className="bg-primary/10 text-primary rounded-full px-2 py-0.5 text-[11px] font-semibold">
-                                                        You
-                                                    </span>
-                                                )}
-                                            </div>
-                                            <p className="text-muted-foreground truncate text-sm">{member.email}</p>
-                                        </div>
-                                        <Button
-                                            type="button"
-                                            size="sm"
-                                            variant="outline"
-                                            className="w-full shrink-0 border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800 sm:w-auto"
-                                            disabled={cannotRemove || revokingId === member.id}
-                                            title={isCurrentUser ? 'Another admin must remove your role' : undefined}
-                                            onClick={() => revokeRole(member)}
-                                        >
-                                            {revokingId === member.id ? 'Removing…' : 'Remove role'}
-                                        </Button>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    </section>
-
-                    <section>
-                        <Label htmlFor="team-search" className="text-sm font-semibold">
-                            Add team member
-                        </Label>
+        <SettingsSection icon={UsersRound} title="Users & roles" description="Search every user and change their role directly.">
+            <div className="flex flex-col gap-4">
+                <div className="flex flex-col gap-2 sm:flex-row">
+                    <div className="relative flex-1">
+                        <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
                         <Input
-                            id="team-search"
-                            type="search"
                             value={search}
                             onChange={(event) => setSearch(event.target.value)}
                             placeholder="Search by name or email"
-                            className="mt-3"
-                            autoComplete="off"
+                            className="pl-9"
                         />
-                        <div className="mt-3 grid gap-1">
-                            <Label className="text-xs">Role to assign</Label>
-                            <Select value={newRole} onValueChange={(value) => setNewRole(value as AssignableRole)}>
-                                <SelectTrigger>
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {(Object.keys(ROLE_LABELS) as AssignableRole[]).map((role) => (
-                                        <SelectItem key={role} value={role}>
-                                            {ROLE_LABELS[role]}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        <div className="text-muted-foreground mt-2 min-h-6 text-xs" aria-live="polite">
-                            {search.trim().length < 2 && 'Enter at least 2 characters.'}
-                            {searching && 'Searching…'}
-                            {searchError}
-                            {!searching && !searchError && search.trim().length >= 2 && results.length === 0 && 'No eligible users found.'}
-                        </div>
-
-                        {results.length > 0 && (
-                            <div className="mt-1 divide-y rounded-lg border">
-                                {results.map((user) => (
-                                    <div
-                                        key={user.id}
-                                        className="flex flex-col items-stretch gap-3 px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
-                                    >
-                                        <div className="min-w-0">
-                                            <p className="truncate text-sm font-medium">{user.name}</p>
-                                            <p className="text-muted-foreground truncate text-xs">{user.email}</p>
-                                        </div>
-                                        <Button
-                                            type="button"
-                                            size="sm"
-                                            className="w-full sm:w-auto"
-                                            disabled={grantingId === user.id}
-                                            onClick={() => grantRole(user)}
-                                        >
-                                            {grantingId === user.id ? 'Granting…' : `Make ${ROLE_LABELS[newRole]}`}
-                                        </Button>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </section>
+                    </div>
+                    <Select value={roleFilter} onValueChange={(value) => setRoleFilter(value as UserRole | 'all')}>
+                        <SelectTrigger className="sm:w-56">
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">All roles</SelectItem>
+                            {(Object.keys(ROLE_LABELS) as UserRole[]).map((role) => (
+                                <SelectItem key={role} value={role}>
+                                    {ROLE_LABELS[role]}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
                 </div>
 
-                {(flash?.success || actionError) && (
+                {(actionError || actionSuccess) && (
                     <div
-                        className={`mt-5 rounded-md px-3 py-2 text-sm ${actionError ? 'bg-red-50 text-red-800' : 'bg-primary/10 text-primary'}`}
+                        className={`rounded-md px-3 py-2 text-sm ${actionError ? 'bg-red-50 text-red-800' : 'bg-primary/10 text-primary'}`}
                         role="status"
                     >
-                        {actionError ?? flash?.success}
+                        {actionError ?? actionSuccess}
                     </div>
                 )}
 
-                <section className="mt-8 border-t pt-6">
+                <div className="divide-y rounded-lg border">
+                    {loading && !users ? (
+                        <p className="text-muted-foreground p-4 text-sm">Loading users…</p>
+                    ) : loadError ? (
+                        <p className="p-4 text-sm text-red-700">{loadError}</p>
+                    ) : users && users.data.length > 0 ? (
+                        users.data.map((user) => {
+                            const isCurrentUser = user.id === auth.user.id;
+                            const isLastSuperAdmin = user.roles.includes('super_admin') && superAdminCount <= 1;
+                            const locked = isCurrentUser || isLastSuperAdmin;
+
+                            return (
+                                <div
+                                    key={user.id}
+                                    className="flex flex-col items-stretch gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
+                                >
+                                    <div className="min-w-0">
+                                        <div className="flex items-center gap-2">
+                                            <p className="truncate text-sm font-medium">{user.name}</p>
+                                            {isCurrentUser && (
+                                                <span className="bg-primary/10 text-primary rounded-full px-2 py-0.5 text-[11px] font-semibold">
+                                                    You
+                                                </span>
+                                            )}
+                                            {!user.email_verified && (
+                                                <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
+                                                    Unverified
+                                                </span>
+                                            )}
+                                        </div>
+                                        <p className="text-muted-foreground truncate text-sm">{user.email}</p>
+                                    </div>
+                                    <div
+                                        title={
+                                            isCurrentUser
+                                                ? 'Another super admin must change your roles'
+                                                : isLastSuperAdmin
+                                                  ? 'The final super admin cannot lose that role'
+                                                  : undefined
+                                        }
+                                    >
+                                        <RoleEditor
+                                            user={user}
+                                            locked={locked || updatingId === user.id}
+                                            onSave={(roles, primaryRole) => changeRoles(user, roles, primaryRole)}
+                                        />
+                                    </div>
+                                </div>
+                            );
+                        })
+                    ) : (
+                        <p className="text-muted-foreground p-4 text-sm">No users match this search.</p>
+                    )}
+                </div>
+
+                {users && users.last_page > 1 && (
+                    <div className="flex items-center justify-between">
+                        <p className="text-muted-foreground text-xs">
+                            Page {users.current_page} of {users.last_page} · {users.total} users
+                        </p>
+                        <div className="flex gap-2">
+                            <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                disabled={!users.prev_page_url}
+                                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                            >
+                                <ChevronLeft className="size-4" />
+                                Prev
+                            </Button>
+                            <Button type="button" size="sm" variant="outline" disabled={!users.next_page_url} onClick={() => setPage((p) => p + 1)}>
+                                Next
+                                <ChevronRight className="size-4" />
+                            </Button>
+                        </div>
+                    </div>
+                )}
+
+                <section className="border-t pt-6">
                     <h3 className="text-sm font-semibold">Recent role changes</h3>
                     {accessChanges.length === 0 ? (
                         <p className="text-muted-foreground mt-2 text-sm">No role changes have been recorded yet.</p>
@@ -383,7 +459,11 @@ function FeeCategoryRow({ category }: { category: FeeCategory }) {
 
     const submit: FormEventHandler = (e) => {
         e.preventDefault();
-        patch(route('admin.settings.fee-categories.update', category.id), { preserveScroll: true });
+        patch(route('admin.settings.fee-categories.update', category.id), {
+            preserveScroll: true,
+            onSuccess: () => toast.success('Fee category updated'),
+            onError: () => toast.error('Could not update fee category'),
+        });
     };
 
     return (
@@ -411,7 +491,11 @@ function SubthemeRow({ subtheme }: { subtheme: Subtheme }) {
 
     const submit: FormEventHandler = (e) => {
         e.preventDefault();
-        patch(route('admin.settings.subthemes.update', subtheme.id), { preserveScroll: true });
+        patch(route('admin.settings.subthemes.update', subtheme.id), {
+            preserveScroll: true,
+            onSuccess: () => toast.success('Sub-theme updated'),
+            onError: () => toast.error('Could not update sub-theme'),
+        });
     };
 
     return (
@@ -442,7 +526,11 @@ function InstitutionRow({ institution }: { institution: Institution }) {
 
     const submit: FormEventHandler = (e) => {
         e.preventDefault();
-        patch(route('admin.settings.institutions.update', institution.id), { preserveScroll: true });
+        patch(route('admin.settings.institutions.update', institution.id), {
+            preserveScroll: true,
+            onSuccess: () => toast.success('Institution updated'),
+            onError: () => toast.error('Could not update institution'),
+        });
     };
 
     return (
@@ -464,7 +552,14 @@ function NewInstitutionForm() {
 
     const submit: FormEventHandler = (e) => {
         e.preventDefault();
-        post(route('admin.settings.institutions.store'), { preserveScroll: true, onSuccess: () => reset() });
+        post(route('admin.settings.institutions.store'), {
+            preserveScroll: true,
+            onSuccess: () => {
+                reset();
+                toast.success('Institution added');
+            },
+            onError: () => toast.error('Could not add institution'),
+        });
     };
 
     return (
@@ -482,7 +577,14 @@ function NewSubthemeForm() {
 
     const submit: FormEventHandler = (e) => {
         e.preventDefault();
-        post(route('admin.settings.subthemes.store'), { preserveScroll: true, onSuccess: () => reset() });
+        post(route('admin.settings.subthemes.store'), {
+            preserveScroll: true,
+            onSuccess: () => {
+                reset();
+                toast.success('Sub-theme added');
+            },
+            onError: () => toast.error('Could not add sub-theme'),
+        });
     };
 
     return (
@@ -495,15 +597,7 @@ function NewSubthemeForm() {
     );
 }
 
-export default function SettingsIndex({
-    feeCategories,
-    subthemes,
-    institutions,
-    conferenceSettings,
-    canManageTeam,
-    team,
-    teamAccessChanges,
-}: SettingsIndexProps) {
+export default function SettingsIndex({ feeCategories, subthemes, institutions, conferenceSettings, roleAccessChanges }: SettingsIndexProps) {
     const [conf, setConf] = useState<Record<string, string | null>>(() => ({
         ...conferenceSettings,
         start_date: normalizeDateInput(conferenceSettings.start_date),
@@ -516,7 +610,11 @@ export default function SettingsIndex({
     const submitConference: FormEventHandler = (e) => {
         e.preventDefault();
         confForm.transform(() => conf);
-        confForm.patch(route('admin.settings.conference.update'), { preserveScroll: true });
+        confForm.patch(route('admin.settings.conference.update'), {
+            preserveScroll: true,
+            onSuccess: () => toast.success('Conference details saved'),
+            onError: () => toast.error('Could not save conference details'),
+        });
     };
 
     return (
@@ -529,13 +627,15 @@ export default function SettingsIndex({
                         <Settings className="size-5" />
                     </IconTile>
                     <div>
-                        <p className="text-xs font-bold tracking-[0.18em] text-[#135eeb] uppercase">Conference operations</p>
+                        <p className="text-xs font-bold tracking-[0.18em] text-[#135eeb] uppercase">Super admin</p>
                         <h1 className="mt-2 font-serif text-3xl font-semibold">Settings</h1>
                         <p className="text-muted-foreground mt-2 text-sm">
-                            Conference details, fees, sub-themes, institutions, and team access all live here.
+                            Conference details, fees, sub-themes, institutions, and every user's role live here.
                         </p>
                     </div>
                 </header>
+
+                <UsersAndRolesSection accessChanges={roleAccessChanges} />
 
                 <SettingsSection icon={CalendarRange} title="Conference details" description="Shown across the site, emails, and badges.">
                     <form onSubmit={submitConference} className="grid gap-4 sm:grid-cols-2">
@@ -636,8 +736,6 @@ export default function SettingsIndex({
                         </div>
                     </form>
                 </SettingsSection>
-
-                {canManageTeam && <TeamSection team={team} accessChanges={teamAccessChanges} />}
 
                 <SettingsSection icon={Wallet} tone="green" title="Fee categories" description="Pricing shown at registration and on invoices.">
                     {feeCategories.map((category) => (

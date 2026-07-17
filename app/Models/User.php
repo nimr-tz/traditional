@@ -5,6 +5,7 @@ namespace App\Models;
 use Database\Factories\UserFactory;
 use Illuminate\Auth\MustVerifyEmail;
 use Illuminate\Contracts\Auth\MustVerifyEmail as MustVerifyEmailContract;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -28,12 +29,15 @@ class User extends Authenticatable implements MustVerifyEmailContract
 
     public const ROLE_SUPER_ADMIN = 'super_admin';
 
+    public const ROLE_FINANCE = 'finance';
+
     public const ROLES = [
         self::ROLE_USER,
         self::ROLE_REVIEWER,
         self::ROLE_STAFF,
         self::ROLE_ADMIN,
         self::ROLE_SUPER_ADMIN,
+        self::ROLE_FINANCE,
     ];
 
     /** Roles that can decide on abstract submissions and their presentations. */
@@ -42,8 +46,21 @@ class User extends Authenticatable implements MustVerifyEmailContract
     /** Roles that can administer registrations, students, and conference settings. */
     public const ADMIN_ROLES = [self::ROLE_ADMIN, self::ROLE_SUPER_ADMIN];
 
+    /** Roles that can verify/reject/waive registrant payments. */
+    public const FINANCE_ROLES = [self::ROLE_FINANCE, self::ROLE_ADMIN, self::ROLE_SUPER_ADMIN];
+
     /** Roles that can sign in to the check-in app and record attendance. */
     public const CHECKIN_ROLES = [self::ROLE_STAFF, self::ROLE_ADMIN, self::ROLE_SUPER_ADMIN];
+
+    /**
+     * Registration (and any other bare `new User(...)`) never sets `role`
+     * explicitly — it relies on this in-memory default so it's reliably
+     * populated the moment the model exists, not just after a DB round-trip
+     * (the `booted()` hook below needs it synchronously, right at creation).
+     */
+    protected $attributes = [
+        'role' => self::ROLE_USER,
+    ];
 
     protected $fillable = [
         'name',
@@ -94,25 +111,99 @@ class User extends Authenticatable implements MustVerifyEmailContract
         return $this->belongsTo(Institution::class, 'institution_id');
     }
 
+    /**
+     * A user creation event always seeds the matching `user_roles` row for
+     * their initial `role`, so the pivot table (the source of truth for
+     * authorization) never starts out empty for a freshly created account.
+     */
+    protected static function booted(): void
+    {
+        static::created(function (self $user) {
+            $user->roleAssignments()->firstOrCreate(['role' => $user->role]);
+        });
+    }
+
+    /** The full set of roles this user holds — not just their primary `role`. */
+    public function roleAssignments(): HasMany
+    {
+        return $this->hasMany(UserRole::class);
+    }
+
+    /** @return list<string> */
+    public function roles(): array
+    {
+        return $this->relationLoaded('roleAssignments')
+            ? $this->roleAssignments->pluck('role')->all()
+            : $this->roleAssignments()->pluck('role')->all();
+    }
+
+    public function hasRole(string $role): bool
+    {
+        return in_array($role, $this->roles(), true);
+    }
+
+    /** @param  string[]  $roles */
+    public function hasAnyRole(array $roles): bool
+    {
+        return (bool) array_intersect($roles, $this->roles());
+    }
+
+    /** Users whose assigned roles include any of the given role(s). */
+    public function scopeWithRole(Builder $query, string|array $roles): Builder
+    {
+        return $query->whereHas('roleAssignments', fn (Builder $q) => $q->whereIn('role', (array) $roles));
+    }
+
     public function isSuperAdmin(): bool
     {
-        return $this->role === self::ROLE_SUPER_ADMIN;
+        return $this->hasRole(self::ROLE_SUPER_ADMIN);
     }
 
     /** Full conference administration access (registrations, students, settings). */
     public function isAdmin(): bool
     {
-        return in_array($this->role, self::ADMIN_ROLES, true);
+        return $this->hasAnyRole(self::ADMIN_ROLES);
     }
 
     public function canReviewAbstracts(): bool
     {
-        return in_array($this->role, self::ABSTRACT_REVIEWER_ROLES, true);
+        return $this->hasAnyRole(self::ABSTRACT_REVIEWER_ROLES);
     }
 
     public function canUseCheckinApp(): bool
     {
-        return in_array($this->role, self::CHECKIN_ROLES, true);
+        return $this->hasAnyRole(self::CHECKIN_ROLES);
+    }
+
+    public function canManageFinance(): bool
+    {
+        return $this->hasAnyRole(self::FINANCE_ROLES);
+    }
+
+    /**
+     * Which of the user's assigned roles they're currently viewing the site
+     * as — a cosmetic preference (nav/home dashboard) only. It never grants
+     * or restricts access: every route their full role set allows stays
+     * reachable no matter which role is "active". Falls back to their
+     * primary `role` when unset or no longer one of their assigned roles.
+     */
+    public function activeRole(): string
+    {
+        if ($this->active_role && $this->hasRole($this->active_role)) {
+            return $this->active_role;
+        }
+
+        return $this->role;
+    }
+
+    public static function homeRouteForRole(string $role): string
+    {
+        return match ($role) {
+            self::ROLE_SUPER_ADMIN => route('admin.settings.edit', absolute: false),
+            self::ROLE_ADMIN, self::ROLE_REVIEWER => route('admin.dashboard', absolute: false),
+            self::ROLE_FINANCE => route('admin.finance.dashboard', absolute: false),
+            default => route('dashboard', absolute: false),
+        };
     }
 
     public function abstractSubmissions(): HasMany
@@ -128,6 +219,12 @@ class User extends Authenticatable implements MustVerifyEmailContract
     public function certificates(): HasMany
     {
         return $this->hasMany(Certificate::class);
+    }
+
+    /** The finance user who verified/rejected/waived this registrant's payment. */
+    public function verifiedBy(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'payment_verified_by');
     }
 
     /**
@@ -157,7 +254,7 @@ class User extends Authenticatable implements MustVerifyEmailContract
 
     public function isPaid(): bool
     {
-        return $this->payment_status === 'verified';
+        return in_array($this->payment_status, ['verified', 'waived'], true);
     }
 
     public function isCheckedIn(): bool

@@ -557,7 +557,7 @@ export default function Register({ salutations, participantTypes, feeCategories,
                             <div className="text-sm leading-relaxed text-[#0f2350]">{summaryName}</div>
                             <div className="text-[13px] leading-relaxed text-[#0f2350]">{summaryCategory}</div>
                             <div className="text-xs leading-relaxed text-[#0f2350]/70">
-                                After creating your account you will verify your email and get <strong>payment instructions</strong>.
+                                After creating your account, you will need to <strong>confirm your email</strong> to continue.
                             </div>
                         </div>
                     </div>

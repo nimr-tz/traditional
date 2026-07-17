@@ -39,11 +39,20 @@ export default function AbstractAuthorsField({ authors, onChange, errors }: Abst
 
     return (
         <div className="grid gap-3">
-            <Label>Authors (start with the presenting author)</Label>
+            <Label>
+                Authors * <span className="text-muted-foreground font-normal">(start with the presenting author)</span>
+            </Label>
             {authors.map((author, index) => (
-                <div key={index} className="flex flex-col gap-2 rounded-md border p-3 sm:flex-row sm:items-start">
+                <div
+                    key={index}
+                    className={`flex flex-col gap-2 rounded-md border p-3 sm:flex-row sm:items-start ${author.is_presenter ? 'bg-[#67b52f]/5' : ''}`}
+                >
                     <div className="grid flex-1 gap-2 sm:grid-cols-2">
-                        <Input placeholder="Author name" value={author.name} onChange={(e) => update(index, { name: e.target.value })} />
+                        <Input
+                            placeholder="Author name, e.g. H Malinye"
+                            value={author.name}
+                            onChange={(e) => update(index, { name: e.target.value })}
+                        />
                         <Input
                             placeholder="Institution"
                             value={author.institution}

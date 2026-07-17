@@ -101,8 +101,9 @@ class AbstractController extends Controller
 
         $isRevision = $abstract->status === 'revision_requested';
         $data = $this->validateSubmission($request);
+        $reviewersToNotify = [];
 
-        DB::transaction(function () use ($abstract, $data, $isRevision) {
+        DB::transaction(function () use ($abstract, $data, $isRevision, &$reviewersToNotify) {
             $abstract->update(array_merge($data, $isRevision ? [
                 'status' => 'submitted',
                 'decision_notes' => null,
@@ -111,10 +112,18 @@ class AbstractController extends Controller
             ] : []));
 
             if ($isRevision) {
-                // Reviewers must re-review the revised content — clear the
-                // prior round's recommendations (and their comments), but
-                // keep the same two reviewers assigned.
-                $abstract->reviewerDecisions()->delete();
+                // Only the reviewer(s) who asked for a revision or rejected need
+                // to re-review the revised content. A reviewer who already
+                // accepted keeps their recommendation and isn't asked again —
+                // only clear/re-open the decisions that weren't an acceptance.
+                $reviewersToNotify = $abstract->reviewerDecisions()
+                    ->whereIn('recommendation', ['revision_requested', 'rejected'])
+                    ->pluck('reviewer_id')
+                    ->all();
+
+                $abstract->reviewerDecisions()
+                    ->whereIn('recommendation', ['revision_requested', 'rejected'])
+                    ->delete();
 
                 $abstract->reviewHistory()->create([
                     'acted_by' => Auth::id(),
@@ -127,7 +136,7 @@ class AbstractController extends Controller
 
         if ($isRevision) {
             Mail::to(Auth::user()->email)->send(new AbstractSubmitted($abstract->fresh(), true));
-            $this->notifyReviewers($abstract->fresh(), true);
+            $this->notifyAssignedReviewers($abstract->fresh(), $reviewersToNotify);
 
             return to_route('abstracts.index')->with('success', 'Your revised abstract has been resubmitted for review.');
         }
@@ -185,8 +194,21 @@ class AbstractController extends Controller
     private function notifyReviewers(AbstractSubmission $submission, bool $isRevision = false): void
     {
         User::query()
-            ->whereIn('role', User::ABSTRACT_REVIEWER_ROLES)
+            ->withRole(User::ABSTRACT_REVIEWER_ROLES)
             ->pluck('email')
             ->each(fn (string $email) => Mail::to($email)->send(new AbstractReviewRequested($submission, $isRevision)));
+    }
+
+    /**
+     * Used on resubmission: only the reviewer(s) whose prior decision was
+     * cleared (revision requested / rejected) get re-notified — a reviewer
+     * who already accepted is not bothered again.
+     */
+    private function notifyAssignedReviewers(AbstractSubmission $submission, array $reviewerIds): void
+    {
+        User::query()
+            ->whereIn('id', $reviewerIds)
+            ->pluck('email')
+            ->each(fn (string $email) => Mail::to($email)->send(new AbstractReviewRequested($submission, true)));
     }
 }

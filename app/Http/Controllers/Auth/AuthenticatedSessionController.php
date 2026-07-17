@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\LoginRequest;
+use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -33,11 +34,9 @@ class AuthenticatedSessionController extends Controller
 
         $request->session()->regenerate();
 
-        return redirect()->intended(
-            $request->user()->canReviewAbstracts() || $request->user()->isAdmin()
-                ? route('admin.dashboard', absolute: false)
-                : route('dashboard', absolute: false),
-        );
+        $user = $request->user();
+
+        return redirect()->intended(User::homeRouteForRole($user->activeRole()));
     }
 
     /**

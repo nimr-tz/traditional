@@ -19,7 +19,12 @@ repo:
 ### PHP / Laravel (run from repo root)
 
 - `composer dev` — runs the full local dev stack concurrently: `php artisan serve`, `queue:listen`, `pail`
-  (log tailing), and `npm run dev`. This is the normal way to run the app locally.
+  (log tailing), `npm run dev`, and `mailpit`. This is the normal way to run the app locally.
+- Mail is caught locally by [Mailpit](https://github.com/axllent/mailpit) rather than sent for real
+  (`MAIL_MAILER=smtp` to `127.0.0.1:1025` in `.env`) — view sent mail at http://127.0.0.1:8025. Requires the
+  `mailpit` binary on `PATH` (not a Chocolatey package as of writing; grab the Windows zip from the
+  [releases page](https://github.com/axllent/mailpit/releases) and add its folder to `PATH`), otherwise that
+  one line in `composer dev` fails while the rest of the stack keeps running fine.
 - `./vendor/bin/phpunit` — run the full test suite (this is what CI runs). Tests are PHPUnit-style classes
   under `tests/Feature` and `tests/Unit`, even though Pest is installed (`tests/Pest.php` binds `TestCase` +
   `RefreshDatabase` for the `Feature` suite, but no test files currently use Pest's functional syntax).

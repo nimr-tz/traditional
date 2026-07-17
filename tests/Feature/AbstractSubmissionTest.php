@@ -49,6 +49,8 @@ class AbstractSubmissionTest extends TestCase
         $subtheme = Subtheme::create(['title' => 'Policy', 'active' => true, 'sort_order' => 1]);
         $author = User::factory()->create();
         $admin = User::factory()->admin()->create();
+        $reviewerWhoAccepted = User::factory()->reviewer()->create();
+        $reviewerWhoRequestedRevision = User::factory()->reviewer()->create();
         $submission = $author->abstractSubmissions()->create([
             'subtheme_id' => $subtheme->id,
             'title' => 'Original title',
@@ -62,7 +64,19 @@ class AbstractSubmissionTest extends TestCase
             'status' => 'revision_requested',
             'decision_notes' => 'Clarify the conclusion.',
             'reviewer_id' => $admin->id,
+            'reviewer_one_id' => $reviewerWhoAccepted->id,
+            'reviewer_two_id' => $reviewerWhoRequestedRevision->id,
             'revision_requested_at' => now(),
+        ]);
+        $submission->reviewerDecisions()->create([
+            'reviewer_id' => $reviewerWhoAccepted->id,
+            'recommendation' => 'accepted',
+            'decided_at' => now(),
+        ]);
+        $submission->reviewerDecisions()->create([
+            'reviewer_id' => $reviewerWhoRequestedRevision->id,
+            'recommendation' => 'revision_requested',
+            'decided_at' => now(),
         ]);
 
         $this->actingAs($author)->put(route('abstracts.update', $submission), [
@@ -85,8 +99,23 @@ class AbstractSubmissionTest extends TestCase
             'abstract_submission_id' => $submission->id,
             'action' => 'resubmitted',
         ]);
+
+        // The reviewer who already accepted keeps their decision and isn't
+        // re-notified; only the reviewer who asked for a revision is.
+        $this->assertDatabaseHas('abstract_reviewer_decisions', [
+            'abstract_submission_id' => $submission->id,
+            'reviewer_id' => $reviewerWhoAccepted->id,
+            'recommendation' => 'accepted',
+        ]);
+        $this->assertDatabaseMissing('abstract_reviewer_decisions', [
+            'abstract_submission_id' => $submission->id,
+            'reviewer_id' => $reviewerWhoRequestedRevision->id,
+        ]);
+
         Mail::assertQueued(AbstractSubmitted::class, fn ($mail) => $mail->isRevision && $mail->hasTo($author->email));
-        Mail::assertQueued(AbstractReviewRequested::class, fn ($mail) => $mail->isRevision && $mail->hasTo($admin->email));
+        Mail::assertQueued(AbstractReviewRequested::class, fn ($mail) => $mail->isRevision && $mail->hasTo($reviewerWhoRequestedRevision->email));
+        Mail::assertNotQueued(AbstractReviewRequested::class, fn ($mail) => $mail->hasTo($reviewerWhoAccepted->email));
+        Mail::assertNotQueued(AbstractReviewRequested::class, fn ($mail) => $mail->hasTo($admin->email));
     }
 
     public function test_abstract_sections_over_300_words_combined_are_rejected(): void

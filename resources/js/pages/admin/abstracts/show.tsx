@@ -1,4 +1,5 @@
 import InputError from '@/components/input-error';
+import { StatusPill } from '@/components/status-pill';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
@@ -43,7 +44,8 @@ interface ReviewerComment {
 interface ReviewerDecision {
     id: number;
     reviewer_id: number;
-    recommendation: ReviewAction;
+    // null when this is another reviewer's decision, redacted server-side for blind review.
+    recommendation: ReviewAction | null;
     comments: ReviewerComment[];
     decided_at: string;
     reviewer: ReviewerRef;
@@ -137,7 +139,7 @@ interface AbstractReviewShowProps {
 
 export default function AbstractReviewShow({ submission, eligibleReviewers }: AbstractReviewShowProps) {
     const { auth } = usePage<SharedData>().props;
-    const isAdmin = auth.user.role === 'admin' || auth.user.role === 'super_admin';
+    const isAdmin = auth.user.roles.includes('admin') || auth.user.roles.includes('super_admin');
     const isAssignedReviewer = auth.user.id === submission.reviewer_one?.id || auth.user.id === submission.reviewer_two?.id;
     const myDecision = submission.reviewer_decisions.find((d) => d.reviewer_id === auth.user.id) ?? null;
     const otherDecision = submission.reviewer_decisions.find((d) => d.reviewer_id !== auth.user.id) ?? null;
@@ -300,16 +302,16 @@ export default function AbstractReviewShow({ submission, eligibleReviewers }: Ab
                                     {submission.resubmitted_at && <span className="text-xs font-bold text-[#135eeb]">Revised submission</span>}
                                 </div>
                                 <h1 className="mt-4 font-serif text-3xl leading-tight font-semibold text-balance md:text-4xl">{submission.title}</h1>
-                                <div className="text-muted-foreground mt-5 flex flex-wrap gap-x-5 gap-y-2 text-sm">
-                                    <span className="inline-flex items-center gap-2 capitalize">
-                                        <Presentation className="size-4 text-[#4c8a1f]" />
+                                <div className="mt-5 flex flex-wrap items-center gap-2">
+                                    <StatusPill tone="positive" className="capitalize">
+                                        <Presentation className="mr-1.5 size-3.5" />
                                         {submission.presentation_type} presentation
-                                    </span>
-                                    {submission.subtheme && <span>{submission.subtheme.title}</span>}
-                                    <span>
+                                    </StatusPill>
+                                    {submission.subtheme && <StatusPill tone="attention">{submission.subtheme.title}</StatusPill>}
+                                    <StatusPill tone="neutral">
                                         {submission.resubmitted_at ? 'Resubmitted' : 'Submitted'}{' '}
                                         {formatDate(submission.resubmitted_at ?? submission.created_at)}
-                                    </span>
+                                    </StatusPill>
                                 </div>
                             </header>
 
@@ -451,7 +453,7 @@ export default function AbstractReviewShow({ submission, eligibleReviewers }: Ab
                     </main>
 
                     <aside className="space-y-5 lg:sticky lg:top-6">
-                        <section className="bg-card rounded-2xl border p-5">
+                        <section className="dark:bg-card rounded-2xl border border-[#135eeb]/10 bg-white p-5 shadow-[0_1px_2px_rgba(19,94,235,0.06)]">
                             <div className="flex items-center gap-3">
                                 <span className="flex size-10 items-center justify-center rounded-xl bg-[#eef7e6] text-[#4c8a1f]">
                                     <UserRound className="size-5" />
@@ -535,9 +537,12 @@ export default function AbstractReviewShow({ submission, eligibleReviewers }: Ab
                             </section>
                         )}
 
-                        {(submission.reviewer_one || submission.reviewer_two) && (
+                        {isAdmin && (submission.reviewer_one || submission.reviewer_two) && (
                             <section className="bg-card rounded-2xl border p-5">
                                 <h2 className="text-lg font-semibold">Reviewer recommendations</h2>
+                                <p className="text-muted-foreground mt-1 text-xs leading-5">
+                                    Only visible to admins — assigned reviewers can't see each other's recommendation or comments.
+                                </p>
                                 <div className="mt-4 space-y-3">
                                     {[submission.reviewer_one, submission.reviewer_two].map((reviewer, index) => {
                                         if (!reviewer) return null;
@@ -549,7 +554,7 @@ export default function AbstractReviewShow({ submission, eligibleReviewers }: Ab
                                                     <p className="text-sm font-semibold">
                                                         Reviewer {index === 0 ? 'A' : 'B'} · {reviewer.name}
                                                     </p>
-                                                    {decision ? (
+                                                    {decision?.recommendation ? (
                                                         <span className="text-xs font-bold text-[#4c8a1f]">
                                                             {recommendationLabel[decision.recommendation]}
                                                         </span>
@@ -579,6 +584,10 @@ export default function AbstractReviewShow({ submission, eligibleReviewers }: Ab
                         {isAssignedReviewer && submission.status === 'submitted' && (
                             <section className="bg-card rounded-2xl border p-5">
                                 <h2 className="text-lg font-semibold">Your recommendation</h2>
+                                <p className="text-muted-foreground mt-1 text-xs leading-5">
+                                    If both reviewers recommend acceptance, the abstract is accepted automatically. Any other combination is left for
+                                    an admin to decide.
+                                </p>
                                 <form onSubmit={submitRecommendation} className="mt-4 space-y-3">
                                     <div className="grid gap-2">
                                         {(Object.keys(recommendationLabel) as ReviewAction[]).map((action) => (
@@ -731,7 +740,7 @@ export default function AbstractReviewShow({ submission, eligibleReviewers }: Ab
                                         <p className="text-muted-foreground mt-2 text-sm leading-6">
                                             {!bothReviewersAssigned
                                                 ? 'Assign two reviewers above to start the review.'
-                                                : 'Both assigned reviewers must submit a recommendation before you can decide.'}
+                                                : 'Both assigned reviewers must submit a recommendation. If they both recommend acceptance, the abstract is accepted automatically — otherwise you’ll be asked to decide here.'}
                                         </p>
                                     </div>
                                 ) : (
