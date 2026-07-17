@@ -1,0 +1,138 @@
+name: Build, Deploy, and Verify
+
+run-name: "TMSC deploy #${{ github.run_number }} (${{ github.ref_name }})"
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+concurrency:
+  group: tmsc-deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  APP_NAME: TMSC
+  APP_SLUG: tmsc
+  APP_URL: https://tmsc.apps.nimr.or.tz
+  IMAGE_NAME: ghcr.io/nimr-tz/traditional
+  GITOPS_FILE: clusters/msmt-02/research/tmsc/kustomization.yaml
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  test:
+    runs-on: tmsc-msmt02
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build test image
+        run: docker build --target test --tag tmsc-test:${GITHUB_SHA} .
+
+      - name: Run application tests
+        run: docker run --rm tmsc-test:${GITHUB_SHA}
+
+  build:
+    runs-on: tmsc-msmt02
+    timeout-minutes: 45
+    needs: test
+    outputs:
+      image_tag: ${{ steps.vars.outputs.image_tag }}
+      image_ref: ${{ steps.vars.outputs.image_ref }}
+      image_digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute deployment variables
+        id: vars
+        run: |
+          set -euo pipefail
+          tag="sha-${GITHUB_SHA::7}"
+          echo "image_tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "image_ref=${IMAGE_NAME}:${tag}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ secrets.GHCR_USERNAME || github.actor }}
+          password: ${{ secrets.GHCR_TOKEN || github.token }}
+
+      - name: Build and publish immutable image
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          target: runtime
+          push: true
+          tags: ${{ steps.vars.outputs.image_ref }}
+          provenance: false
+          sbom: false
+
+  update-gitops:
+    runs-on: tmsc-msmt02
+    timeout-minutes: 15
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout platform-gitops
+        uses: actions/checkout@v4
+        with:
+          repository: nimr-tz/platform-gitops
+          ref: main
+          token: ${{ secrets.PLATFORM_GITOPS_TOKEN }}
+          path: platform-gitops
+
+      - name: Update image tag
+        env:
+          TAG: ${{ needs.build.outputs.image_tag }}
+        run: |
+          set -euo pipefail
+          file="platform-gitops/${GITOPS_FILE}"
+          awk -v tag="${TAG}" '
+            /^[[:space:]]*newTag:[[:space:]]*/ { sub(/newTag:[[:space:]]*.*/, "newTag: " tag) }
+            { print }
+          ' "${file}" > "${file}.tmp"
+          mv "${file}.tmp" "${file}"
+          grep -Eq "^[[:space:]]*newTag:[[:space:]]*${TAG}$" "${file}"
+
+      - name: Commit and push GitOps update
+        env:
+          TAG: ${{ needs.build.outputs.image_tag }}
+        run: |
+          set -euo pipefail
+          cd platform-gitops
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "${GITOPS_FILE}"
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit \
+            -m "${APP_SLUG}: deploy image ${TAG}" \
+            -m "Source: ${GITHUB_REPOSITORY}@${GITHUB_SHA}" \
+            -m "Workflow: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          git push origin HEAD:main || {
+            git fetch origin main
+            if git show origin/main:"${GITOPS_FILE}" | grep -Eq "^[[:space:]]*newTag:[[:space:]]*${TAG}$"; then
+              exit 0
+            fi
+            git pull --rebase origin main
+            git push origin HEAD:main
+          }
+
+      - name: Deployment summary
+        run: |
+          {
+            echo "## TMSC deployment"
+            echo
+            echo "- Image: \`${{ needs.build.outputs.image_ref }}\`"
+            echo "- Digest: \`${{ needs.build.outputs.image_digest }}\`"
+            echo "- URL: ${APP_URL}"
+          } >> "$GITHUB_STEP_SUMMARY"

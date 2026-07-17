@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 use RuntimeException;
+use Throwable;
 
 /**
  * Wraps bill submission to the NIMR Billing System (see api.md at the repo
@@ -37,6 +38,25 @@ class GepgService
             throw new RuntimeException('Your student status must be verified before a control number can be issued.');
         }
 
+        if ($user->billing_request_id) {
+            if ($user->control_number) {
+                return ['success' => true, 'billing_request_id' => $user->billing_request_id];
+            }
+
+            $requestedAt = $user->billing_requested_at ?? $user->updated_at;
+            $retryAfter = max(1, (int) config('billing.request_retry_minutes', 10));
+
+            if ($requestedAt && $requestedAt->gt(now()->subMinutes($retryAfter))) {
+                return ['success' => true, 'billing_request_id' => $user->billing_request_id];
+            }
+
+            Log::warning('Retrying stale TMSC billing request', [
+                'user_id' => $user->id,
+                'previous_bill_id' => $user->billing_request_id,
+                'requested_at' => $requestedAt?->toIso8601String(),
+            ]);
+        }
+
         if (config('billing.sandbox')) {
             $billingRequestId = 'SANDBOX-'.Str::upper(Str::random(12));
 
@@ -45,6 +65,7 @@ class GepgService
                 'payment_method' => 'gepg',
                 'payment_status' => 'submitted',
                 'control_number' => null,
+                'billing_requested_at' => now(),
             ])->save();
 
             AssignSandboxControlNumber::dispatch($user->id)->delay(now()->addSeconds(5));
@@ -78,8 +99,22 @@ class GepgService
             ],
         ];
 
-        $response = Http::withHeaders(['Authorization' => 'Api-Key '.config('billing.api_key')])
-            ->post(rtrim(config('billing.system_url'), '/').'/api/bill-submission/', $payload);
+        try {
+            $response = Http::withHeaders(['Authorization' => 'Api-Key '.config('billing.api_key')])
+                ->acceptJson()
+                ->connectTimeout((int) config('billing.connect_timeout', 5))
+                ->timeout((int) config('billing.request_timeout', 20))
+                ->retry(2, 500, throw: false)
+                ->post(rtrim(config('billing.system_url'), '/').'/api/bill-submission/', $payload);
+        } catch (Throwable $exception) {
+            Log::error('NIMR Billing connection failed', [
+                'exception' => $exception::class,
+                'message' => $exception->getMessage(),
+                'user_id' => $user->id,
+            ]);
+
+            throw new RuntimeException('The billing system is temporarily unreachable. Please try again shortly.');
+        }
 
         if (! $response->successful()) {
             Log::error('NIMR Billing bill-submission failed', [
@@ -98,6 +133,7 @@ class GepgService
             'payment_method' => 'gepg',
             'payment_status' => 'submitted',
             'control_number' => null,
+            'billing_requested_at' => now(),
         ])->save();
 
         return ['success' => true, 'billing_request_id' => $billId];

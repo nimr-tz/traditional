@@ -39,14 +39,18 @@ return [
 
         'smtp' => [
             'transport' => 'smtp',
+            'scheme' => env('MAIL_SCHEME'),
             'url' => env('MAIL_URL'),
             'host' => env('MAIL_HOST', '127.0.0.1'),
             'port' => env('MAIL_PORT', 2525),
             'encryption' => env('MAIL_ENCRYPTION', 'tls'),
             'username' => env('MAIL_USERNAME'),
             'password' => env('MAIL_PASSWORD'),
-            'timeout' => null,
+            'timeout' => (int) env('MAIL_TIMEOUT', 15),
             'local_domain' => env('MAIL_EHLO_DOMAIN', parse_url(env('APP_URL', 'http://localhost'), PHP_URL_HOST)),
+            'verify_peer' => filter_var(env('MAIL_VERIFY_PEER', true), FILTER_VALIDATE_BOOL),
+            'verify_peer_name' => filter_var(env('MAIL_VERIFY_PEER_NAME', true), FILTER_VALIDATE_BOOL),
+            'allow_self_signed' => filter_var(env('MAIL_ALLOW_SELF_SIGNED', false), FILTER_VALIDATE_BOOL),
         ],
 
         'ses' => [
@@ -111,6 +115,16 @@ return [
     'from' => [
         'address' => env('MAIL_FROM_ADDRESS', 'hello@example.com'),
         'name' => env('MAIL_FROM_NAME', 'Example'),
+    ],
+
+    'error_alerts' => [
+        'enabled' => filter_var(env('CRITICAL_ERROR_ALERTS_ENABLED', false), FILTER_VALIDATE_BOOL),
+        'mailer' => env('CRITICAL_ERROR_ALERT_MAILER', env('MAIL_MAILER', 'log')),
+        'to' => array_values(array_filter(array_map(
+            static fn (string $recipient) => trim($recipient),
+            explode(',', (string) env('CRITICAL_ERROR_ALERT_RECIPIENTS', ''))
+        ))),
+        'dedupe_minutes' => (int) env('CRITICAL_ERROR_ALERT_DEDUPE_MINUTES', 15),
     ],
 
 ];

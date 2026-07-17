@@ -95,7 +95,11 @@ class PaymentFlowTest extends TestCase
     {
         Mail::fake();
 
-        $user = User::factory()->create(['billing_request_id' => 'BILL1']);
+        $user = User::factory()->create([
+            'billing_request_id' => 'BILL1',
+            'fee_amount' => 100,
+            'currency' => 'TZS',
+        ]);
 
         $response = $this->post('/api/billing/control-number-callback', [
             'req_id' => 'REQ1',
@@ -114,7 +118,13 @@ class PaymentFlowTest extends TestCase
     {
         Mail::fake();
 
-        $user = User::factory()->create(['billing_request_id' => 'BILL1', 'control_number' => 'CNTRL1', 'payment_status' => 'submitted']);
+        $user = User::factory()->create([
+            'billing_request_id' => 'BILL1',
+            'control_number' => 'CNTRL1',
+            'payment_status' => 'submitted',
+            'fee_amount' => 100,
+            'currency' => 'TZS',
+        ]);
 
         $response = $this->post('/api/billing/payment-callback', [
             'bill_id' => 'BILL1',
@@ -136,6 +146,69 @@ class PaymentFlowTest extends TestCase
         $this->assertSame('verified', $user->payment_status);
         $this->assertNotNull($user->registration_code);
         Mail::assertQueued(PaymentConfirmed::class);
+    }
+
+    public function test_payment_callback_rejects_an_amount_or_currency_mismatch(): void
+    {
+        $user = User::factory()->create([
+            'billing_request_id' => 'BILL2',
+            'control_number' => 'CNTRL2',
+            'payment_status' => 'submitted',
+            'fee_amount' => 150000,
+            'currency' => 'TZS',
+        ]);
+
+        $this->postJson('/api/billing/payment-callback', [
+            'bill_id' => 'BILL2',
+            'trx_id' => 'TRX-MISMATCH',
+            'bill_amt' => '150000.00',
+            'paid_amt' => '100.00',
+            'paid_ccy' => 'USD',
+        ])->assertUnprocessable();
+
+        $this->assertSame('submitted', $user->fresh()->payment_status);
+        $this->assertNull($user->fresh()->payment_transaction_id);
+    }
+
+    public function test_duplicate_payment_callback_is_idempotent(): void
+    {
+        Mail::fake();
+
+        $user = User::factory()->create([
+            'billing_request_id' => 'BILL3',
+            'control_number' => 'CNTRL3',
+            'payment_status' => 'submitted',
+            'fee_amount' => 100,
+            'currency' => 'TZS',
+        ]);
+
+        $payload = [
+            'bill_id' => 'BILL3',
+            'trx_id' => 'TRX-DUPLICATE',
+            'bill_amt' => '100.00',
+            'paid_amt' => '100.00',
+            'paid_ccy' => 'TZS',
+        ];
+
+        $this->postJson('/api/billing/payment-callback', $payload)
+            ->assertOk()
+            ->assertJson(['duplicate' => false]);
+        $this->postJson('/api/billing/payment-callback', $payload)
+            ->assertOk()
+            ->assertJson(['duplicate' => true]);
+
+        Mail::assertQueued(PaymentConfirmed::class, 1);
+    }
+
+    public function test_billing_callback_token_is_enforced_when_configured(): void
+    {
+        config(['billing.callback_token' => 'callback-secret']);
+
+        $this->postJson('/api/billing/control-number-callback', [
+            'bill_id' => 'BILL4',
+            'cntrl_num' => 'CNTRL4',
+            'bill_amt' => '100.00',
+        ])->assertForbidden();
     }
 
     public function test_admin_cannot_manually_verify_a_pending_payment(): void

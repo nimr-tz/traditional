@@ -7,9 +7,18 @@ use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\PresentationController;
 use App\Http\Controllers\StudentVerificationController;
 use App\Http\Controllers\WelcomeController;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', [WelcomeController::class, 'index'])->name('home');
+
+Route::get('readyz', function () {
+    DB::select('SELECT 1');
+
+    abort_unless(is_writable(storage_path()), 503, 'Storage is not writable.');
+
+    return response('ok', 200)->header('Content-Type', 'text/plain');
+})->name('ready');
 
 Route::get('sitemap.xml', function () {
     return response()

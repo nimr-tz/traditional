@@ -9,6 +9,7 @@ use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
@@ -47,6 +48,7 @@ class PresentationController extends Controller
             'presentation_file' => [
                 'required', 'file',
                 'extensions:'.implode(',', $requirements['extensions']),
+                'mimes:'.implode(',', $requirements['extensions']),
                 'max:'.$requirements['max_kb'],
             ],
             'presentation_notes' => ['nullable', 'string', 'max:2000'],
@@ -57,14 +59,21 @@ class PresentationController extends Controller
         $file = $request->file('presentation_file');
         $newPath = $file->store('presentations', 'local');
 
-        $abstract->forceFill([
-            'presentation_file' => $newPath,
-            'presentation_original_name' => $file->getClientOriginalName(),
-            'presentation_uploaded_at' => now(),
-            'presentation_notes' => $data['presentation_notes'] ?? null,
-            'presentation_status' => 'uploaded',
-            'presentation_review_notes' => null,
-        ])->save();
+        try {
+            DB::transaction(function () use ($abstract, $data, $file, $newPath): void {
+                $abstract->forceFill([
+                    'presentation_file' => $newPath,
+                    'presentation_original_name' => $file->getClientOriginalName(),
+                    'presentation_uploaded_at' => now(),
+                    'presentation_notes' => $data['presentation_notes'] ?? null,
+                    'presentation_status' => 'uploaded',
+                    'presentation_review_notes' => null,
+                ])->save();
+            });
+        } catch (\Throwable $exception) {
+            Storage::disk('local')->delete($newPath);
+            throw $exception;
+        }
 
         if ($oldPath) {
             Storage::disk('local')->delete($oldPath);

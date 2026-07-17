@@ -17,7 +17,10 @@ return new class extends Migration
             $table->timestamp('decided_at');
             $table->timestamps();
 
-            $table->unique(['abstract_submission_id', 'reviewer_id']);
+            $table->unique(
+                ['abstract_submission_id', 'reviewer_id'],
+                'abstract_review_reviewer_unique',
+            );
         });
     }
 

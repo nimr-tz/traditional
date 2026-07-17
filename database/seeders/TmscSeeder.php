@@ -44,7 +44,7 @@ class TmscSeeder extends Seeder
      * their region, except students. Non-East-Africa tiers are billed in
      * USD per the official table.
      */
-    private function seedFeeCategories(): void
+    public function seedFeeCategories(): void
     {
         $categories = [
             'participant_east_africa' => ['label' => 'East African Participants', 'amount' => 150000, 'currency' => 'TZS', 'sort_order' => 1],
@@ -65,7 +65,7 @@ class TmscSeeder extends Seeder
      * Sub-themes from the 5th TMSC (2026, Mbeya) call for abstracts.
      * Descriptions hold the official sub-bullet points under each theme.
      */
-    private function seedSubthemes(): void
+    public function seedSubthemes(): void
     {
         $subthemes = [
             [
@@ -112,7 +112,7 @@ class TmscSeeder extends Seeder
      * more via Conference Settings as they see unlisted institutions come
      * in via "Other".
      */
-    private function seedInstitutions(): void
+    public function seedInstitutions(): void
     {
         $institutions = [
             // NIMR — a single institute, not its regional research centres.
@@ -149,7 +149,7 @@ class TmscSeeder extends Seeder
     /**
      * From the official "Advert for Call for Abstract" — 5th TMSC, 2026, Mbeya.
      */
-    private function seedConferenceSettings(): void
+    public function seedConferenceSettings(): void
     {
         $defaults = [
             'conference_name' => 'Traditional Medicine Scientific Conference and Exhibitions',

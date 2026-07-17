@@ -44,15 +44,17 @@ class PaymentController extends Controller
             return back()->with('info', 'Your payment is already verified.');
         }
 
-        if ($user->payment_status === 'submitted') {
-            return back()->with('info', 'A control number has already been requested. Please wait for it to appear.');
-        }
-
         if (! $user->hasVerifiedStudentStatus()) {
             return back()->with('error', 'Your student status must be verified before a control number can be issued.');
         }
 
+        $previousBillId = $user->billing_request_id;
         $this->gepg->requestControlNumber($user);
+        $user->refresh();
+
+        if ($previousBillId && $previousBillId === $user->billing_request_id) {
+            return back()->with('info', 'Your control number request is still being processed.');
+        }
 
         return back()->with('success', 'Your control number has been requested. It will appear here shortly.');
     }
