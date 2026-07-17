@@ -81,21 +81,12 @@ jobs:
     needs: build
     if: github.ref == 'refs/heads/main'
     steps:
-      - name: Generate platform-gitops app token
-        id: app-token
-        uses: actions/create-github-app-token@v1
-        with:
-          app-id: ${{ secrets.PLATFORM_GITOPS_APP_ID }}
-          private-key: ${{ secrets.PLATFORM_GITOPS_APP_PRIVATE_KEY }}
-          owner: nimr-tz
-          repositories: platform-gitops
-
       - name: Checkout platform-gitops
         uses: actions/checkout@v4
         with:
           repository: nimr-tz/platform-gitops
           ref: main
-          token: ${{ steps.app-token.outputs.token }}
+          token: ${{ secrets.PLATFORM_GITOPS_TOKEN }}
           path: platform-gitops
 
       - name: Update image tag
