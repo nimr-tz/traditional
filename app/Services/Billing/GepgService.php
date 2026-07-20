@@ -34,6 +34,19 @@ class GepgService
      */
     public function requestControlNumber(User $user): array
     {
+        if (config('billing.sandbox') && app()->isProduction()) {
+            // Sandbox mints a fake, locally-generated control number — real bank/mobile-money
+            // GePG channels correctly reject it as invalid. Refuse outright rather than let a
+            // real registrant walk away with a number that can never be paid; this throws
+            // uncaught (like the missing-revenue-source case below) so the existing critical
+            // error alerting pages ops instead of failing silently.
+            Log::critical('Refused to issue a sandbox control number in production — billing is not configured for this environment', [
+                'user_id' => $user->id,
+            ]);
+
+            throw new RuntimeException('Payments are not available yet. Please contact the organizers.');
+        }
+
         if (! $user->hasVerifiedStudentStatus()) {
             throw new RuntimeException('Your student status must be verified before a control number can be issued.');
         }

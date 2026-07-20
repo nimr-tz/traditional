@@ -5,9 +5,11 @@ namespace Tests\Feature;
 use App\Mail\ControlNumberIssued;
 use App\Mail\PaymentConfirmed;
 use App\Models\User;
+use App\Services\Billing\GepgService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
 use Inertia\Testing\AssertableInertia as Assert;
+use RuntimeException;
 use Tests\TestCase;
 
 class PaymentFlowTest extends TestCase
@@ -223,5 +225,18 @@ class PaymentFlowTest extends TestCase
         $user->refresh();
         $this->assertSame('submitted', $user->payment_status);
         Mail::assertNothingQueued();
+    }
+
+    public function test_a_production_environment_refuses_to_issue_a_sandbox_control_number(): void
+    {
+        $this->app['env'] = 'production';
+        config(['billing.sandbox' => true]);
+
+        $user = User::factory()->create(['is_east_africa' => true, 'fee_amount' => 150000]);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Payments are not available yet.');
+
+        app(GepgService::class)->requestControlNumber($user);
     }
 }
