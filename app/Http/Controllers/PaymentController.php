@@ -29,6 +29,9 @@ class PaymentController extends Controller
                 ->value('label'),
             'requiresStudentVerification' => $user->requiresStudentVerification(),
             'gepgPayeeName' => config('billing.payee_name'),
+            'canReplaceSandboxControlNumber' => ! config('billing.sandbox')
+                && $user->payment_status !== 'verified'
+                && $user->hasSandboxBillingRequest(),
         ]);
     }
 
@@ -44,6 +47,9 @@ class PaymentController extends Controller
             return back()->with('info', 'Your payment is already verified.');
         }
 
+        $canReplaceSandboxControlNumber = ! config('billing.sandbox')
+            && $user->hasSandboxBillingRequest();
+
         if (! $user->hasVerifiedStudentStatus()) {
             return back()->with('error', 'Your student status must be verified before a control number can be issued.');
         }
@@ -56,7 +62,11 @@ class PaymentController extends Controller
             return back()->with('info', 'Your control number request is still being processed.');
         }
 
-        return back()->with('success', 'Your control number has been requested. It will appear here shortly.');
+        $message = $canReplaceSandboxControlNumber
+            ? 'Your valid control number has been requested. It will appear here shortly.'
+            : 'Your control number has been requested. It will appear here shortly.';
+
+        return back()->with('success', $message);
     }
 
     public function pollStatus(): JsonResponse

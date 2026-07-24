@@ -259,6 +259,11 @@ class User extends Authenticatable implements MustVerifyEmailContract
         return in_array($this->payment_status, ['verified', 'waived'], true);
     }
 
+    public function hasSandboxBillingRequest(): bool
+    {
+        return str_starts_with($this->billing_request_id ?? '', 'SANDBOX-');
+    }
+
     public function isCheckedIn(): bool
     {
         return $this->attendance()->exists();

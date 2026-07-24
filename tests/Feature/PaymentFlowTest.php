@@ -2,11 +2,13 @@
 
 namespace Tests\Feature;
 
+use App\Jobs\AssignSandboxControlNumber;
 use App\Mail\ControlNumberIssued;
 use App\Mail\PaymentConfirmed;
 use App\Models\User;
 use App\Services\Billing\GepgService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
 use Inertia\Testing\AssertableInertia as Assert;
 use RuntimeException;
@@ -80,6 +82,103 @@ class PaymentFlowTest extends TestCase
         $user->refresh();
         $this->assertSame($firstBillingRequestId, $user->billing_request_id);
         $this->assertSame($firstControlNumber, $user->control_number);
+    }
+
+    public function test_sandbox_control_number_can_be_replaced_after_live_billing_is_enabled(): void
+    {
+        Http::fake([
+            'https://billing.example/api/bill-submission/' => Http::response(['bill_id' => 'LIVE-BILL-123'], 201),
+        ]);
+
+        config([
+            'billing.sandbox' => false,
+            'billing.system_url' => 'https://billing.example',
+            'billing.api_key' => 'secret',
+            'billing.mapping.participant_east_africa.rev_src_id' => 46,
+        ]);
+
+        $user = User::factory()->create([
+            'fee_category' => 'participant_east_africa',
+            'fee_amount' => 150000,
+            'currency' => 'TZS',
+            'payment_status' => 'submitted',
+            'billing_request_id' => 'SANDBOX-OLD-REQUEST',
+            'control_number' => '999999999999',
+        ]);
+
+        $this->actingAs($user)
+            ->get('/payment')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('canReplaceSandboxControlNumber', true));
+
+        $this->actingAs($user)
+            ->post('/payment/control-number')
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $user->refresh();
+        $this->assertSame('LIVE-BILL-123', $user->billing_request_id);
+        $this->assertNull($user->control_number);
+        $this->assertSame('submitted', $user->payment_status);
+
+        Http::assertSent(fn ($request) => $request->url() === 'https://billing.example/api/bill-submission/'
+            && $request['revenue_source'] === 46
+            && $request['amount'] === '150000.00');
+    }
+
+    public function test_user_who_has_not_requested_a_control_number_sees_the_normal_payment_flow(): void
+    {
+        config(['billing.sandbox' => false]);
+
+        $user = User::factory()->create([
+            'payment_status' => 'pending',
+            'billing_request_id' => null,
+            'control_number' => null,
+        ]);
+
+        $this->actingAs($user)
+            ->get('/payment')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('canReplaceSandboxControlNumber', false)
+                ->where('user.payment_status', 'pending')
+                ->where('user.control_number', null));
+    }
+
+    public function test_existing_live_billing_request_cannot_be_replaced(): void
+    {
+        Http::fake();
+        config(['billing.sandbox' => false]);
+
+        $user = User::factory()->create([
+            'payment_status' => 'submitted',
+            'billing_request_id' => 'LIVE-BILL-123',
+            'control_number' => '123456789012',
+        ]);
+
+        $this->actingAs($user)
+            ->post('/payment/control-number')
+            ->assertRedirect()
+            ->assertSessionHas('info');
+
+        $this->assertSame('LIVE-BILL-123', $user->fresh()->billing_request_id);
+        $this->assertSame('123456789012', $user->fresh()->control_number);
+        Http::assertNothingSent();
+    }
+
+    public function test_delayed_sandbox_job_does_not_overwrite_a_live_billing_request(): void
+    {
+        Mail::fake();
+
+        $user = User::factory()->create([
+            'payment_status' => 'submitted',
+            'billing_request_id' => 'LIVE-BILL-123',
+            'control_number' => null,
+        ]);
+
+        (new AssignSandboxControlNumber($user->id))->handle(app(GepgService::class));
+
+        $this->assertNull($user->fresh()->control_number);
+        Mail::assertNothingQueued();
     }
 
     public function test_non_east_africa_registrant_can_also_request_a_control_number(): void

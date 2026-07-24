@@ -17,7 +17,10 @@ class AssignSandboxControlNumber implements ShouldQueue
     {
         $user = User::find($this->userId);
 
-        if (! $user || $user->payment_status !== 'submitted' || $user->control_number) {
+        if (! $user
+            || ! $user->hasSandboxBillingRequest()
+            || $user->payment_status !== 'submitted'
+            || $user->control_number) {
             return;
         }
 

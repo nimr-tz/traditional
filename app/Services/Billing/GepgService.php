@@ -51,7 +51,10 @@ class GepgService
             throw new RuntimeException('Your student status must be verified before a control number can be issued.');
         }
 
-        if ($user->billing_request_id) {
+        $canReplaceSandboxBillingRequest = ! config('billing.sandbox')
+            && $user->hasSandboxBillingRequest();
+
+        if ($user->billing_request_id && ! $canReplaceSandboxBillingRequest) {
             if ($user->control_number) {
                 return ['success' => true, 'billing_request_id' => $user->billing_request_id];
             }

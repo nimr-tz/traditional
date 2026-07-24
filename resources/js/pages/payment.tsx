@@ -14,6 +14,7 @@ import {
     FileCheck2,
     LoaderCircle,
     ReceiptText,
+    RefreshCw,
     ShieldCheck,
     Wallet,
     XCircle,
@@ -38,6 +39,7 @@ interface PaymentProps {
     registrationCategory: string | null;
     gepgPayeeName: string;
     requiresStudentVerification: boolean;
+    canReplaceSandboxControlNumber: boolean;
 }
 
 const statusLabel: Record<PaymentUser['payment_status'], string> = {
@@ -79,7 +81,13 @@ function PaymentStep({ number, title, description }: { number: number; title: st
     );
 }
 
-export default function Payment({ user, registrationCategory, gepgPayeeName, requiresStudentVerification }: PaymentProps) {
+export default function Payment({
+    user,
+    registrationCategory,
+    gepgPayeeName,
+    requiresStudentVerification,
+    canReplaceSandboxControlNumber,
+}: PaymentProps) {
     const { props } = usePage<{ flash: { success?: string; error?: string; info?: string } }>();
     const [status, setStatus] = useState(user);
     const [copied, setCopied] = useState(false);
@@ -255,7 +263,32 @@ export default function Payment({ user, registrationCategory, gepgPayeeName, req
                                 </div>
 
                                 <div className="dark:bg-muted/40 rounded-2xl bg-slate-50 p-5 md:p-6">
-                                    {status.control_number ? (
+                                    {canReplaceSandboxControlNumber ? (
+                                        <div className="flex min-h-48 flex-col justify-between">
+                                            <div>
+                                                <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400">
+                                                    <RefreshCw className="h-4 w-4" />
+                                                    <p className="text-xs font-bold tracking-wide uppercase">Replacement required</p>
+                                                </div>
+                                                <h3 className="text-foreground mt-4 font-semibold">Request a valid control number</h3>
+                                                <p className="text-muted-foreground mt-2 text-sm leading-6">
+                                                    Your previous number was issued during testing and should not be used for payment.
+                                                </p>
+                                            </div>
+                                            <Button
+                                                onClick={requestControlNumber}
+                                                disabled={requestingControlNumber || !studentVerificationComplete || !status.fee_amount}
+                                                className="mt-6 w-full bg-[#135eeb] text-white hover:bg-[#135eeb]/90"
+                                            >
+                                                {requestingControlNumber ? (
+                                                    <LoaderCircle className="h-4 w-4 animate-spin" />
+                                                ) : (
+                                                    <RefreshCw className="h-4 w-4" />
+                                                )}
+                                                Request valid control number
+                                            </Button>
+                                        </div>
+                                    ) : status.control_number ? (
                                         <>
                                             <div className="flex items-center gap-2 text-[#135eeb]">
                                                 <ReceiptText className="h-4 w-4" />
