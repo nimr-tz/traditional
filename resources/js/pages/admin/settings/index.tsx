@@ -1,5 +1,6 @@
 import { IconTile } from '@/components/dashboard-card';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import {
     DropdownMenu,
     DropdownMenuCheckboxItem,
@@ -17,7 +18,21 @@ import { Textarea } from '@/components/ui/textarea';
 import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem, type SharedData } from '@/types';
 import { Head, router, useForm, usePage } from '@inertiajs/react';
-import { Building2, CalendarRange, ChevronLeft, ChevronRight, FolderKanban, LucideIcon, Search, Settings, UsersRound, Wallet } from 'lucide-react';
+import {
+    Building2,
+    CalendarRange,
+    ChevronLeft,
+    ChevronRight,
+    Eraser,
+    FolderKanban,
+    LoaderCircle,
+    LucideIcon,
+    Search,
+    Settings,
+    TriangleAlert,
+    UsersRound,
+    Wallet,
+} from 'lucide-react';
 import { FormEventHandler, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 
@@ -449,6 +464,211 @@ function UsersAndRolesSection({ accessChanges }: { accessChanges: RoleAccessChan
     );
 }
 
+interface PurgeRecord {
+    id: number;
+    name: string;
+    email: string;
+    payment_status: string;
+    control_number: string | null;
+    billing_request_id: string | null;
+    registration_code: string | null;
+    action: 'strip_ids' | 'revoke_simulated_payment' | 'reset_to_pending';
+    action_label: string;
+    attendance_count: number;
+    certificate_count: number;
+    needs_manual_review: boolean;
+}
+
+interface PurgeResponse {
+    applied: boolean;
+    dry_run?: boolean;
+    sandbox_mode?: boolean;
+    count?: number;
+    records?: PurgeRecord[];
+    message: string;
+}
+
+/**
+ * Laravel's ValidateCsrfToken accepts the XSRF-TOKEN cookie echoed back as a
+ * header. Inertia's own requests do this transparently, but this endpoint
+ * returns plain JSON rather than an Inertia response, so it is fetched
+ * directly and has to supply the header itself.
+ */
+function csrfHeader(): Record<string, string> {
+    const match = document.cookie.match(/XSRF-TOKEN=([^;]+)/);
+
+    return match ? { 'X-XSRF-TOKEN': decodeURIComponent(match[1]) } : {};
+}
+
+/**
+ * Clears the control numbers and simulated payments sandbox mode left behind,
+ * once the real NIMR Billing / GePG gateway is live. Production has no shell to
+ * run `php artisan billing:purge-sandbox` from, so the same service is exposed
+ * here. Always previews before it will apply anything.
+ */
+function SandboxBillingSection() {
+    const [result, setResult] = useState<PurgeResponse | null>(null);
+    const [busy, setBusy] = useState<false | 'preview' | 'apply'>(false);
+    const [confirming, setConfirming] = useState(false);
+
+    const run = async (dryRun: boolean) => {
+        setBusy(dryRun ? 'preview' : 'apply');
+
+        try {
+            const response = await fetch(route('admin.billing.purge-sandbox'), {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json', Accept: 'application/json', ...csrfHeader() },
+                body: JSON.stringify({ dry_run: dryRun }),
+            });
+
+            const payload: PurgeResponse = await response.json();
+            setResult(payload);
+
+            if (payload.applied) {
+                toast.success(payload.message);
+            } else if (payload.sandbox_mode) {
+                toast.error('Billing is still in sandbox mode');
+            }
+        } catch {
+            toast.error('Could not reach the billing maintenance endpoint');
+            setResult(null);
+        } finally {
+            setBusy(false);
+            setConfirming(false);
+        }
+    };
+
+    const records = result?.records ?? [];
+    const canApply = !result?.applied && !result?.sandbox_mode && records.length > 0;
+    const needsReview = records.filter((record) => record.needs_manual_review);
+
+    return (
+        <SettingsSection
+            icon={Eraser}
+            title="Sandbox billing cleanup"
+            description="Clear the control numbers and simulated payments left over from sandbox testing."
+        >
+            <div className="grid gap-4">
+                <p className="text-muted-foreground text-sm">
+                    While billing ran in sandbox mode, control numbers were generated locally and payments could be simulated. Those numbers are
+                    rejected at every bank and mobile-money channel, and a simulated payment counts as real revenue and issues a badge. Preview first
+                    — nothing is written until you confirm.
+                </p>
+
+                <div className="flex flex-wrap items-center gap-2">
+                    <Button type="button" variant="outline" disabled={busy !== false} onClick={() => run(true)}>
+                        {busy === 'preview' && <LoaderCircle className="size-4 animate-spin" />}
+                        Preview affected registrants
+                    </Button>
+
+                    {canApply && (
+                        <Button type="button" variant="destructive" disabled={busy !== false} onClick={() => setConfirming(true)}>
+                            Apply cleanup
+                        </Button>
+                    )}
+                </div>
+
+                {result?.sandbox_mode && (
+                    <div className="flex gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm dark:border-amber-900 dark:bg-amber-950/40">
+                        <TriangleAlert className="size-5 shrink-0 text-amber-600" />
+                        <div>
+                            <p className="font-semibold">Billing is still in sandbox mode</p>
+                            <p className="text-muted-foreground mt-1">{result.message}</p>
+                        </div>
+                    </div>
+                )}
+
+                {result && !result.sandbox_mode && records.length === 0 && <p className="text-sm font-medium">{result.message}</p>}
+
+                {records.length > 0 && (
+                    <div className="grid gap-3">
+                        <p className="text-sm font-medium">
+                            {result?.applied ? 'Cleared' : 'Would change'} {records.length} registrant{records.length === 1 ? '' : 's'}
+                        </p>
+
+                        <div className="overflow-x-auto rounded-xl border">
+                            <table className="w-full text-left text-sm">
+                                <thead className="bg-muted/50 text-muted-foreground text-xs uppercase">
+                                    <tr>
+                                        <th className="p-3 font-semibold">Registrant</th>
+                                        <th className="p-3 font-semibold">Status</th>
+                                        <th className="p-3 font-semibold">Control number</th>
+                                        <th className="p-3 font-semibold">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y">
+                                    {records.map((record) => (
+                                        <tr key={record.id}>
+                                            <td className="p-3">
+                                                <p className="font-medium">{record.name}</p>
+                                                <p className="text-muted-foreground text-xs">{record.email}</p>
+                                            </td>
+                                            <td className="p-3">{record.payment_status}</td>
+                                            <td className="p-3 font-mono text-xs">{record.control_number ?? '—'}</td>
+                                            <td className="p-3">
+                                                <span
+                                                    className={
+                                                        record.action === 'revoke_simulated_payment' ? 'font-semibold text-red-700' : undefined
+                                                    }
+                                                >
+                                                    {record.action_label}
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        {needsReview.length > 0 && (
+                            <div className="flex gap-3 rounded-xl border border-red-300 bg-red-50 p-4 text-sm dark:border-red-900 dark:bg-red-950/40">
+                                <TriangleAlert className="size-5 shrink-0 text-red-600" />
+                                <div>
+                                    <p className="font-semibold">Review these by hand</p>
+                                    <p className="text-muted-foreground mt-1">
+                                        {needsReview.map((record) => record.name).join(', ')} already checked in or received a certificate against a
+                                        simulated payment. Those records are left untouched — decide what to do about them separately.
+                                    </p>
+                                </div>
+                            </div>
+                        )}
+
+                        {!result?.applied && (
+                            <p className="text-muted-foreground text-xs">
+                                Anyone holding a sandbox control number was emailed it earlier. Clearing it here does not retract that email — tell
+                                them directly to request a new one.
+                            </p>
+                        )}
+                    </div>
+                )}
+            </div>
+
+            <Dialog open={confirming} onOpenChange={setConfirming}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Apply sandbox cleanup?</DialogTitle>
+                        <DialogDescription>
+                            This clears sandbox control numbers and revokes simulated payments for {records.length} registrant
+                            {records.length === 1 ? '' : 's'}, including any badge codes those payments issued. Payments a person at finance verified
+                            or waived are kept. This cannot be undone.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter>
+                        <Button type="button" variant="outline" onClick={() => setConfirming(false)} disabled={busy !== false}>
+                            Cancel
+                        </Button>
+                        <Button type="button" variant="destructive" onClick={() => run(false)} disabled={busy !== false}>
+                            {busy === 'apply' && <LoaderCircle className="size-4 animate-spin" />}
+                            Apply cleanup
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+        </SettingsSection>
+    );
+}
+
 function FeeCategoryRow({ category }: { category: FeeCategory }) {
     const { data, setData, patch, processing } = useForm({
         label: category.label,
@@ -756,6 +976,8 @@ export default function SettingsIndex({ feeCategories, subthemes, institutions, 
                     ))}
                     <NewInstitutionForm />
                 </SettingsSection>
+
+                <SandboxBillingSection />
             </div>
         </AppLayout>
     );
