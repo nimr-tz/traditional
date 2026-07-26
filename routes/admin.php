@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Admin\AbstractController as AdminAbstractController;
 use App\Http\Controllers\Admin\AdministratorController as AdminAdministratorController;
+use App\Http\Controllers\Admin\BillingMaintenanceController as AdminBillingMaintenanceController;
 use App\Http\Controllers\Admin\DashboardController as AdminDashboardController;
 use App\Http\Controllers\Admin\FinanceController as AdminFinanceController;
 use App\Http\Controllers\Admin\RegistrationController as AdminRegistrationController;
@@ -50,6 +51,11 @@ Route::middleware(['auth', 'role:super_admin'])->prefix('admin')->name('admin.')
 
     Route::get('settings/users', [AdminAdministratorController::class, 'index'])->name('settings.users.index');
     Route::patch('settings/users/{user}/roles', [AdminAdministratorController::class, 'updateRoles'])->name('settings.users.update-roles');
+
+    // One-off cutover maintenance: clears the control numbers and simulated payments sandbox
+    // mode left behind. Defaults to a dry run — writing needs an explicit dry_run=false.
+    Route::post('billing/purge-sandbox', [AdminBillingMaintenanceController::class, 'purgeSandbox'])
+        ->name('billing.purge-sandbox');
 });
 
 // Finance manages registrant payment verification, waivers, and reporting — a separate,
