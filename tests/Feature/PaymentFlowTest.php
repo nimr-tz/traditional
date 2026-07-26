@@ -312,6 +312,101 @@ class PaymentFlowTest extends TestCase
         ])->assertForbidden();
     }
 
+    /**
+     * The payload the NIMR Billing System actually sends, copied from
+     * billing/tasks.py: `cntr_num` rather than api.md's `cntrl_num`, as an
+     * integer, with no amount field at all. Requiring `cntrl_num` and
+     * `bill_amt` made every real callback 422, so control numbers were never
+     * recorded and registrants stayed stuck in "submitted".
+     */
+    public function test_control_number_callback_accepts_the_billing_systems_real_payload(): void
+    {
+        Mail::fake();
+
+        $user = User::factory()->create([
+            'billing_request_id' => 'BILL9',
+            'fee_amount' => 150,
+            'currency' => 'USD',
+        ]);
+
+        $this->postJson('/api/billing/control-number-callback', [
+            'req_id' => 'REQ9',
+            'bill_id' => 'BILL9',
+            'cntr_num' => 916992275599,
+            'bill_print_url' => 'http://10.0.10.53/billing/bills/BILL9/transfer/',
+        ])->assertOk();
+
+        $this->assertSame('916992275599', $user->fresh()->control_number);
+        Mail::assertQueued(ControlNumberIssued::class, fn ($mail) => $mail->hasTo($user->email));
+    }
+
+    public function test_control_number_callback_is_rejected_from_an_ip_outside_the_allowlist(): void
+    {
+        config(['billing.callback_allowed_ips' => '10.0.10.53']);
+
+        $user = User::factory()->create(['billing_request_id' => 'BILL10']);
+
+        $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.9'])
+            ->postJson('/api/billing/control-number-callback', [
+                'bill_id' => 'BILL10',
+                'cntr_num' => 916992275500,
+            ])->assertForbidden();
+
+        $this->assertNull($user->fresh()->control_number);
+    }
+
+    public function test_control_number_callback_is_accepted_from_an_allowlisted_ip(): void
+    {
+        Mail::fake();
+        config(['billing.callback_allowed_ips' => '10.0.10.53, 10.0.10.54']);
+
+        $user = User::factory()->create(['billing_request_id' => 'BILL11']);
+
+        $this->withServerVariables(['REMOTE_ADDR' => '10.0.10.54'])
+            ->postJson('/api/billing/control-number-callback', [
+                'bill_id' => 'BILL11',
+                'cntr_num' => 916992275501,
+            ])->assertOk();
+
+        $this->assertSame('916992275501', $user->fresh()->control_number);
+    }
+
+    public function test_payment_callback_accepts_the_billing_systems_real_payload(): void
+    {
+        Mail::fake();
+
+        $user = User::factory()->create([
+            'billing_request_id' => 'BILL12',
+            'control_number' => '916992275502',
+            'payment_status' => 'submitted',
+            'fee_amount' => 150,
+            'currency' => 'USD',
+        ]);
+
+        // Mirrors build_payment_notification_payload() in billing/payment_notifications.py.
+        $this->postJson('/api/billing/payment-callback', [
+            'bill_id' => 'BILL12',
+            'cntr_num' => 916992275502,
+            'psp_code' => 'CRDB',
+            'psp_name' => 'CRDB Bank',
+            'trx_id' => 'TRX-REAL-1',
+            'payref_id' => 'PAYREF-1',
+            'bill_amt' => '150.00',
+            'paid_amt' => '150.00',
+            'paid_ccy' => 'USD',
+            'coll_acc_num' => '0150XXXXXXXXX',
+            'trx_date' => '2026-07-26T10:00:00',
+            'pay_channel' => 'BANK',
+            'pyr_cell_num' => '255700000000',
+            'bill_receipt_url' => 'http://10.0.10.53/billing/bills/BILL12/receipt/',
+        ])->assertOk();
+
+        $user->refresh();
+        $this->assertSame('verified', $user->payment_status);
+        $this->assertSame('TRX-REAL-1', $user->payment_transaction_id);
+        $this->assertNotNull($user->registration_code);
+    }
+
     public function test_admin_cannot_manually_verify_a_pending_payment(): void
     {
         Mail::fake();
