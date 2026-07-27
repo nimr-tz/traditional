@@ -156,3 +156,58 @@
         @apply bg-background text-foreground;
     }
 }
+
+/*
+ * Waiting-state animations. Used while GePG assigns a control number — a wait
+ * measured in seconds to minutes that we can't put a real percentage on, so
+ * these convey "working" rather than progress. All are decorative and are
+ * disabled wholesale under prefers-reduced-motion below.
+ */
+@keyframes tmsc-shimmer {
+    100% {
+        transform: translateX(100%);
+    }
+}
+
+@keyframes tmsc-ring {
+    0% {
+        transform: scale(0.85);
+        opacity: 0.5;
+    }
+    70% {
+        opacity: 0;
+    }
+    100% {
+        transform: scale(2.2);
+        opacity: 0;
+    }
+}
+
+@keyframes tmsc-sweep {
+    0% {
+        transform: translateX(-100%);
+    }
+    100% {
+        transform: translateX(300%);
+    }
+}
+
+@utility animate-tmsc-shimmer {
+    animation: tmsc-shimmer 1.8s infinite;
+}
+
+@utility animate-tmsc-ring {
+    animation: tmsc-ring 2.4s cubic-bezier(0.3, 0, 0.6, 1) infinite;
+}
+
+@utility animate-tmsc-sweep {
+    animation: tmsc-sweep 1.9s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .animate-tmsc-shimmer,
+    .animate-tmsc-ring,
+    .animate-tmsc-sweep {
+        animation: none;
+    }
+}

@@ -81,6 +81,68 @@ function PaymentStep({ number, title, description }: { number: number; title: st
     );
 }
 
+/**
+ * Shown between requesting a control number and GePG returning one — normally
+ * seconds, occasionally minutes. There's no real percentage to report, so this
+ * conveys activity rather than progress: a skeleton shaped like the control
+ * number that replaces it, so the wait reads as the card filling in rather than
+ * a spinner on an empty box.
+ *
+ * The copy advances on elapsed time. Past 90s it stops implying imminence and
+ * tells the registrant they can leave, because the number arrives by email too
+ * and a stalled callback shouldn't look like a page that's about to resolve.
+ */
+function ControlNumberPending() {
+    const [elapsed, setElapsed] = useState(0);
+
+    useEffect(() => {
+        const tick = setInterval(() => setElapsed((seconds) => seconds + 1), 1000);
+
+        return () => clearInterval(tick);
+    }, []);
+
+    const stage =
+        elapsed > 90
+            ? {
+                  title: 'Still working on it',
+                  body: 'This is taking longer than usual. You can safely leave this page — your control number will be emailed to you as soon as it is ready.',
+              }
+            : elapsed > 25
+              ? { title: 'Finalising your control number', body: 'Almost there. Your number will appear here the moment it arrives.' }
+              : elapsed > 8
+                ? { title: 'GePG is generating your number', body: 'The billing system is registering your bill with GePG.' }
+                : { title: 'Preparing your control number', body: 'Submitting your registration fee to the NIMR billing system.' };
+
+    return (
+        <div className="flex min-h-48 flex-col justify-between">
+            <div className="flex items-center gap-4">
+                <span className="relative flex h-11 w-11 shrink-0 items-center justify-center">
+                    <span className="animate-tmsc-ring absolute inset-0 rounded-full bg-[#135eeb]/25" />
+                    <span className="animate-tmsc-ring absolute inset-0 rounded-full bg-[#135eeb]/25 [animation-delay:1.2s]" />
+                    <span className="relative flex h-11 w-11 items-center justify-center rounded-full bg-[#135eeb] text-white shadow-lg shadow-[#135eeb]/25">
+                        <ReceiptText className="h-5 w-5" />
+                    </span>
+                </span>
+                <div>
+                    <p className="text-xs font-bold tracking-wide text-[#135eeb] uppercase">Control number</p>
+                    <h3 className="text-foreground mt-1 font-semibold">{stage.title}</h3>
+                </div>
+            </div>
+
+            {/* Placeholder shaped like the control number that replaces it. */}
+            <div className="dark:bg-muted/60 relative mt-6 h-10 overflow-hidden rounded-lg bg-slate-200/70" role="status" aria-label={stage.title}>
+                <span className="animate-tmsc-shimmer absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/70 to-transparent dark:via-white/10" />
+            </div>
+
+            <div className="dark:bg-muted/60 relative mt-3 h-1 overflow-hidden rounded-full bg-slate-200/70">
+                <span className="animate-tmsc-sweep absolute inset-y-0 w-1/3 rounded-full bg-[#135eeb]" />
+            </div>
+
+            <p className="text-muted-foreground mt-5 text-sm leading-6">{stage.body}</p>
+        </div>
+    );
+}
+
 export default function Payment({
     user,
     registrationCategory,
@@ -315,13 +377,7 @@ export default function Payment({
                                             </div>
                                         </>
                                     ) : status.payment_status === 'submitted' ? (
-                                        <div className="flex min-h-48 flex-col items-center justify-center text-center">
-                                            <LoaderCircle className="h-7 w-7 animate-spin text-[#135eeb]" />
-                                            <h3 className="mt-4 font-semibold">Preparing your control number</h3>
-                                            <p className="text-muted-foreground mt-2 max-w-xs text-sm leading-6">
-                                                Keep this page open. Your number will appear here automatically.
-                                            </p>
-                                        </div>
+                                        <ControlNumberPending />
                                     ) : (
                                         <div className="flex min-h-48 flex-col justify-between">
                                             <div>
