@@ -42,15 +42,37 @@ interface FeeCategory {
     currency: string;
 }
 
+interface RegistrationWindow {
+    is_open: boolean;
+    deadline: string | null;
+    closed_message: string | null;
+}
+
 interface RegisterProps {
     salutations: string[];
     participantTypes: Record<string, string>;
     feeCategories: FeeCategory[];
+    countries: string[];
     eastAfricaCountries: string[];
     institutions: Institution[];
+    registrationWindow: RegistrationWindow;
 }
 
 const STEPS = ['Personal', 'Contact', 'Category & fees', 'Password'] as const;
+
+/**
+ * Mirrors App\Support\FeeTier::regionOf(). Fee category keys carry the regional
+ * tier in their suffix, and the price differs by it, so the form only ever
+ * offers the tier the registrant's country entitles them to — the server
+ * rejects a mismatch either way.
+ */
+const categoryRegion = (key: string): 'east_africa' | 'international' | null => {
+    if (key.endsWith('_non_east_africa')) return 'international';
+    if (key.endsWith('_east_africa')) return 'east_africa';
+    return null;
+};
+
+const PASSWORD_HINT = 'At least 10 characters, including letters and numbers.';
 
 const STEP_FIELDS: Record<number, RegisterField[]> = {
     0: ['salutation', 'first_name', 'last_name', 'email'],
@@ -59,7 +81,15 @@ const STEP_FIELDS: Record<number, RegisterField[]> = {
     3: ['password', 'password_confirmation'],
 };
 
-export default function Register({ salutations, participantTypes, feeCategories, eastAfricaCountries, institutions }: RegisterProps) {
+export default function Register({
+    salutations,
+    participantTypes,
+    feeCategories,
+    countries,
+    eastAfricaCountries,
+    institutions,
+    registrationWindow,
+}: RegisterProps) {
     const [step, setStep] = useState(0);
     const { data, setData, post, processing, errors, setError, clearErrors } = useForm<RegisterForm>({
         salutation: '',
@@ -79,9 +109,15 @@ export default function Register({ salutations, participantTypes, feeCategories,
     });
 
     const isStudentCategory = data.participant_type === 'student';
-    const availableFeeCategories = data.participant_type
-        ? feeCategories.filter((category) => category.key.startsWith(isStudentCategory ? 'student_' : 'participant_'))
-        : [];
+    const userRegion = eastAfricaCountries.includes(data.country) ? 'east_africa' : 'international';
+    const availableFeeCategories =
+        data.participant_type && data.country
+            ? feeCategories.filter((category) => {
+                  if (!category.key.startsWith(isStudentCategory ? 'student_' : 'participant_')) return false;
+                  const region = categoryRegion(category.key);
+                  return region === null || region === userRegion;
+              })
+            : [];
 
     const validationMessage = (field: RegisterField, formData: RegisterForm): string => {
         const text = typeof formData[field] === 'string' ? (formData[field] as string).trim() : '';
@@ -105,7 +141,8 @@ export default function Register({ salutations, participantTypes, feeCategories,
             case 'phone':
                 return text ? '' : 'Mobile number is required.';
             case 'country':
-                return text ? '' : 'Country is required.';
+                if (!text) return 'Country is required.';
+                return countries.includes(text) ? '' : 'Please select your country from the list.';
             case 'participant_type':
                 return text ? '' : 'Please select your participant type.';
             case 'fee_category':
@@ -119,7 +156,9 @@ export default function Register({ salutations, participantTypes, feeCategories,
             }
             case 'password':
                 if (!text) return 'Password is required.';
-                return text.length >= 8 ? '' : 'Password must be at least 8 characters.';
+                if (text.length < 10) return 'Password must be at least 10 characters.';
+                if (!/[a-zA-Z]/.test(text) || !/[0-9]/.test(text)) return 'Password must contain both letters and numbers.';
+                return '';
             case 'password_confirmation':
                 if (!text) return 'Please confirm your password.';
                 return formData.password === formData.password_confirmation ? '' : 'The passwords do not match.';
@@ -207,6 +246,20 @@ export default function Register({ salutations, participantTypes, feeCategories,
                     Create your account to register, submit an abstract and receive your payment control number.
                 </p>
             </div>
+
+            {registrationWindow.deadline && (
+                <div className="rounded-xl border border-[#b5651d]/25 bg-[#b5651d]/5 px-4 py-3 text-sm leading-relaxed text-[#8a4d16]">
+                    Registration closes on{' '}
+                    <strong>
+                        {new Date(`${registrationWindow.deadline}T00:00:00`).toLocaleDateString(undefined, {
+                            day: 'numeric',
+                            month: 'long',
+                            year: 'numeric',
+                        })}
+                    </strong>
+                    .
+                </div>
+            )}
 
             <div className="flex items-start">
                 {STEPS.map((label, i) => {
@@ -391,25 +444,35 @@ export default function Register({ salutations, participantTypes, feeCategories,
                             </div>
                             <div className="flex flex-col gap-2">
                                 <Label htmlFor="country">Country *</Label>
-                                <Input
-                                    id="country"
-                                    list="country-list"
+                                <Select
                                     value={data.country}
-                                    onChange={(e) => updateField('country', e.target.value)}
-                                    aria-invalid={Boolean(errors.country)}
-                                    disabled={processing}
-                                    placeholder="e.g. Tanzania"
-                                />
-                                <datalist id="country-list">
-                                    {eastAfricaCountries.map((c) => (
-                                        <option key={c} value={c} />
-                                    ))}
-                                </datalist>
+                                    onValueChange={(value) => {
+                                        // Country decides the regional fee tier, so a change
+                                        // can invalidate an already-picked category.
+                                        setData({ ...data, country: value, fee_category: '' });
+                                        clearErrors('country', 'fee_category');
+                                    }}
+                                >
+                                    <SelectTrigger id="country" aria-invalid={Boolean(errors.country)}>
+                                        <SelectValue placeholder="Select your country" />
+                                    </SelectTrigger>
+                                    <SelectContent className="max-h-72">
+                                        {countries.map((c) => (
+                                            <SelectItem key={c} value={c}>
+                                                {c}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
                                 <InputError message={errors.country} />
                             </div>
                         </div>
                         <p className="text-xs leading-relaxed text-[hsl(30,8%,42%)]">
-                            Participants from East African Community countries qualify for the East African fee tier.
+                            {data.country
+                                ? eastAfricaCountries.includes(data.country)
+                                    ? `${data.country} is an East African Community country, so you qualify for the East African fee tier.`
+                                    : `${data.country} is outside the East African Community, so the Non-East African fee tier applies.`
+                                : 'Participants from East African Community countries qualify for the East African fee tier.'}
                         </p>
                     </div>
                 )}
@@ -451,7 +514,7 @@ export default function Register({ salutations, participantTypes, feeCategories,
                         {data.participant_type && (
                             <div className="flex flex-col gap-2.5">
                                 <div className="text-sm font-medium">Registration category *</div>
-                                <div className="grid grid-cols-2 gap-3">
+                                <div className={cn('grid gap-3', availableFeeCategories.length > 1 ? 'grid-cols-2' : 'grid-cols-1')}>
                                     {availableFeeCategories.map((category) => {
                                         const selected = data.fee_category === category.key;
                                         const accent = isStudentCategory ? '#67b52f' : '#135eeb';
@@ -487,7 +550,8 @@ export default function Register({ salutations, participantTypes, feeCategories,
                                     })}
                                 </div>
                                 <p className="text-xs leading-relaxed text-[hsl(30,8%,42%)]">
-                                    This selection determines the fee and billing category used for your control number.
+                                    This selection determines the fee and billing category used for your control number. The tier shown is the one
+                                    that applies to {data.country || 'your country'}.
                                 </p>
                                 <InputError message={errors.fee_category} />
                             </div>
@@ -534,7 +598,7 @@ export default function Register({ salutations, participantTypes, feeCategories,
                                     disabled={processing}
                                     placeholder="Password"
                                 />
-                                <p className="text-xs text-[hsl(30,8%,42%)]">At least 8 characters.</p>
+                                <p className="text-xs text-[hsl(30,8%,42%)]">{PASSWORD_HINT}</p>
                                 <InputError message={errors.password} />
                             </div>
                             <div className="flex flex-col gap-2">

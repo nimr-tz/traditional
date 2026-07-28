@@ -8,6 +8,8 @@ use App\Mail\StudentVerificationSubmitted;
 use App\Models\FeeCategory;
 use App\Models\Institution;
 use App\Models\User;
+use App\Support\FeeTier;
+use App\Support\RegistrationWindow;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -35,8 +37,10 @@ class RegisteredUserController extends Controller
                 ->where('active', true)
                 ->orderBy('sort_order')
                 ->get(['key', 'label', 'amount', 'currency']),
+            'countries' => config('tmsc.countries'),
             'eastAfricaCountries' => config('tmsc.east_africa_countries'),
             'institutions' => Institution::where('active', true)->orderBy('sort_order')->get(['id', 'name']),
+            'registrationWindow' => RegistrationWindow::toArray(),
         ]);
     }
 
@@ -67,7 +71,10 @@ class RegisteredUserController extends Controller
             'institution_other' => ['required_if:institution_id,other', 'nullable', 'string', 'max:255'],
             'phone' => 'required|string|max:50',
             'participant_type' => ['required', Rule::in(array_keys(config('tmsc.participant_types')))],
-            'country' => 'required|string|max:100',
+            // Closed list, not free text: `country` decides the regional fee tier
+            // (see App\Support\FeeTier), so an unrecognised spelling would put an
+            // East African registrant on the USD international rate.
+            'country' => ['required', 'string', Rule::in(config('tmsc.countries'))],
             'fee_category' => [
                 'required',
                 Rule::exists('fee_categories', 'key')->where(fn ($query) => $query->where('active', true)),
@@ -82,14 +89,10 @@ class RegisteredUserController extends Controller
             'password' => ['required', 'confirmed', Rules\Password::defaults()],
         ]);
 
-        $isEastAfrica = in_array($request->country, config('tmsc.east_africa_countries'), true);
-        $isStudentCategory = str_starts_with((string) $request->fee_category, 'student_');
+        FeeTier::guard($request->fee_category, $request->participant_type, $request->country);
 
-        if (($request->participant_type === 'student') !== $isStudentCategory) {
-            throw ValidationException::withMessages([
-                'fee_category' => 'Please select the registration category that matches your participant type.',
-            ]);
-        }
+        $isEastAfrica = FeeTier::isEastAfricaCountry($request->country);
+        $isStudentCategory = FeeTier::isStudentCategory($request->fee_category);
 
         if ($request->institution_id === 'other') {
             $institutionId = null;

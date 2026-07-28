@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\PresentationWindow;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -13,7 +14,7 @@ class AbstractSubmission extends Model
         'background', 'objective', 'methods', 'results', 'conclusion',
         'presentation_type', 'status', 'reviewer_id', 'decision_notes',
         'revision_requested_at', 'resubmitted_at', 'decided_at',
-        'reviewer_one_id', 'reviewer_two_id',
+        'reviewer_one_id', 'reviewer_two_id', 'review_round',
     ];
 
     public const SECTIONS = ['background', 'objective', 'methods', 'results', 'conclusion'];
@@ -40,14 +41,22 @@ class AbstractSubmission extends Model
     }
 
     /**
-     * Only the accepted submission's own presenter may upload, and only
-     * until an admin approves the file — mirrors the abstract review lock
-     * (accepted/rejected decisions are final) so an approved presentation
-     * can't be swapped out without a fresh admin review.
+     * Only the accepted submission's own presenter may upload, and only while
+     * the presentation window is open.
+     *
+     * Presentations are not reviewed: an upload is final in the sense that
+     * nobody approves it, but the presenter may keep replacing it right up to
+     * the deadline — whatever is on file when the window closes is what gets
+     * presented.
      */
     public function canUploadPresentation(): bool
     {
-        return $this->status === 'accepted' && in_array($this->presentation_status, ['pending', 'uploaded'], true);
+        return $this->status === 'accepted' && PresentationWindow::isOpen();
+    }
+
+    public function hasPresentation(): bool
+    {
+        return $this->presentation_file !== null;
     }
 
     protected function casts(): array
@@ -90,9 +99,43 @@ class AbstractSubmission extends Model
         return $this->hasMany(AbstractReviewHistory::class)->oldest();
     }
 
+    /** Every recommendation ever recorded, across all review rounds. */
     public function reviewerDecisions(): HasMany
     {
         return $this->hasMany(AbstractReviewerDecision::class);
+    }
+
+    /**
+     * Only the recommendations that count right now.
+     *
+     * Superseded rounds are kept (so a reviewer can re-read their own earlier
+     * comments and the audit trail survives), which means every check about
+     * whether review is complete must scope to the current round or it will
+     * count stale opinions.
+     */
+    public function currentReviewerDecisions(): HasMany
+    {
+        return $this->reviewerDecisions()->where('round', $this->review_round ?? 1);
+    }
+
+    /** Recommendations from earlier rounds, newest round first. */
+    public function supersededReviewerDecisions(): HasMany
+    {
+        return $this->reviewerDecisions()
+            ->where('round', '<', $this->review_round ?? 1)
+            ->orderByDesc('round');
+    }
+
+    /** Rounds beyond the first mean this abstract has been revised. */
+    public function isReReview(): bool
+    {
+        return ($this->review_round ?? 1) > 1;
+    }
+
+    /** How many times this abstract has come back for another look. */
+    public function completedReviewRounds(): int
+    {
+        return max(0, ($this->review_round ?? 1) - 1);
     }
 
     public function presenter(): ?array
@@ -113,7 +156,9 @@ class AbstractSubmission extends Model
     public function bothReviewersDecided(): bool
     {
         return $this->hasReviewersAssigned()
-            && $this->reviewerDecisions()->whereIn('reviewer_id', [$this->reviewer_one_id, $this->reviewer_two_id])->count() === 2;
+            && $this->currentReviewerDecisions()
+                ->whereIn('reviewer_id', [$this->reviewer_one_id, $this->reviewer_two_id])
+                ->count() === 2;
     }
 
     /**

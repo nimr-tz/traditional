@@ -28,8 +28,15 @@ const ABSTRACT_SECTIONS = [
 
 type SectionKey = (typeof ABSTRACT_SECTIONS)[number]['key'];
 
-function countWords(value: string): number {
-    return value.trim() ? value.trim().split(/\s+/).length : 0;
+/**
+ * Sections are nullable: abstracts submitted before the five-section split
+ * carry their whole text in `background` and null everywhere else (see the
+ * split_abstract_text_into_sections migration), so this must never assume a
+ * string is present.
+ */
+function countWords(value: string | null | undefined): number {
+    const trimmed = value?.trim() ?? '';
+    return trimmed ? trimmed.split(/\s+/).length : 0;
 }
 
 interface ReviewerComment {
@@ -38,6 +45,9 @@ interface ReviewerComment {
     body: string;
     addressed: boolean;
     reviewer_label: string;
+    /** Which review round left this — earlier rounds are kept, not deleted. */
+    round: number;
+    is_current: boolean;
     created_at: string;
 }
 
@@ -47,11 +57,12 @@ interface Submission {
     subtheme_id: number;
     presentation_type: string;
     authors: Author[];
-    background: string;
-    objective: string;
-    methods: string;
-    results: string;
-    conclusion: string;
+    // Nullable for pre-split submissions — see countWords above.
+    background: string | null;
+    objective: string | null;
+    methods: string | null;
+    results: string | null;
+    conclusion: string | null;
     status: 'submitted' | 'revision_requested' | 'accepted' | 'rejected';
     decision_notes: string | null;
 }
@@ -94,11 +105,13 @@ export default function EditAbstract({ submission, subthemes, presentationTypes,
         subtheme_id: String(submission.subtheme_id),
         presentation_type: submission.presentation_type,
         authors: submission.authors,
-        background: submission.background,
-        objective: submission.objective,
-        methods: submission.methods,
-        results: submission.results,
-        conclusion: submission.conclusion,
+        // A pre-split abstract has nulls here; a textarea needs a string, and
+        // sending null back would fail the required-section validation anyway.
+        background: submission.background ?? '',
+        objective: submission.objective ?? '',
+        methods: submission.methods ?? '',
+        results: submission.results ?? '',
+        conclusion: submission.conclusion ?? '',
     });
 
     const wordCount = ABSTRACT_SECTIONS.reduce((total, { key }) => total + countWords(data[key as SectionKey]), 0);
@@ -305,6 +318,13 @@ export default function EditAbstract({ submission, subthemes, presentationTypes,
                                                     : 'Overall'}
                                             </span>
                                             <span className="text-muted-foreground text-xs">{comment.reviewer_label}</span>
+                                            {/* Feedback from an earlier round is kept for reference — flag it
+                                                so it isn't mistaken for something still outstanding. */}
+                                            {!comment.is_current && (
+                                                <span className="text-muted-foreground rounded-full border px-2 py-0.5 text-[11px]">
+                                                    Round {comment.round} · earlier
+                                                </span>
+                                            )}
                                         </div>
                                         <p className="mt-2.5 text-sm leading-6">{comment.body}</p>
                                         <p className="text-muted-foreground mt-1.5 text-[11px]">{formatDate(comment.created_at)}</p>

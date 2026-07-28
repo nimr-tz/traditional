@@ -20,10 +20,17 @@ interface FeeCategory {
     currency: string;
 }
 
+interface RegistrationWindow {
+    is_open: boolean;
+    deadline: string | null;
+    closed_message: string | null;
+}
+
 interface WelcomeProps {
     conference: Record<string, string | null>;
     subthemes: Subtheme[];
     feeCategories: FeeCategory[];
+    registrationWindow: RegistrationWindow;
     seo?: {
         title: string;
         description: string;
@@ -91,7 +98,7 @@ const INSTRUCTIONS = [
     'Please indicate whether your presentation is Oral or Poster.',
 ];
 
-export default function Welcome({ conference, subthemes, feeCategories, seo }: WelcomeProps) {
+export default function Welcome({ conference, subthemes, feeCategories, registrationWindow, seo }: WelcomeProps) {
     const { auth } = usePage<SharedData>().props;
     const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
@@ -117,9 +124,23 @@ export default function Welcome({ conference, subthemes, feeCategories, seo }: W
             value: formatConferenceDate(conference.submission_deadline),
             dateTime: toIsoDate(conference.submission_deadline),
         },
+        registrationWindow.is_open && registrationWindow.deadline
+            ? {
+                  label: 'Registration deadline',
+                  value: formatConferenceDate(registrationWindow.deadline),
+                  dateTime: registrationWindow.deadline,
+              }
+            : { label: '', value: '', dateTime: null },
     ].filter((fact) => fact.value);
 
-    const factGridClass = factStrip.length === 1 ? 'sm:grid-cols-1' : factStrip.length === 2 ? 'sm:grid-cols-2' : 'sm:grid-cols-3';
+    const factGridClass =
+        factStrip.length === 1
+            ? 'sm:grid-cols-1'
+            : factStrip.length === 2
+              ? 'sm:grid-cols-2'
+              : factStrip.length >= 4
+                ? 'sm:grid-cols-2 lg:grid-cols-4'
+                : 'sm:grid-cols-3';
 
     const footerContacts = [
         conference.contact_phone && { label: 'Call', value: conference.contact_phone },
@@ -223,6 +244,16 @@ export default function Welcome({ conference, subthemes, feeCategories, seo }: W
                         </nav>
                     )}
                 </header>
+
+                {!registrationWindow.is_open && (
+                    <div className="bg-[#fdf1e7] px-4 py-3 text-center text-sm font-semibold text-[#8a4d16]">
+                        {registrationWindow.closed_message} Already registered?{' '}
+                        <Link href={route('login')} className="underline underline-offset-2">
+                            Log in
+                        </Link>{' '}
+                        to complete your payment and download your badge.
+                    </div>
+                )}
 
                 <section className="bg-[#135eeb] text-white">
                     <div className="mx-auto max-w-7xl px-4 pt-16 sm:px-8">

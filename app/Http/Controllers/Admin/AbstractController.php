@@ -4,12 +4,11 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Mail\AbstractDecision;
-use App\Mail\PresentationApproved;
-use App\Mail\PresentationRejected;
 use App\Models\AbstractReviewerDecision;
 use App\Models\AbstractSubmission;
 use App\Models\Subtheme;
 use App\Models\User;
+use App\Support\BlindReview;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -32,21 +31,35 @@ class AbstractController extends Controller
             $q->where('reviewer_one_id', $user->id)->orWhere('reviewer_two_id', $user->id);
         });
 
-        $query = AbstractSubmission::with(['user', 'subtheme', 'reviewerOne:id,name', 'reviewerTwo:id,name'])
-            ->when($reviewerOnly, $scopeToReviewer)
-            ->when($request->search, fn ($q, $search) => $q->where(function ($q) use ($search) {
-                $q->where('title', 'like', "%{$search}%")
-                    ->orWhereHas('user', fn ($userQuery) => $userQuery
+        $query = AbstractSubmission::with(['subtheme', 'reviewerOne:id,name', 'reviewerTwo:id,name'])
+            // Blind review: the author relation is only loaded for admins, so a
+            // reviewer's payload can never carry it (see App\Support\BlindReview).
+            ->when(! $reviewerOnly, fn ($q) => $q->with('user'))
+            ->when($request->search, fn ($q, $search) => $q->where(function ($q) use ($search, $reviewerOnly) {
+                $q->where('title', 'like', "%{$search}%");
+
+                // Searching by author name/email would let a reviewer probe for
+                // the author of an abstract they're assigned to.
+                if (! $reviewerOnly) {
+                    $q->orWhereHas('user', fn ($userQuery) => $userQuery
                         ->where('name', 'like', "%{$search}%")
                         ->orWhere('email', 'like', "%{$search}%"));
+                }
             }))
             ->when($request->status, fn ($q, $status) => $q->where('status', $status))
             ->when($request->subtheme_id, fn ($q, $id) => $q->where('subtheme_id', $id));
 
         $countsBase = AbstractSubmission::query()->when($reviewerOnly, $scopeToReviewer);
 
+        $submissions = $query->latest()->paginate(20)->withQueryString();
+
+        if ($reviewerOnly) {
+            $submissions->through(fn (AbstractSubmission $abstract) => BlindReview::redactSubmission($abstract->toArray(), $abstract));
+        }
+
         return Inertia::render('admin/abstracts/index', [
-            'submissions' => $query->latest()->paginate(20)->withQueryString(),
+            'isBlinded' => $reviewerOnly,
+            'submissions' => $submissions,
             'subthemes' => Subtheme::orderBy('sort_order')->get(['id', 'title']),
             'filters' => $request->only(['status', 'subtheme_id', 'search']),
             'counts' => [
@@ -64,8 +77,11 @@ class AbstractController extends Controller
         $user = $request->user();
         abort_unless($user->isAdmin() || $abstract->isAssignedReviewer($user), 403);
 
-        $abstract->load([
-            'user',
+        $isAdmin = $user->isAdmin();
+
+        $abstract->load(array_filter([
+            // Only admins get the author relation at all.
+            $isAdmin ? 'user' : null,
             'subtheme',
             'reviewer:id,name,email',
             'reviewerOne:id,name,email',
@@ -73,28 +89,64 @@ class AbstractController extends Controller
             'reviewerDecisions.reviewer:id,name,email',
             'reviewerDecisions.comments',
             'reviewHistory.actor:id,name,email',
-        ]);
+        ]));
 
-        // Blind review: a reviewer may see THAT the other assigned reviewer has
-        // decided, but never what they recommended or wrote — only admins (who
-        // weigh both to make the final call) get the full recommendation/comments.
-        $isAdmin = $user->isAdmin();
-        $decisions = $abstract->reviewerDecisions->map(fn ($decision) => $isAdmin || $decision->reviewer_id === $user->id
-            ? $decision
-            : [
+        $currentRound = $abstract->review_round ?? 1;
+        $allDecisions = $abstract->reviewerDecisions;
+
+        // Blind review, reviewer-to-reviewer: a reviewer may see THAT the other
+        // assigned reviewer has decided, but never what they recommended or
+        // wrote — only admins weigh both to make the final call.
+        $decisions = $allDecisions
+            ->where('round', $currentRound)
+            ->map(fn ($decision) => $isAdmin || $decision->reviewer_id === $user->id
+                ? $decision
+                : [
+                    'id' => $decision->id,
+                    'reviewer_id' => $decision->reviewer_id,
+                    'decided_at' => $decision->decided_at,
+                    'reviewer' => $decision->reviewer,
+                    'recommendation' => null,
+                    'comments' => [],
+                ])
+            ->values();
+
+        /*
+         * Earlier rounds, so a re-review is informed by what was asked last
+         * time. A reviewer sees only their OWN history — another reviewer's
+         * past comments are as off-limits as their present ones. Admins see
+         * every round from both reviewers.
+         */
+        $priorRounds = $allDecisions
+            ->where('round', '<', $currentRound)
+            ->when(! $isAdmin, fn ($rounds) => $rounds->where('reviewer_id', $user->id))
+            ->sortByDesc('round')
+            ->map(fn ($decision) => [
                 'id' => $decision->id,
+                'round' => $decision->round,
                 'reviewer_id' => $decision->reviewer_id,
+                'reviewer_name' => $isAdmin ? $decision->reviewer?->name : 'You',
+                'recommendation' => $decision->recommendation,
                 'decided_at' => $decision->decided_at,
-                'reviewer' => $decision->reviewer,
-                'recommendation' => null,
-                'comments' => [],
-            ]);
+                'comments' => $decision->comments,
+            ])
+            ->values();
+
+        $submission = [
+            ...$abstract->toArray(),
+            'reviewer_decisions' => $decisions,
+            'prior_rounds' => $priorRounds,
+            'is_re_review' => $abstract->isReReview(),
+            'completed_rounds' => $abstract->completedReviewRounds(),
+        ];
+
+        // Blind review, author-to-reviewer: strip every trace of who wrote it.
+        if (BlindReview::appliesTo($user)) {
+            $submission = BlindReview::redactSubmission($submission, $abstract);
+        }
 
         return Inertia::render('admin/abstracts/show', [
-            'submission' => [
-                ...$abstract->toArray(),
-                'reviewer_decisions' => $decisions,
-            ],
+            'submission' => $submission,
             'eligibleReviewers' => $isAdmin
                 ? User::withRole(User::ABSTRACT_REVIEWER_ROLES)
                     ->where('id', '!=', $abstract->user_id)
@@ -124,8 +176,10 @@ class AbstractController extends Controller
         DB::transaction(function () use ($abstract, $data) {
             $keptReviewerIds = [(int) $data['reviewer_one_id'], (int) $data['reviewer_two_id']];
 
-            // Drop any recommendation left behind by a reviewer who is no longer assigned.
-            $abstract->reviewerDecisions()->whereNotIn('reviewer_id', $keptReviewerIds)->delete();
+            // Drop the *current* recommendation of anyone no longer assigned, so
+            // it can't count toward completion. Earlier rounds stay put — they
+            // are the record of how the abstract got here.
+            $abstract->currentReviewerDecisions()->whereNotIn('reviewer_id', $keptReviewerIds)->delete();
 
             $abstract->update([
                 'reviewer_one_id' => $data['reviewer_one_id'],
@@ -158,8 +212,14 @@ class AbstractController extends Controller
         }
 
         DB::transaction(function () use ($abstract, $user, $data, $comments) {
+            // Keyed on the round too: a reviewer's recommendation from an
+            // earlier round is history and must not be overwritten by this one.
             $decision = AbstractReviewerDecision::updateOrCreate(
-                ['abstract_submission_id' => $abstract->id, 'reviewer_id' => $user->id],
+                [
+                    'abstract_submission_id' => $abstract->id,
+                    'reviewer_id' => $user->id,
+                    'round' => $abstract->review_round ?? 1,
+                ],
                 ['recommendation' => $data['recommendation'], 'decided_at' => now()],
             );
 
@@ -192,7 +252,9 @@ class AbstractController extends Controller
 
     private function bothReviewersAccepted(AbstractSubmission $abstract): bool
     {
-        return $abstract->reviewerDecisions()
+        // Current round only — a stale acceptance from before a revision must
+        // not combine with a fresh one to trigger an automatic decision.
+        return $abstract->currentReviewerDecisions()
             ->whereIn('reviewer_id', [$abstract->reviewer_one_id, $abstract->reviewer_two_id])
             ->pluck('recommendation')
             ->every(fn (string $recommendation) => $recommendation === 'accepted');
@@ -255,37 +317,13 @@ class AbstractController extends Controller
         Mail::to($abstract->user->email)->send(new AbstractDecision($abstract->fresh(['user', 'subtheme', 'reviewer'])));
     }
 
-    public function downloadPresentation(AbstractSubmission $abstract): StreamedResponse
+    public function downloadPresentation(Request $request, AbstractSubmission $abstract): StreamedResponse
     {
+        // Presentation files are routinely named after their author, so the
+        // download stays with admins rather than blind reviewers.
+        abort_unless($request->user()->isAdmin(), 403);
         abort_unless($abstract->presentation_file, 404);
 
         return Storage::disk('local')->download($abstract->presentation_file, $abstract->presentation_original_name);
-    }
-
-    public function approvePresentation(AbstractSubmission $abstract): RedirectResponse
-    {
-        abort_unless($abstract->presentation_status === 'uploaded', 422, 'Only an uploaded presentation can be approved.');
-
-        $abstract->forceFill(['presentation_status' => 'approved', 'presentation_review_notes' => null])->save();
-
-        Mail::to($abstract->user->email)->send(new PresentationApproved($abstract));
-
-        return back()->with('success', 'Presentation approved.');
-    }
-
-    public function rejectPresentation(Request $request, AbstractSubmission $abstract): RedirectResponse
-    {
-        abort_unless($abstract->presentation_status === 'uploaded', 422, 'Only an uploaded presentation can be rejected.');
-
-        $data = $request->validate(['notes' => ['required', 'string', 'max:2000']]);
-
-        $abstract->forceFill([
-            'presentation_status' => 'pending',
-            'presentation_review_notes' => $data['notes'],
-        ])->save();
-
-        Mail::to($abstract->user->email)->send(new PresentationRejected($abstract->fresh()));
-
-        return back()->with('success', 'Presentation rejected — the presenter has been notified.');
     }
 }

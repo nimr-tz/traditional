@@ -1,39 +1,15 @@
 import { IconTile } from '@/components/dashboard-card';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import {
-    DropdownMenu,
-    DropdownMenuCheckboxItem,
-    DropdownMenuContent,
-    DropdownMenuLabel,
-    DropdownMenuRadioGroup,
-    DropdownMenuRadioItem,
-    DropdownMenuSeparator,
-    DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import AppLayout from '@/layouts/app-layout';
-import { type BreadcrumbItem, type SharedData } from '@/types';
-import { Head, router, useForm, usePage } from '@inertiajs/react';
-import {
-    Building2,
-    CalendarRange,
-    ChevronLeft,
-    ChevronRight,
-    Eraser,
-    FolderKanban,
-    LoaderCircle,
-    LucideIcon,
-    Search,
-    Settings,
-    TriangleAlert,
-    UsersRound,
-    Wallet,
-} from 'lucide-react';
-import { FormEventHandler, useEffect, useState } from 'react';
+import { type BreadcrumbItem } from '@/types';
+import { Head, useForm } from '@inertiajs/react';
+import { Building2, CalendarRange, Eraser, FolderKanban, LoaderCircle, LucideIcon, Settings, TriangleAlert, Wallet } from 'lucide-react';
+import { FormEventHandler, useState } from 'react';
 import { toast } from 'sonner';
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -91,53 +67,11 @@ interface Institution {
     active: boolean;
 }
 
-type UserRole = 'user' | 'reviewer' | 'staff' | 'finance' | 'admin' | 'super_admin';
-
-const ROLE_LABELS: Record<UserRole, string> = {
-    user: 'Participant',
-    reviewer: 'Reviewer',
-    staff: 'Staff (check-in)',
-    finance: 'Finance',
-    admin: 'Admin',
-    super_admin: 'Super Admin',
-};
-
-interface UserRow {
-    id: number;
-    name: string;
-    email: string;
-    role: UserRole;
-    roles: UserRole[];
-    email_verified: boolean;
-}
-
-const ALL_ROLES = Object.keys(ROLE_LABELS) as UserRole[];
-
-interface PaginatedUsers {
-    data: UserRow[];
-    current_page: number;
-    last_page: number;
-    total: number;
-    prev_page_url: string | null;
-    next_page_url: string | null;
-}
-
-interface RoleAccessChange {
-    id: number;
-    target_name: string;
-    target_email: string;
-    changed_by_name: string;
-    action: 'granted' | 'revoked';
-    role: UserRole | null;
-    created_at: string;
-}
-
 interface SettingsIndexProps {
     feeCategories: FeeCategory[];
     subthemes: Subtheme[];
     institutions: Institution[];
     conferenceSettings: Record<string, string | null>;
-    roleAccessChanges: RoleAccessChange[];
 }
 
 function SettingsSection({
@@ -166,301 +100,6 @@ function SettingsSection({
             </div>
             <div className="p-6">{children}</div>
         </section>
-    );
-}
-
-function formatAccessChangeDate(value: string): string {
-    return new Intl.DateTimeFormat('en-TZ', {
-        dateStyle: 'medium',
-        timeStyle: 'short',
-    }).format(new Date(value));
-}
-
-function RoleEditor({ user, locked, onSave }: { user: UserRow; locked: boolean; onSave: (roles: UserRole[], primaryRole: UserRole) => void }) {
-    const [open, setOpen] = useState(false);
-    const [selected, setSelected] = useState<UserRole[]>(user.roles);
-    const [primary, setPrimary] = useState<UserRole>(user.role);
-
-    useEffect(() => {
-        if (open) {
-            setSelected(user.roles);
-            setPrimary(user.role);
-        }
-    }, [open, user.roles, user.role]);
-
-    const toggleRole = (role: UserRole) => {
-        setSelected((current) => {
-            const next = current.includes(role) ? current.filter((r) => r !== role) : [...current, role];
-            if (next.length > 0 && !next.includes(primary)) {
-                setPrimary(next[0]);
-            }
-            return next;
-        });
-    };
-
-    return (
-        <DropdownMenu open={open} onOpenChange={setOpen}>
-            <DropdownMenuTrigger asChild>
-                <Button type="button" variant="outline" size="sm" disabled={locked} className="h-auto min-h-9 w-full justify-start sm:w-56">
-                    <div className="flex flex-wrap gap-1">
-                        {user.roles.map((role) => (
-                            <span key={role} className="bg-primary/10 text-primary rounded-full px-2 py-0.5 text-[11px] font-semibold">
-                                {ROLE_LABELS[role]}
-                            </span>
-                        ))}
-                    </div>
-                </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-64">
-                <DropdownMenuLabel>Assign roles</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                {ALL_ROLES.map((role) => (
-                    <DropdownMenuCheckboxItem
-                        key={role}
-                        checked={selected.includes(role)}
-                        onSelect={(event) => event.preventDefault()}
-                        onCheckedChange={() => toggleRole(role)}
-                    >
-                        {ROLE_LABELS[role]}
-                    </DropdownMenuCheckboxItem>
-                ))}
-                {selected.length > 1 && (
-                    <>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuLabel className="text-muted-foreground text-xs font-normal">Primary role (default view)</DropdownMenuLabel>
-                        <DropdownMenuRadioGroup value={primary} onValueChange={(value) => setPrimary(value as UserRole)}>
-                            {selected.map((role) => (
-                                <DropdownMenuRadioItem key={role} value={role} onSelect={(event) => event.preventDefault()}>
-                                    {ROLE_LABELS[role]}
-                                </DropdownMenuRadioItem>
-                            ))}
-                        </DropdownMenuRadioGroup>
-                    </>
-                )}
-                <DropdownMenuSeparator />
-                <div className="p-1">
-                    <Button
-                        type="button"
-                        size="sm"
-                        className="w-full"
-                        disabled={selected.length === 0}
-                        onClick={() => {
-                            onSave(selected, primary);
-                            setOpen(false);
-                        }}
-                    >
-                        Save
-                    </Button>
-                </div>
-            </DropdownMenuContent>
-        </DropdownMenu>
-    );
-}
-
-function UsersAndRolesSection({ accessChanges }: { accessChanges: RoleAccessChange[] }) {
-    const { auth } = usePage<SharedData>().props;
-    const [search, setSearch] = useState('');
-    const [roleFilter, setRoleFilter] = useState<UserRole | 'all'>('all');
-    const [page, setPage] = useState(1);
-    const [users, setUsers] = useState<PaginatedUsers | null>(null);
-    const [loading, setLoading] = useState(true);
-    const [loadError, setLoadError] = useState<string | null>(null);
-    const [actionError, setActionError] = useState<string | null>(null);
-    const [actionSuccess, setActionSuccess] = useState<string | null>(null);
-    const [updatingId, setUpdatingId] = useState<number | null>(null);
-
-    const fetchUsers = () => {
-        setLoading(true);
-        setLoadError(null);
-
-        const params: Record<string, string> = { page: String(page) };
-        if (search.trim()) params.query = search.trim();
-        if (roleFilter !== 'all') params.role = roleFilter;
-
-        fetch(route('admin.settings.users.index', params), { headers: { Accept: 'application/json' } })
-            .then((response) => {
-                if (!response.ok) throw new Error('Failed to load users');
-                return response.json() as Promise<PaginatedUsers>;
-            })
-            .then(setUsers)
-            .catch(() => setLoadError('Could not load users. Please try again.'))
-            .finally(() => setLoading(false));
-    };
-
-    useEffect(() => {
-        const timer = window.setTimeout(fetchUsers, search ? 250 : 0);
-        return () => window.clearTimeout(timer);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [search, roleFilter, page]);
-
-    useEffect(() => {
-        setPage(1);
-    }, [search, roleFilter]);
-
-    const superAdminCount = users?.data.filter((u) => u.roles.includes('super_admin')).length ?? 0;
-
-    const changeRoles = (user: UserRow, roles: UserRole[], primaryRole: UserRole) => {
-        setActionError(null);
-        setActionSuccess(null);
-        setUpdatingId(user.id);
-
-        router.patch(
-            route('admin.settings.users.update-roles', user.id),
-            { roles, primary_role: primaryRole },
-            {
-                preserveScroll: true,
-                preserveState: true,
-                onSuccess: () => {
-                    setActionSuccess(`${user.name}'s roles were updated.`);
-                    fetchUsers();
-                },
-                onError: (errors) => setActionError(String(errors.roles ?? errors.primary_role ?? 'Roles could not be updated.')),
-                onFinish: () => setUpdatingId(null),
-            },
-        );
-    };
-
-    return (
-        <SettingsSection icon={UsersRound} title="Users & roles" description="Search every user and change their role directly.">
-            <div className="flex flex-col gap-4">
-                <div className="flex flex-col gap-2 sm:flex-row">
-                    <div className="relative flex-1">
-                        <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
-                        <Input
-                            value={search}
-                            onChange={(event) => setSearch(event.target.value)}
-                            placeholder="Search by name or email"
-                            className="pl-9"
-                        />
-                    </div>
-                    <Select value={roleFilter} onValueChange={(value) => setRoleFilter(value as UserRole | 'all')}>
-                        <SelectTrigger className="sm:w-56">
-                            <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="all">All roles</SelectItem>
-                            {(Object.keys(ROLE_LABELS) as UserRole[]).map((role) => (
-                                <SelectItem key={role} value={role}>
-                                    {ROLE_LABELS[role]}
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
-                </div>
-
-                {(actionError || actionSuccess) && (
-                    <div
-                        className={`rounded-md px-3 py-2 text-sm ${actionError ? 'bg-red-50 text-red-800' : 'bg-primary/10 text-primary'}`}
-                        role="status"
-                    >
-                        {actionError ?? actionSuccess}
-                    </div>
-                )}
-
-                <div className="divide-y rounded-lg border">
-                    {loading && !users ? (
-                        <p className="text-muted-foreground p-4 text-sm">Loading users…</p>
-                    ) : loadError ? (
-                        <p className="p-4 text-sm text-red-700">{loadError}</p>
-                    ) : users && users.data.length > 0 ? (
-                        users.data.map((user) => {
-                            const isCurrentUser = user.id === auth.user.id;
-                            const isLastSuperAdmin = user.roles.includes('super_admin') && superAdminCount <= 1;
-                            const locked = isCurrentUser || isLastSuperAdmin;
-
-                            return (
-                                <div
-                                    key={user.id}
-                                    className="flex flex-col items-stretch gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
-                                >
-                                    <div className="min-w-0">
-                                        <div className="flex items-center gap-2">
-                                            <p className="truncate text-sm font-medium">{user.name}</p>
-                                            {isCurrentUser && (
-                                                <span className="bg-primary/10 text-primary rounded-full px-2 py-0.5 text-[11px] font-semibold">
-                                                    You
-                                                </span>
-                                            )}
-                                            {!user.email_verified && (
-                                                <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
-                                                    Unverified
-                                                </span>
-                                            )}
-                                        </div>
-                                        <p className="text-muted-foreground truncate text-sm">{user.email}</p>
-                                    </div>
-                                    <div
-                                        title={
-                                            isCurrentUser
-                                                ? 'Another super admin must change your roles'
-                                                : isLastSuperAdmin
-                                                  ? 'The final super admin cannot lose that role'
-                                                  : undefined
-                                        }
-                                    >
-                                        <RoleEditor
-                                            user={user}
-                                            locked={locked || updatingId === user.id}
-                                            onSave={(roles, primaryRole) => changeRoles(user, roles, primaryRole)}
-                                        />
-                                    </div>
-                                </div>
-                            );
-                        })
-                    ) : (
-                        <p className="text-muted-foreground p-4 text-sm">No users match this search.</p>
-                    )}
-                </div>
-
-                {users && users.last_page > 1 && (
-                    <div className="flex items-center justify-between">
-                        <p className="text-muted-foreground text-xs">
-                            Page {users.current_page} of {users.last_page} · {users.total} users
-                        </p>
-                        <div className="flex gap-2">
-                            <Button
-                                type="button"
-                                size="sm"
-                                variant="outline"
-                                disabled={!users.prev_page_url}
-                                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                            >
-                                <ChevronLeft className="size-4" />
-                                Prev
-                            </Button>
-                            <Button type="button" size="sm" variant="outline" disabled={!users.next_page_url} onClick={() => setPage((p) => p + 1)}>
-                                Next
-                                <ChevronRight className="size-4" />
-                            </Button>
-                        </div>
-                    </div>
-                )}
-
-                <section className="border-t pt-6">
-                    <h3 className="text-sm font-semibold">Recent role changes</h3>
-                    {accessChanges.length === 0 ? (
-                        <p className="text-muted-foreground mt-2 text-sm">No role changes have been recorded yet.</p>
-                    ) : (
-                        <div className="mt-3 divide-y">
-                            {accessChanges.map((change) => (
-                                <div key={change.id} className="grid gap-1 py-3 text-sm sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-4">
-                                    <p>
-                                        <span className={change.action === 'granted' ? 'text-primary font-semibold' : 'font-semibold text-red-700'}>
-                                            {change.action === 'granted' ? 'Granted' : 'Removed'}
-                                        </span>{' '}
-                                        {change.role ? ROLE_LABELS[change.role] : 'role'} for{' '}
-                                        <span className="font-medium">{change.target_name}</span> by {change.changed_by_name}
-                                    </p>
-                                    <time className="text-muted-foreground text-xs" dateTime={change.created_at}>
-                                        {formatAccessChangeDate(change.created_at)}
-                                    </time>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </section>
-            </div>
-        </SettingsSection>
     );
 }
 
@@ -817,13 +456,16 @@ function NewSubthemeForm() {
     );
 }
 
-export default function SettingsIndex({ feeCategories, subthemes, institutions, conferenceSettings, roleAccessChanges }: SettingsIndexProps) {
+export default function SettingsIndex({ feeCategories, subthemes, institutions, conferenceSettings }: SettingsIndexProps) {
     const [conf, setConf] = useState<Record<string, string | null>>(() => ({
         ...conferenceSettings,
         start_date: normalizeDateInput(conferenceSettings.start_date),
         end_date: normalizeDateInput(conferenceSettings.end_date),
         submission_deadline: normalizeDateInput(conferenceSettings.submission_deadline),
+        registration_deadline: normalizeDateInput(conferenceSettings.registration_deadline),
+        registration_closed: conferenceSettings.registration_closed === '1' ? '1' : '0',
         abstract_notification_date: normalizeDateInput(conferenceSettings.abstract_notification_date),
+        presentation_deadline: normalizeDateInput(conferenceSettings.presentation_deadline),
     }));
     const confForm = useForm(conf);
 
@@ -848,14 +490,12 @@ export default function SettingsIndex({ feeCategories, subthemes, institutions, 
                     </IconTile>
                     <div>
                         <p className="text-xs font-bold tracking-[0.18em] text-[#135eeb] uppercase">Super admin</p>
-                        <h1 className="mt-2 font-serif text-3xl font-semibold">Settings</h1>
+                        <h1 className="mt-2 font-serif text-3xl font-semibold">Conference Settings</h1>
                         <p className="text-muted-foreground mt-2 text-sm">
-                            Conference details, fees, sub-themes, institutions, and every user's role live here.
+                            Conference details, fees, sub-themes, and institutions. User roles live under Users &amp; Roles.
                         </p>
                     </div>
                 </header>
-
-                <UsersAndRolesSection accessChanges={roleAccessChanges} />
 
                 <SettingsSection icon={CalendarRange} title="Conference details" description="Shown across the site, emails, and badges.">
                     <form onSubmit={submitConference} className="grid gap-4 sm:grid-cols-2">
@@ -912,6 +552,54 @@ export default function SettingsIndex({ feeCategories, subthemes, institutions, 
                                 value={conf.abstract_notification_date ?? ''}
                                 onChange={(e) => setConf({ ...conf, abstract_notification_date: e.target.value })}
                             />
+                        </div>
+                        <div className="grid gap-1">
+                            <Label>Presentation upload deadline</Label>
+                            <Input
+                                type="date"
+                                value={conf.presentation_deadline ?? ''}
+                                onChange={(e) => setConf({ ...conf, presentation_deadline: e.target.value })}
+                            />
+                            <p className="text-muted-foreground text-xs leading-5">
+                                Presenters can replace their file until the end of this day. Presentations are not reviewed — whatever is uploaded by
+                                then is what gets presented.
+                            </p>
+                        </div>
+                        <div className="grid gap-1 sm:col-span-2">
+                            <div className="rounded-xl border p-4">
+                                <div className="grid gap-4 sm:grid-cols-2">
+                                    <div className="grid gap-1">
+                                        <Label>Registration deadline</Label>
+                                        <Input
+                                            type="date"
+                                            value={conf.registration_deadline ?? ''}
+                                            onChange={(e) => setConf({ ...conf, registration_deadline: e.target.value })}
+                                        />
+                                        <p className="text-muted-foreground text-xs leading-5">
+                                            New accounts stop being accepted at the end of this day. Leave blank for no date cutoff.
+                                        </p>
+                                    </div>
+                                    <div className="grid gap-1">
+                                        <Label>Registration status</Label>
+                                        <Select
+                                            value={conf.registration_closed === '1' ? '1' : '0'}
+                                            onValueChange={(value) => setConf({ ...conf, registration_closed: value })}
+                                        >
+                                            <SelectTrigger>
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="0">Open (follow the deadline)</SelectItem>
+                                                <SelectItem value="1">Closed now</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                        <p className="text-muted-foreground text-xs leading-5">
+                                            Closing here takes effect immediately, whatever the deadline says. Existing registrants can still log in
+                                            and pay.
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                         <div className="grid gap-1">
                             <Label>African Traditional Medicine Week dates</Label>

@@ -3,10 +3,14 @@
 namespace App\Http\Controllers\Settings;
 
 use App\Http\Controllers\Controller;
+use App\Mail\StudentVerificationSubmitted;
+use App\Models\User;
+use App\Support\FeeTier;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
-use Illuminate\Validation\ValidationException;
 
 class RegistrationController extends Controller
 {
@@ -16,6 +20,10 @@ class RegistrationController extends Controller
      * region or student status by mistake at registration. Once a control
      * number has been requested, the fee is already tied to a billing
      * request, so changing category here is blocked.
+     *
+     * The same tier rules as registration apply (App\Support\FeeTier): this
+     * endpoint sets the price, so without them it would be a second, quieter
+     * route to the cheaper regional rate.
      */
     public function update(Request $request): RedirectResponse
     {
@@ -36,26 +44,72 @@ class RegistrationController extends Controller
             ],
         ]);
 
-        $isStudentCategory = str_starts_with($data['fee_category'], 'student_');
+        FeeTier::guard($data['fee_category'], $data['participant_type'], $user->country);
 
-        if (($data['participant_type'] === 'student') !== $isStudentCategory) {
-            throw ValidationException::withMessages([
-                'fee_category' => 'Please select the registration category that matches your participant type.',
-            ]);
-        }
+        // Switching *into* a student rate needs proof, exactly as registering
+        // into one does — otherwise this route mints student-priced accounts
+        // with a verification queue entry and no document to review. Checked
+        // after the tier guard so a wrong category is reported as a wrong
+        // category, not as a missing document.
+        $needsDocument = FeeTier::isStudentCategory($data['fee_category']) && ! $user->student_document_path;
+
+        $request->validate([
+            'student_document' => [
+                Rule::requiredIf($needsDocument),
+                'nullable',
+                'file',
+                'mimes:pdf,jpg,jpeg,png',
+                'max:10240',
+            ],
+        ], [
+            'student_document.required' => 'Upload your student verification document to switch to a student registration category.',
+        ]);
 
         $wasStudent = $user->requiresStudentVerification();
 
         $user->participant_type = $data['participant_type'];
         $user->assignFeeCategory($data['fee_category']);
 
+        $newDocumentPath = $request->hasFile('student_document')
+            ? $request->file('student_document')->store('student-verification', 'local')
+            : null;
+        $oldDocumentPath = $newDocumentPath ? $user->student_document_path : null;
+
+        if ($newDocumentPath) {
+            $user->student_document_path = $newDocumentPath;
+            $user->student_verified_at = null;
+            $user->student_verified_by = null;
+            $user->student_verification_notes = null;
+        }
+
         if (! $user->requiresStudentVerification()) {
             $user->student_verification_status = null;
-        } elseif (! $wasStudent) {
+        } elseif (! $wasStudent || $newDocumentPath) {
             $user->student_verification_status = 'pending';
         }
 
-        $user->save();
+        try {
+            $user->save();
+        } catch (\Throwable $exception) {
+            if ($newDocumentPath) {
+                Storage::disk('local')->delete($newDocumentPath);
+            }
+
+            throw $exception;
+        }
+
+        if ($oldDocumentPath) {
+            Storage::disk('local')->delete($oldDocumentPath);
+        }
+
+        if ($newDocumentPath) {
+            $isReplacement = (bool) $oldDocumentPath;
+
+            User::query()
+                ->withRole(User::ADMIN_ROLES)
+                ->pluck('email')
+                ->each(fn (string $email) => Mail::to($email)->send(new StudentVerificationSubmitted($user, $isReplacement)));
+        }
 
         return back()->with('success', 'Your registration category has been updated.');
     }

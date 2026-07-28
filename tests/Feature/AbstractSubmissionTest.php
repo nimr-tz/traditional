@@ -100,16 +100,28 @@ class AbstractSubmissionTest extends TestCase
             'action' => 'resubmitted',
         ]);
 
-        // The reviewer who already accepted keeps their decision and isn't
-        // re-notified; only the reviewer who asked for a revision is.
+        // The reviewer who already accepted carries their decision into the new
+        // round and isn't re-notified; only the reviewer who asked for a
+        // revision is asked again.
+        $this->assertSame(2, $submission->review_round);
         $this->assertDatabaseHas('abstract_reviewer_decisions', [
             'abstract_submission_id' => $submission->id,
             'reviewer_id' => $reviewerWhoAccepted->id,
             'recommendation' => 'accepted',
+            'round' => 2,
+        ]);
+
+        // The revision request is archived on round 1, not deleted — it is the
+        // record of why this revision happened, and the reviewer re-reads it.
+        $this->assertDatabaseHas('abstract_reviewer_decisions', [
+            'abstract_submission_id' => $submission->id,
+            'reviewer_id' => $reviewerWhoRequestedRevision->id,
+            'round' => 1,
         ]);
         $this->assertDatabaseMissing('abstract_reviewer_decisions', [
             'abstract_submission_id' => $submission->id,
             'reviewer_id' => $reviewerWhoRequestedRevision->id,
+            'round' => 2,
         ]);
 
         Mail::assertQueued(AbstractSubmitted::class, fn ($mail) => $mail->isRevision && $mail->hasTo($author->email));

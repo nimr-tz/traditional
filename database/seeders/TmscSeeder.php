@@ -160,7 +160,16 @@ class TmscSeeder extends Seeder
             'start_date' => '2026-08-28',
             'end_date' => '2026-08-28',
             'submission_deadline' => '2026-08-06',
+            // Registration closes a week before the conference so the venue has
+            // a final headcount for badges and catering; `registration_closed`
+            // is the manual override organizers can flip at any time.
+            'registration_deadline' => '2026-08-21',
+            'registration_closed' => '0',
             'abstract_notification_date' => '2026-08-08',
+            // Presentations aren't reviewed — presenters may keep replacing
+            // their file until this date, and whatever is on file then is what
+            // gets presented.
+            'presentation_deadline' => '2026-08-27',
             'tm_week_dates' => '26–31 August 2026',
             'gepg_payee_name' => 'NATIONAL INSTITUTE FOR MEDICAL RESEARCH',
         ];

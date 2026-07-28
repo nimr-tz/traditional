@@ -29,9 +29,21 @@ interface FeeCategory {
     currency: string;
 }
 
+/**
+ * Mirrors App\Support\FeeTier::regionOf(). The fee differs by regional tier, so
+ * the form only offers the tier the registrant's country entitles them to.
+ */
+const categoryRegion = (key: string): 'east_africa' | 'international' | null => {
+    if (key.endsWith('_non_east_africa')) return 'international';
+    if (key.endsWith('_east_africa')) return 'east_africa';
+    return null;
+};
+
 interface RegistrationInfo {
     participant_type: string | null;
     fee_category: string | null;
+    country: string | null;
+    region: 'east_africa' | 'international';
     payment_status: 'pending' | 'submitted' | 'verified' | 'rejected' | 'waived';
     requires_student_verification: boolean;
     student_verification_status: 'pending' | 'verified' | 'rejected' | null;
@@ -62,19 +74,33 @@ export default function Profile({ mustVerifyEmail, status, participantTypes, fee
 
     const canChangeCategory = registration.payment_status === 'pending';
 
-    const categoryForm = useForm({
+    const categoryForm = useForm<{ participant_type: string; fee_category: string; student_document: File | null }>({
         participant_type: registration.participant_type ?? '',
         fee_category: registration.fee_category ?? '',
+        student_document: null,
     });
 
     const isStudentSelection = categoryForm.data.participant_type === 'student';
     const availableFeeCategories = categoryForm.data.participant_type
-        ? feeCategories.filter((category) => category.key.startsWith(isStudentSelection ? 'student_' : 'participant_'))
+        ? feeCategories.filter((category) => {
+              if (!category.key.startsWith(isStudentSelection ? 'student_' : 'participant_')) return false;
+              const region = categoryRegion(category.key);
+              return region === null || region === registration.region;
+          })
         : [];
+
+    // Switching into a student rate needs proof, same as registering into one.
+    const switchingToStudentWithoutDocument = categoryForm.data.fee_category.startsWith('student_') && !registration.has_student_document;
 
     const submitCategory: FormEventHandler = (e) => {
         e.preventDefault();
-        categoryForm.patch(route('registration.update'), { preserveScroll: true });
+
+        // Inertia can't send a file over PATCH, so spoof the method on a POST.
+        categoryForm.transform((data) => ({ ...data, _method: 'patch' }));
+        categoryForm.post(route('registration.update'), {
+            preserveScroll: true,
+            forceFormData: true,
+        });
     };
 
     const documentForm = useForm<{ student_document: File | null }>({ student_document: null });
@@ -229,7 +255,29 @@ export default function Profile({ mustVerifyEmail, status, participantTypes, fee
                                     </SelectContent>
                                 </Select>
                                 <InputError message={categoryForm.errors.fee_category} />
+                                <p className="text-muted-foreground text-xs leading-5">
+                                    Your regional tier is set by your country
+                                    {registration.country ? ` (${registration.country})` : ''} and can't be changed here. Contact the organizers if
+                                    your country is recorded incorrectly.
+                                </p>
                             </div>
+
+                            {switchingToStudentWithoutDocument && (
+                                <div className="grid gap-2 rounded-xl border border-[#67b52f]/25 bg-[#67b52f]/5 p-4">
+                                    <Label htmlFor="category_student_document">Student verification document</Label>
+                                    <p className="text-muted-foreground text-xs leading-5">
+                                        A student rate needs proof of student status. Upload a valid student ID (PDF, JPG, JPEG, or PNG, max 10 MB) to
+                                        switch to this category.
+                                    </p>
+                                    <Input
+                                        id="category_student_document"
+                                        type="file"
+                                        accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+                                        onChange={(event) => categoryForm.setData('student_document', event.target.files?.[0] ?? null)}
+                                    />
+                                    <InputError message={categoryForm.errors.student_document} />
+                                </div>
+                            )}
 
                             <div className="flex items-center gap-4 pt-1">
                                 <Button disabled={categoryForm.processing} className="bg-[#135eeb] font-bold hover:bg-[#0e4bc2]">

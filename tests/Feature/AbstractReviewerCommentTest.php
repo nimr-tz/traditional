@@ -93,7 +93,13 @@ class AbstractReviewerCommentTest extends TestCase
         $this->assertNull($comment->fresh()->addressed_at);
     }
 
-    public function test_resubmission_clears_prior_reviewer_decisions_and_comments_for_a_fresh_round(): void
+    /**
+     * Superseded recommendations and their comments are archived onto the old
+     * round rather than deleted — the reviewer needs them to judge whether the
+     * revision answered what they asked for, and they are the record of why a
+     * revision was requested at all.
+     */
+    public function test_resubmission_opens_a_new_round_and_archives_the_previous_one(): void
     {
         Mail::fake();
 
@@ -116,8 +122,14 @@ class AbstractReviewerCommentTest extends TestCase
 
         $submission->refresh();
         $this->assertSame('submitted', $submission->status);
-        $this->assertSame(0, $submission->reviewerDecisions()->count());
-        $this->assertDatabaseCount('abstract_reviewer_comments', 0);
+        $this->assertSame(2, $submission->review_round);
+
+        // Nothing counts toward the new round yet...
+        $this->assertSame(0, $submission->currentReviewerDecisions()->count());
+
+        // ...but the previous round and its comments are still on file.
+        $this->assertSame(1, $submission->reviewerDecisions()->where('round', 1)->count());
+        $this->assertDatabaseCount('abstract_reviewer_comments', 1);
 
         // The same two reviewers stay assigned for the next round.
         $this->assertNotNull($submission->reviewer_one_id);

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Settings;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Settings\ProfileUpdateRequest;
 use App\Models\FeeCategory;
+use App\Support\FeeTier;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -28,6 +29,11 @@ class ProfileController extends Controller
             'registration' => [
                 'participant_type' => $user->participant_type,
                 'fee_category' => $user->fee_category,
+                'country' => $user->country,
+                // The tier the user's country entitles them to. The form filters
+                // the category list by this so the server-side check in
+                // App\Support\FeeTier is never the first thing they hear about it.
+                'region' => FeeTier::regionOfCountry($user->country),
                 'payment_status' => $user->payment_status,
                 'requires_student_verification' => $user->requiresStudentVerification(),
                 'student_verification_status' => $user->student_verification_status,

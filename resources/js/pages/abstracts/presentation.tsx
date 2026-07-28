@@ -6,12 +6,14 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import AppLayout from '@/layouts/app-layout';
+import { cn } from '@/lib/utils';
 import { type BreadcrumbItem } from '@/types';
 import { Head, Link, useForm, usePage } from '@inertiajs/react';
 import { BadgeCheck, Clock3, Download, FileUp, LoaderCircle, ShieldAlert, Trash2, XCircle } from 'lucide-react';
 import { FormEventHandler, useState } from 'react';
 
-type PresentationStatus = 'pending' | 'uploaded' | 'approved';
+/** Presentations aren't reviewed — a file is either on record or it isn't. */
+type PresentationStatus = 'pending' | 'uploaded';
 
 interface Submission {
     id: number;
@@ -21,7 +23,6 @@ interface Submission {
     presentation_original_name: string | null;
     presentation_uploaded_at: string | null;
     presentation_notes: string | null;
-    presentation_review_notes: string | null;
     can_upload: boolean;
 }
 
@@ -30,19 +31,53 @@ interface Requirements {
     max_kb: number;
 }
 
+interface PresentationWindow {
+    deadline: string | null;
+    is_open: boolean;
+    closed_message: string | null;
+}
+
 interface PresentationProps {
     submission: Submission;
     requirements: Requirements;
+    window: PresentationWindow;
+}
+
+function formatDeadline(value: string) {
+    const [y, m, d] = value.split('-').map(Number);
+    return new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }).format(
+        new Date(Date.UTC(y, m - 1, d)),
+    );
 }
 
 function formatDate(value: string) {
     return new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
 }
 
-export default function Presentation({ submission, requirements }: PresentationProps) {
+/**
+ * The file card carries its own state in colour, so a glance is enough to know
+ * where the presentation stands without reading the banner above it. A plain
+ * grey block looked identical whether a file was on record or not.
+ */
+const FILE_STATE = {
+    uploaded: {
+        tile: 'green' as const,
+        label: 'Submitted',
+        row: 'border-[#4c8a1f]/30 bg-[#eef7e6] dark:border-[#67b52f]/25 dark:bg-[#67b52f]/10',
+        chip: 'bg-[#4c8a1f] text-white',
+    },
+    pending: {
+        tile: 'blue' as const,
+        label: 'Not uploaded',
+        row: 'border-transparent bg-slate-50 dark:bg-muted/40',
+        chip: 'bg-slate-500 text-white',
+    },
+};
+
+export default function Presentation({ submission, requirements, window: presentationWindow }: PresentationProps) {
     const { props } = usePage<{ flash: { success?: string; error?: string } }>();
-    const wasRejected = submission.presentation_status === 'pending' && Boolean(submission.presentation_review_notes);
     const [uploadFailure, setUploadFailure] = useState<string | null>(null);
+    const fileState = FILE_STATE[submission.presentation_status];
 
     const breadcrumbs: BreadcrumbItem[] = [
         { title: 'My Abstracts', href: '/abstracts' },
@@ -119,41 +154,51 @@ export default function Presentation({ submission, requirements }: PresentationP
                 )}
                 {uploadFailure && <StatusBanner tone="negative" icon={XCircle} title="Upload failed" description={uploadFailure} />}
 
-                {submission.presentation_status === 'approved' && (
+                {/* Nobody reviews a presentation: uploading it is the whole
+                    process. The only thing that ends it is the deadline. */}
+                {submission.presentation_status === 'uploaded' && presentationWindow.is_open && (
                     <StatusBanner
                         tone="success"
                         icon={BadgeCheck}
-                        title="Presentation approved"
-                        description="No further action is needed. We look forward to your presentation."
+                        title="Presentation submitted"
+                        description={
+                            presentationWindow.deadline
+                                ? `Your file is on record. You can replace it any time until ${formatDeadline(presentationWindow.deadline)} — whatever is uploaded then is what you'll present.`
+                                : 'Your file is on record. You can replace it at any time.'
+                        }
                     />
                 )}
 
-                {submission.presentation_status === 'uploaded' && (
+                {submission.presentation_status === 'pending' && presentationWindow.is_open && presentationWindow.deadline && (
                     <StatusBanner
                         tone="info"
                         icon={Clock3}
-                        title="Awaiting review"
-                        description="Your presentation file is being reviewed by the organizers."
+                        title={`Upload by ${formatDeadline(presentationWindow.deadline)}`}
+                        description="Presentations are not reviewed — upload your file and you're done."
                     />
                 )}
 
-                {wasRejected && (
+                {!presentationWindow.is_open && (
                     <StatusBanner
                         tone="warning"
                         icon={ShieldAlert}
-                        title="Please upload a replacement file"
-                        note={submission.presentation_review_notes}
-                        noteLabel="Organizer feedback"
+                        title="The upload deadline has passed"
+                        description={presentationWindow.closed_message ?? 'Presentation files can no longer be changed.'}
                     />
                 )}
 
                 <DashboardCard>
                     <div className="flex items-start gap-4">
-                        <IconTile tone="blue">
+                        <IconTile tone={fileState.tile}>
                             <FileUp className="size-5" />
                         </IconTile>
-                        <div>
-                            <h2 className="font-serif text-lg font-semibold">Your presentation file</h2>
+                        <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                                <h2 className="font-serif text-lg font-semibold">Your presentation file</h2>
+                                <span className={cn('rounded-full px-2.5 py-0.5 text-[11px] font-bold tracking-wide', fileState.chip)}>
+                                    {fileState.label}
+                                </span>
+                            </div>
                             <p className="text-muted-foreground mt-1 text-sm">
                                 Accepted formats: {requirements.extensions.join(', ').toUpperCase()} — max {maxMb} MB.
                             </p>
@@ -161,7 +206,7 @@ export default function Presentation({ submission, requirements }: PresentationP
                     </div>
 
                     {submission.presentation_original_name && (
-                        <div className="dark:bg-muted/40 mt-6 flex items-center justify-between gap-4 rounded-xl bg-slate-50 p-4">
+                        <div className={cn('mt-6 flex items-center justify-between gap-4 rounded-xl border p-4', fileState.row)}>
                             <div className="min-w-0">
                                 <p className="truncate text-sm font-semibold">{submission.presentation_original_name}</p>
                                 {submission.presentation_uploaded_at && (

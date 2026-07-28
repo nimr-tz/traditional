@@ -5,7 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem } from '@/types';
 import { Head, Link, router } from '@inertiajs/react';
-import { ArrowRight, FileCheck2, FileClock, FilePenLine, FileStack, FileX2, ScrollText, Search } from 'lucide-react';
+import { ArrowRight, EyeOff, FileCheck2, FileClock, FilePenLine, FileStack, FileX2, History, ScrollText, Search } from 'lucide-react';
 import { FormEventHandler, useState } from 'react';
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -22,7 +22,9 @@ interface Submission {
     status: AbstractStatus;
     created_at: string;
     resubmitted_at: string | null;
-    user: { name: string; email: string; institution: string | null };
+    review_round: number;
+    // Omitted for blind reviewers — the server never sends it.
+    user?: { name: string; email: string; institution: string | null } | null;
     subtheme: { title: string } | null;
     reviewer_one: { name: string } | null;
     reviewer_two: { name: string } | null;
@@ -46,6 +48,8 @@ interface AdminAbstractsIndexProps {
     subthemes: Subtheme[];
     filters: { status?: string; subtheme_id?: string; search?: string };
     counts: Record<AbstractStatus, number> & { total: number };
+    /** True for reviewers: author identity is withheld and not searchable. */
+    isBlinded: boolean;
 }
 
 const statusConfig: Record<AbstractStatus, { label: string; badge: string; icon: typeof FileClock; countLabel: string }> = {
@@ -79,7 +83,7 @@ function formatDate(value: string) {
     return new Intl.DateTimeFormat('en', { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(value));
 }
 
-export default function AdminAbstractsIndex({ submissions, subthemes, filters, counts }: AdminAbstractsIndexProps) {
+export default function AdminAbstractsIndex({ submissions, subthemes, filters, counts, isBlinded }: AdminAbstractsIndexProps) {
     const [search, setSearch] = useState(filters.search ?? '');
 
     const visit = (next: Partial<typeof filters>) => {
@@ -158,7 +162,7 @@ export default function AdminAbstractsIndex({ submissions, subthemes, filters, c
                                 <Input
                                     value={search}
                                     onChange={(event) => setSearch(event.target.value)}
-                                    placeholder="Search title, author, or email"
+                                    placeholder={isBlinded ? 'Search abstract titles' : 'Search title, author, or email'}
                                     className="pl-9"
                                 />
                             </div>
@@ -199,13 +203,28 @@ export default function AdminAbstractsIndex({ submissions, subthemes, filters, c
                                                 >
                                                     {config.label}
                                                 </span>
+                                                {/* For a reviewer this is a re-review, not a new one — say so
+                                                    plainly, and how many rounds have already happened. */}
                                                 {submission.resubmitted_at && submission.status === 'submitted' && (
-                                                    <span className="text-xs font-bold text-[#135eeb]">Revised submission</span>
+                                                    <span className="inline-flex items-center gap-1 rounded-full bg-[#eaf1ff] px-2.5 py-1 text-xs font-bold text-[#135eeb] dark:bg-[#135eeb]/15">
+                                                        <History className="size-3.5" />
+                                                        Re-review
+                                                        {submission.review_round > 1 ? ` · round ${submission.review_round}` : ''}
+                                                    </span>
                                                 )}
                                             </div>
                                             <h2 className="mt-3 text-lg leading-7 font-semibold text-balance">{submission.title}</h2>
+                                            {/* Blind review: the server omits the author entirely for reviewers. */}
                                             <p className="text-muted-foreground mt-1 text-sm">
-                                                {submission.user.name} · {submission.user.institution || submission.user.email}
+                                                {submission.user ? (
+                                                    <>
+                                                        {submission.user.name} · {submission.user.institution || submission.user.email}
+                                                    </>
+                                                ) : (
+                                                    <span className="inline-flex items-center gap-1.5 italic">
+                                                        <EyeOff className="size-3.5" /> Author hidden for blind review
+                                                    </span>
+                                                )}
                                             </p>
                                             <div className="text-muted-foreground mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs">
                                                 <span className="capitalize">{submission.presentation_type} presentation</span>
@@ -225,8 +244,10 @@ export default function AdminAbstractsIndex({ submissions, subthemes, filters, c
                                             className={submission.status === 'submitted' ? 'bg-[#4c8a1f] hover:bg-[#3f751a]' : ''}
                                             variant={submission.status === 'submitted' ? 'default' : 'outline'}
                                         >
+                                            {/* Admins no longer review here — reviewers recommend, admins assign
+                                                and decide — so the label just describes opening the record. */}
                                             <Link href={route('admin.abstracts.show', submission.id)}>
-                                                {submission.status === 'submitted' ? 'Read and review' : 'View record'}
+                                                {submission.status === 'submitted' ? 'Read abstract' : 'View record'}
                                                 <ArrowRight className="size-4" />
                                             </Link>
                                         </Button>

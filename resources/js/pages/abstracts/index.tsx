@@ -2,13 +2,15 @@ import { DashboardCard, IconTile } from '@/components/dashboard-card';
 import { StatusPill, type PillTone } from '@/components/status-pill';
 import { Button } from '@/components/ui/button';
 import AppLayout from '@/layouts/app-layout';
+import { cn } from '@/lib/utils';
 import { type BreadcrumbItem } from '@/types';
 import { Head, Link } from '@inertiajs/react';
 import { ArrowRight, CalendarDays, FileText, FileUp, Plus, Presentation } from 'lucide-react';
 
 const breadcrumbs: BreadcrumbItem[] = [{ title: 'My Abstracts', href: '/abstracts' }];
 
-type PresentationStatus = 'pending' | 'uploaded' | 'approved';
+/** Presentations aren't reviewed — a file is either on record or it isn't. */
+type PresentationStatus = 'pending' | 'uploaded';
 
 interface Submission {
     id: number;
@@ -23,7 +25,6 @@ interface Submission {
 const presentationLabel: Record<PresentationStatus, string> = {
     pending: 'Upload presentation',
     uploaded: 'Presentation submitted',
-    approved: 'Presentation approved',
 };
 
 interface AbstractIndexProps {
@@ -153,7 +154,14 @@ export default function AbstractIndex({ submissions }: AbstractIndexProps) {
                                     {submission.status === 'accepted' && (
                                         <Link
                                             href={route('abstracts.presentation.show', submission.id)}
-                                            className="group inline-flex min-h-10 items-center gap-3 rounded-xl border border-[#4c8a1f]/25 bg-white px-4 py-2 text-sm font-bold text-[#4c8a1f] shadow-sm transition hover:-translate-y-0.5 hover:bg-[#eef7e6] dark:bg-transparent"
+                                            className={cn(
+                                                'group inline-flex min-h-10 items-center gap-3 rounded-xl px-4 py-2 text-sm font-bold shadow-sm transition hover:-translate-y-0.5 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none',
+                                                // A submitted presentation is a done state, so it reads as
+                                                // one — solid green rather than an outline prompting action.
+                                                submission.presentation_status === 'uploaded'
+                                                    ? 'bg-[#4c8a1f] text-white hover:bg-[#3f751a] hover:shadow-md focus-visible:ring-[#4c8a1f]'
+                                                    : 'border border-[#4c8a1f]/25 bg-white text-[#4c8a1f] hover:bg-[#eef7e6] focus-visible:ring-[#4c8a1f] dark:bg-transparent',
+                                            )}
                                         >
                                             <FileUp className="size-4" />
                                             {presentationLabel[submission.presentation_status]}

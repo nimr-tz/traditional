@@ -11,6 +11,7 @@ class AbstractReviewerDecision extends Model
     protected $fillable = [
         'abstract_submission_id',
         'reviewer_id',
+        'round',
         'recommendation',
         'decided_at',
     ];

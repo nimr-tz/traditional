@@ -4,8 +4,11 @@ use App\Http\Controllers\Admin\AbstractController as AdminAbstractController;
 use App\Http\Controllers\Admin\AdministratorController as AdminAdministratorController;
 use App\Http\Controllers\Admin\BillingMaintenanceController as AdminBillingMaintenanceController;
 use App\Http\Controllers\Admin\DashboardController as AdminDashboardController;
+use App\Http\Controllers\Admin\EmailCampaignController as AdminEmailCampaignController;
 use App\Http\Controllers\Admin\FinanceController as AdminFinanceController;
+use App\Http\Controllers\Admin\ManagementDashboardController as AdminManagementDashboardController;
 use App\Http\Controllers\Admin\RegistrationController as AdminRegistrationController;
+use App\Http\Controllers\Admin\ReviewerAssignmentController as AdminReviewerAssignmentController;
 use App\Http\Controllers\Admin\SettingsController as AdminSettingsController;
 use App\Http\Controllers\Admin\StudentVerificationController as AdminStudentVerificationController;
 use Illuminate\Support\Facades\Route;
@@ -18,9 +21,9 @@ Route::middleware(['auth', 'role:reviewer,admin,super_admin'])->prefix('admin')-
     Route::get('abstracts', [AdminAbstractController::class, 'index'])->name('abstracts.index');
     Route::get('abstracts/{abstract}', [AdminAbstractController::class, 'show'])->name('abstracts.show');
     Route::post('abstracts/{abstract}/reviewer-decision', [AdminAbstractController::class, 'recordReviewerDecision'])->name('abstracts.reviewer-decision');
+    // Presentations are not reviewed — organizers can read what was uploaded,
+    // but there is no approve/reject step.
     Route::get('abstracts/{abstract}/presentation/download', [AdminAbstractController::class, 'downloadPresentation'])->name('abstracts.presentation.download');
-    Route::post('abstracts/{abstract}/presentation/approve', [AdminAbstractController::class, 'approvePresentation'])->name('abstracts.presentation.approve');
-    Route::post('abstracts/{abstract}/presentation/reject', [AdminAbstractController::class, 'rejectPresentation'])->name('abstracts.presentation.reject');
 });
 
 // Registrations, student verification, reviewer assignment, and final abstract decisions:
@@ -29,8 +32,28 @@ Route::middleware(['auth', 'role:admin,super_admin'])->prefix('admin')->name('ad
     Route::post('abstracts/{abstract}/reviewers', [AdminAbstractController::class, 'assignReviewers'])->name('abstracts.reviewers.assign');
     Route::post('abstracts/{abstract}/decide', [AdminAbstractController::class, 'decide'])->name('abstracts.decide');
 
+    // Pipeline-wide view of who is reviewing what. Assignment writes still go
+    // through abstracts.reviewers.assign above — this is the console, not a
+    // second implementation of the rules.
+    Route::get('assignments', [AdminReviewerAssignmentController::class, 'index'])->name('assignments.index');
+
+    // Reporting view for the organizing committee: totals and breakdowns,
+    // as opposed to admin.dashboard which is the day-to-day work queue.
+    Route::get('management', [AdminManagementDashboardController::class, 'index'])->name('management.index');
+
+    // Admin-composed announcements to a segment of registrants. Distinct from
+    // the transactional mailables, which fire on events and have no author.
+    Route::get('emails', [AdminEmailCampaignController::class, 'index'])->name('emails.index');
+    Route::get('emails/recipient-count', [AdminEmailCampaignController::class, 'count'])->name('emails.count');
+    Route::post('emails/test', [AdminEmailCampaignController::class, 'test'])->name('emails.test');
+    Route::post('emails', [AdminEmailCampaignController::class, 'store'])->name('emails.store');
+    Route::get('emails/{campaign}', [AdminEmailCampaignController::class, 'show'])->name('emails.show');
+
     Route::get('registrations', [AdminRegistrationController::class, 'index'])->name('registrations.index');
     Route::get('registrations/export', [AdminRegistrationController::class, 'export'])->name('registrations.export');
+    // The only route that can change a registrant's email — they can't do it
+    // themselves, so a typo at registration is otherwise unrecoverable.
+    Route::patch('registrations/{user}/email', [AdminRegistrationController::class, 'updateEmail'])->name('registrations.email.update');
 
     Route::get('students', [AdminStudentVerificationController::class, 'index'])->name('students.index');
     Route::get('students/{user}/document', [AdminStudentVerificationController::class, 'document'])->name('students.document');
@@ -49,8 +72,11 @@ Route::middleware(['auth', 'role:super_admin'])->prefix('admin')->name('admin.')
     Route::patch('settings/institutions/{institution}', [AdminSettingsController::class, 'updateInstitution'])->name('settings.institutions.update');
     Route::patch('settings/conference', [AdminSettingsController::class, 'updateConferenceSettings'])->name('settings.conference.update');
 
-    Route::get('settings/users', [AdminAdministratorController::class, 'index'])->name('settings.users.index');
-    Route::patch('settings/users/{user}/roles', [AdminAdministratorController::class, 'updateRoles'])->name('settings.users.update-roles');
+    // People administration lives on its own, not under conference settings —
+    // who can do what has nothing to do with the conference's details.
+    Route::get('users', [AdminAdministratorController::class, 'index'])->name('users.index');
+    Route::get('users/search', [AdminAdministratorController::class, 'search'])->name('users.search');
+    Route::patch('users/{user}/roles', [AdminAdministratorController::class, 'updateRoles'])->name('users.update-roles');
 
     // One-off cutover maintenance: clears the control numbers and simulated payments sandbox
     // mode left behind. Defaults to a dry run — writing needs an explicit dry_run=false.

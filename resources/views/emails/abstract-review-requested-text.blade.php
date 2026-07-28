@@ -1,7 +1,12 @@
-{{ $isRevision ? 'Revised abstract ready for review' : 'New abstract ready for review' }}
+{{ $isRevision ? 'Abstract ready for re-review' : 'New abstract ready for review' }}
+@if($isRevision)
 
+An abstract you previously reviewed has been revised. Your earlier recommendation and comments are shown alongside it.
+@endif
+
+{{-- Blind review: never name the author here. --}}
 {{ $submission->title }}
-Author: {{ $submission->user->name }}
+Sub-theme: {{ $submission->subtheme?->title ?? 'No sub-theme' }}
 Presentation: {{ ucfirst($submission->presentation_type) }}
 
 Read and review: {{ $reviewUrl }}

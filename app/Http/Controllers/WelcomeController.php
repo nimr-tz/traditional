@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\ConferenceSetting;
 use App\Models\FeeCategory;
 use App\Models\Subtheme;
+use App\Support\RegistrationWindow;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Vite;
 use Inertia\Inertia;
@@ -67,6 +68,7 @@ class WelcomeController extends Controller
             'conference' => $conference,
             'subthemes' => Subtheme::where('active', true)->orderBy('sort_order')->get(['title', 'description']),
             'feeCategories' => $feeCategories,
+            'registrationWindow' => RegistrationWindow::toArray(),
             'seo' => [
                 'title' => $title,
                 'description' => $description,
