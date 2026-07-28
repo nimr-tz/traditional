@@ -340,6 +340,27 @@ class PaymentFlowTest extends TestCase
         Mail::assertQueued(ControlNumberIssued::class, fn ($mail) => $mail->hasTo($user->email));
     }
 
+    public function test_assessment_alias_accepts_the_billing_systems_real_payload(): void
+    {
+        Mail::fake();
+
+        $user = User::factory()->create([
+            'billing_request_id' => 'BILL13',
+            'fee_amount' => 150,
+            'currency' => 'USD',
+        ]);
+
+        $this->postJson('/api/billing/assessment', [
+            'req_id' => 'REQ13',
+            'bill_id' => 'BILL13',
+            'cntr_num' => 916992275513,
+            'bill_print_url' => 'http://10.0.10.53/billing/bills/BILL13/transfer/',
+        ])->assertOk();
+
+        $this->assertSame('916992275513', $user->fresh()->control_number);
+        Mail::assertQueued(ControlNumberIssued::class, fn ($mail) => $mail->hasTo($user->email));
+    }
+
     public function test_control_number_callback_is_rejected_from_an_ip_outside_the_allowlist(): void
     {
         config(['billing.callback_allowed_ips' => '10.0.10.53']);
@@ -404,6 +425,41 @@ class PaymentFlowTest extends TestCase
         $user->refresh();
         $this->assertSame('verified', $user->payment_status);
         $this->assertSame('TRX-REAL-1', $user->payment_transaction_id);
+        $this->assertNotNull($user->registration_code);
+    }
+
+    public function test_payment_alias_accepts_the_billing_systems_real_payload(): void
+    {
+        Mail::fake();
+
+        $user = User::factory()->create([
+            'billing_request_id' => 'BILL14',
+            'control_number' => '916992275514',
+            'payment_status' => 'submitted',
+            'fee_amount' => 150,
+            'currency' => 'USD',
+        ]);
+
+        $this->postJson('/api/billing/payment', [
+            'bill_id' => 'BILL14',
+            'cntr_num' => 916992275514,
+            'psp_code' => 'CRDB',
+            'psp_name' => 'CRDB Bank',
+            'trx_id' => 'TRX-REAL-2',
+            'payref_id' => 'PAYREF-2',
+            'bill_amt' => '150.00',
+            'paid_amt' => '150.00',
+            'paid_ccy' => 'USD',
+            'coll_acc_num' => '0150XXXXXXXXX',
+            'trx_date' => '2026-07-26T10:00:00',
+            'pay_channel' => 'BANK',
+            'pyr_cell_num' => '255700000000',
+            'bill_receipt_url' => 'http://10.0.10.53/billing/bills/BILL14/receipt/',
+        ])->assertOk();
+
+        $user->refresh();
+        $this->assertSame('verified', $user->payment_status);
+        $this->assertSame('TRX-REAL-2', $user->payment_transaction_id);
         $this->assertNotNull($user->registration_code);
     }
 

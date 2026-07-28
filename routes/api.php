@@ -11,6 +11,12 @@ Route::post('billing/control-number-callback', [BillingCallbackController::class
 Route::post('billing/payment-callback', [BillingCallbackController::class, 'paymentReceived'])
     ->name('billing.payment-callback');
 
+// AJSC-compatible callback paths used by the NIMR Billing system registry UI.
+Route::post('billing/assessment', [BillingCallbackController::class, 'controlNumberAssigned'])
+    ->name('billing.assessment');
+Route::post('billing/payment', [BillingCallbackController::class, 'paymentReceived'])
+    ->name('billing.payment');
+
 // Dev-only: simulate a successful payment while sandbox mode is on.
 Route::post('billing/sandbox/simulate/{user}', [BillingCallbackController::class, 'simulate'])
     ->name('billing.sandbox.simulate');
