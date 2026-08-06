@@ -7,7 +7,7 @@ import AppLayout from '@/layouts/app-layout';
 import { cn } from '@/lib/utils';
 import { type BreadcrumbItem } from '@/types';
 import { Head, Link, router, useForm } from '@inertiajs/react';
-import { Check, FileText, GraduationCap, Search, ShieldCheck, X } from 'lucide-react';
+import { AlertTriangle, Check, FileText, GraduationCap, RotateCcw, Search, ShieldCheck, X } from 'lucide-react';
 import { FormEventHandler, useState } from 'react';
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -27,6 +27,7 @@ interface Student {
     student_verification_status: VerificationStatus | null;
     student_verified_at: string | null;
     student_verification_notes: string | null;
+    control_number: string | null;
 }
 
 interface Paginated<T> {
@@ -77,7 +78,20 @@ function StudentRow({ student }: { student: Student }) {
         post(route('admin.students.reject', student.id), { preserveScroll: true, onSuccess: () => reset() });
     };
 
+    const reopen = () => {
+        const warning = student.control_number
+            ? `${student.name} already has control number ${student.control_number} at the student rate. Reopening the review does not void it — finance must reset the billing. Continue?`
+            : `Undo this decision and put ${student.name} back in the review queue?`;
+
+        if (!window.confirm(warning)) {
+            return;
+        }
+
+        post(route('admin.students.reopen', student.id), { preserveScroll: true, onSuccess: () => reset() });
+    };
+
     const status = student.student_verification_status;
+    const decided = status === 'verified' || status === 'rejected';
 
     return (
         <article className="grid gap-4 p-5 md:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)] md:items-start">
@@ -146,9 +160,30 @@ function StudentRow({ student }: { student: Student }) {
                         </div>
                     </div>
                 ) : (
-                    <p className="text-muted-foreground rounded-xl bg-slate-50 p-3.5 text-sm leading-6 dark:bg-slate-900">
-                        {status ? (student.student_verification_notes ?? 'No review notes.') : 'Waiting for the student to submit a document.'}
-                    </p>
+                    <div className="flex flex-col gap-2.5">
+                        <p className="text-muted-foreground rounded-xl bg-slate-50 p-3.5 text-sm leading-6 dark:bg-slate-900">
+                            {status ? (student.student_verification_notes ?? 'No review notes.') : 'Waiting for the student to submit a document.'}
+                        </p>
+
+                        {decided && student.control_number && (
+                            <p className="flex items-start gap-2 text-xs leading-5 text-amber-700 dark:text-amber-500">
+                                <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+                                <span>
+                                    Control number {student.control_number} was already issued at the student rate. Reopening the review will not void
+                                    it.
+                                </span>
+                            </p>
+                        )}
+
+                        {decided && (
+                            <div>
+                                <Button size="sm" variant="outline" onClick={reopen} disabled={processing}>
+                                    <RotateCcw className="size-4" />
+                                    Reopen review
+                                </Button>
+                            </div>
+                        )}
+                    </div>
                 )}
             </div>
         </article>

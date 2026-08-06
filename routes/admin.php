@@ -59,6 +59,9 @@ Route::middleware(['auth', 'role:admin,super_admin'])->prefix('admin')->name('ad
     Route::get('students/{user}/document', [AdminStudentVerificationController::class, 'document'])->name('students.document');
     Route::post('students/{user}/verify', [AdminStudentVerificationController::class, 'verify'])->name('students.verify');
     Route::post('students/{user}/reject', [AdminStudentVerificationController::class, 'reject'])->name('students.reject');
+    // The undo for a misclicked decision: verify/reject only accept `pending`,
+    // so without this a wrong call is permanent.
+    Route::post('students/{user}/reopen', [AdminStudentVerificationController::class, 'reopen'])->name('students.reopen');
 });
 
 // Conference settings and user/role management are super-admin only — the one console that

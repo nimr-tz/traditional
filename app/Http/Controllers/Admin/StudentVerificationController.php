@@ -111,4 +111,46 @@ class StudentVerificationController extends Controller
 
         return back()->with('success', "Student document for {$user->name} has been rejected.");
     }
+
+    /**
+     * Undo a decision and put the student back in the queue. Both verify and
+     * reject only act on `pending`, so a misclick is otherwise permanent —
+     * this is the way back to `pending`, not a third way to decide. The real
+     * decision is then made through the normal buttons, so the student gets
+     * the right mail with the right notes.
+     *
+     * Deliberately silent: the student hears about the re-decision, not about
+     * the queue mechanics. The note we leave behind is internal (the payment
+     * page only surfaces notes on a `rejected` status).
+     */
+    public function reopen(Request $request, User $user): RedirectResponse
+    {
+        $request->validate(['notes' => ['nullable', 'string', 'max:1000']]);
+
+        abort_unless(
+            $user->requiresStudentVerification()
+                && in_array($user->student_verification_status, ['verified', 'rejected'], true),
+            422,
+        );
+
+        $previousStatus = $user->student_verification_status;
+        $admin = Auth::user();
+
+        $user->forceFill([
+            'student_verification_status' => 'pending',
+            'student_verified_at' => null,
+            'student_verified_by' => null,
+            'student_verification_notes' => $request->notes
+                ?: "Reopened by {$admin->name} (previously {$previousStatus}).",
+        ])->save();
+
+        // Reopening blocks *future* student-rate billing, but it cannot recall
+        // a control number already issued at that rate — that's finance's
+        // "Reset billing" action. Say so rather than implying a clean undo.
+        $message = $user->control_number
+            ? "{$user->name} is back in the review queue. Control number {$user->control_number} was already issued at the student rate — ask finance to reset billing if it should be voided."
+            : "{$user->name} is back in the review queue.";
+
+        return back()->with($user->control_number ? 'info' : 'success', $message);
+    }
 }
