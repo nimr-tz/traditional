@@ -5,7 +5,7 @@ import AppLayout from '@/layouts/app-layout';
 import { cn } from '@/lib/utils';
 import { type BreadcrumbItem } from '@/types';
 import { Head, Link } from '@inertiajs/react';
-import { ArrowRight, CalendarDays, FileText, FileUp, Plus, Presentation } from 'lucide-react';
+import { ArrowRight, CalendarDays, FileText, FileUp, Lock, Plus, Presentation } from 'lucide-react';
 
 const breadcrumbs: BreadcrumbItem[] = [{ title: 'My Abstracts', href: '/abstracts' }];
 
@@ -29,6 +29,7 @@ const presentationLabel: Record<PresentationStatus, string> = {
 
 interface AbstractIndexProps {
     submissions: Submission[];
+    submissionWindow: { deadline: string | null; is_open: boolean; closed_message: string | null };
 }
 
 const statusTone: Record<Submission['status'], PillTone> = {
@@ -57,7 +58,7 @@ function formatDate(value: string) {
           }).format(date);
 }
 
-export default function AbstractIndex({ submissions }: AbstractIndexProps) {
+export default function AbstractIndex({ submissions, submissionWindow }: AbstractIndexProps) {
     const submittedCount = submissions.filter((submission) => submission.status === 'submitted').length;
     const acceptedCount = submissions.filter((submission) => submission.status === 'accepted').length;
     const revisionCount = submissions.filter((submission) => submission.status === 'revision_requested').length;
@@ -104,12 +105,19 @@ export default function AbstractIndex({ submissions }: AbstractIndexProps) {
                             </div>
                         </div>
 
-                        <Button asChild className="h-11 bg-[#4c8a1f] px-5 font-bold hover:bg-[#3f751a]">
-                            <Link href={route('abstracts.create')}>
-                                <Plus className="size-4" />
-                                Submit new abstract
-                            </Link>
-                        </Button>
+                        {submissionWindow.is_open ? (
+                            <Button asChild className="h-11 bg-[#4c8a1f] px-5 font-bold hover:bg-[#3f751a]">
+                                <Link href={route('abstracts.create')}>
+                                    <Plus className="size-4" />
+                                    Submit new abstract
+                                </Link>
+                            </Button>
+                        ) : (
+                            <p className="text-muted-foreground flex max-w-xs items-start gap-2.5 rounded-xl bg-slate-100 p-3.5 text-sm leading-6 dark:bg-slate-800">
+                                <Lock className="mt-1 size-4 shrink-0" />
+                                <span>{submissionWindow.closed_message}</span>
+                            </p>
+                        )}
                     </div>
                 </section>
 
@@ -119,9 +127,13 @@ export default function AbstractIndex({ submissions }: AbstractIndexProps) {
                             <FileText className="size-5" />
                         </IconTile>
                         <h2 className="mt-4 text-lg font-semibold">No abstracts submitted</h2>
-                        <Button asChild className="mt-5 bg-[#4c8a1f] font-bold hover:bg-[#3f751a]">
-                            <Link href={route('abstracts.create')}>Submit your first abstract</Link>
-                        </Button>
+                        {submissionWindow.is_open ? (
+                            <Button asChild className="mt-5 bg-[#4c8a1f] font-bold hover:bg-[#3f751a]">
+                                <Link href={route('abstracts.create')}>Submit your first abstract</Link>
+                            </Button>
+                        ) : (
+                            <p className="text-muted-foreground mt-3 max-w-sm text-sm leading-6">{submissionWindow.closed_message}</p>
+                        )}
                     </DashboardCard>
                 ) : (
                     <section className="space-y-4" aria-label="Abstract submissions">

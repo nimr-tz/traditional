@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\ConferenceSetting;
 use App\Models\FeeCategory;
+use App\Support\SubmissionWindow;
 use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -37,6 +38,9 @@ class DashboardController extends Controller
             'venue' => ConferenceSetting::get('venue'),
             'conferenceStartDate' => ConferenceSetting::get('start_date'),
             'submissionDeadline' => ConferenceSetting::get('submission_deadline'),
+            // The card's call to action has to match the route guard, or it
+            // sends people to a page that bounces them straight back.
+            'submissionWindow' => SubmissionWindow::toArray(),
         ]);
     }
 }

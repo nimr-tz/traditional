@@ -40,8 +40,15 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('student-verification.document');
 
     Route::get('abstracts', [AbstractController::class, 'index'])->name('abstracts.index');
-    Route::get('abstracts/create', [AbstractController::class, 'create'])->name('abstracts.create');
-    Route::post('abstracts', [AbstractController::class, 'store'])->name('abstracts.store');
+    // Only *new* abstracts close at the submission deadline. Editing and
+    // resubmitting stay open below, so revisions requested after the deadline
+    // can still be answered.
+    Route::get('abstracts/create', [AbstractController::class, 'create'])
+        ->middleware('abstracts.open')
+        ->name('abstracts.create');
+    Route::post('abstracts', [AbstractController::class, 'store'])
+        ->middleware('abstracts.open')
+        ->name('abstracts.store');
     Route::get('abstracts/{abstract}/edit', [AbstractController::class, 'edit'])->name('abstracts.edit');
     Route::put('abstracts/{abstract}', [AbstractController::class, 'update'])->name('abstracts.update');
     Route::post('abstracts/{abstract}/comments/{comment}/toggle-addressed', [AbstractController::class, 'toggleCommentAddressed'])

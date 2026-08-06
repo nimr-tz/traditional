@@ -38,6 +38,7 @@ interface DashboardProps {
     venue: string | null;
     conferenceStartDate: string | null;
     submissionDeadline: string | null;
+    submissionWindow: { deadline: string | null; is_open: boolean; closed_message: string | null };
 }
 
 const paymentStatusLabel: Record<PaymentStatus, string> = {
@@ -158,6 +159,7 @@ export default function Dashboard({
     venue,
     conferenceStartDate,
     submissionDeadline,
+    submissionWindow,
 }: DashboardProps) {
     const firstName = userName?.split(' ')[0] ?? '';
     const hasAbstract = abstractsCount > 0;
@@ -341,14 +343,21 @@ export default function Dashboard({
                                 <div className="dark:border-border mt-6 border-y border-slate-100 py-5">
                                     <p className="text-sm font-semibold">No abstract submitted yet</p>
                                     <p className="text-muted-foreground mt-1 text-xs leading-5">
-                                        You can submit before or after payment, or continue without submitting one.
+                                        {submissionWindow.is_open
+                                            ? 'You can submit before or after payment, or continue without submitting one.'
+                                            : submissionWindow.closed_message}
                                     </p>
                                 </div>
                             )}
 
                             <div className="mt-auto pt-5">
-                                {hasAbstract ? (
-                                    <ActionRow href={route('abstracts.index')} compact title="Manage abstracts" tone="green" />
+                                {hasAbstract || !submissionWindow.is_open ? (
+                                    <ActionRow
+                                        href={route('abstracts.index')}
+                                        compact
+                                        title={hasAbstract ? 'Manage abstracts' : 'View the call for abstracts'}
+                                        tone="green"
+                                    />
                                 ) : (
                                     <ActionRow href={route('abstracts.create')} compact title="Submit your first abstract" tone="green" />
                                 )}

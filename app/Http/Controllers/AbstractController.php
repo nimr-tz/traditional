@@ -8,6 +8,7 @@ use App\Models\AbstractReviewerComment;
 use App\Models\AbstractSubmission;
 use App\Models\Subtheme;
 use App\Models\User;
+use App\Support\SubmissionWindow;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -32,6 +33,9 @@ class AbstractController extends Controller
 
         return Inertia::render('abstracts/index', [
             'submissions' => $submissions,
+            // So the page and the route guard can't disagree about whether the
+            // call for abstracts is still open.
+            'submissionWindow' => SubmissionWindow::toArray(),
         ]);
     }
 
