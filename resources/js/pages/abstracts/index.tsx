@@ -3,8 +3,8 @@ import { StatusPill, type PillTone } from '@/components/status-pill';
 import { Button } from '@/components/ui/button';
 import AppLayout from '@/layouts/app-layout';
 import { cn } from '@/lib/utils';
-import { type BreadcrumbItem } from '@/types';
-import { Head, Link } from '@inertiajs/react';
+import { type BreadcrumbItem, type SharedData } from '@/types';
+import { Head, Link, usePage } from '@inertiajs/react';
 import { ArrowRight, CalendarDays, FileText, FileUp, Lock, Plus, Presentation } from 'lucide-react';
 
 const breadcrumbs: BreadcrumbItem[] = [{ title: 'My Abstracts', href: '/abstracts' }];
@@ -29,7 +29,6 @@ const presentationLabel: Record<PresentationStatus, string> = {
 
 interface AbstractIndexProps {
     submissions: Submission[];
-    submissionWindow: { deadline: string | null; is_open: boolean; closed_message: string | null };
 }
 
 const statusTone: Record<Submission['status'], PillTone> = {
@@ -58,7 +57,9 @@ function formatDate(value: string) {
           }).format(date);
 }
 
-export default function AbstractIndex({ submissions, submissionWindow }: AbstractIndexProps) {
+export default function AbstractIndex({ submissions }: AbstractIndexProps) {
+    const { submissionWindow } = usePage<SharedData>().props;
+
     const submittedCount = submissions.filter((submission) => submission.status === 'submitted').length;
     const acceptedCount = submissions.filter((submission) => submission.status === 'accepted').length;
     const revisionCount = submissions.filter((submission) => submission.status === 'revision_requested').length;

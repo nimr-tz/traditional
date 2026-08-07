@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Support\SubmissionWindow;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
+use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
 class SubmissionWindowTest extends TestCase
@@ -115,6 +116,41 @@ class SubmissionWindowTest extends TestCase
 
         $this->assertSame('A revised abstract', $abstract->title);
         $this->assertSame('submitted', $abstract->status);
+    }
+
+    /**
+     * The guard closing the route is only half the job — every page that prints
+     * the deadline has to stop inviting submissions at the same moment, or the
+     * public site keeps advertising a call that no longer accepts anything.
+     */
+    public function test_the_closed_window_reaches_every_page_as_a_shared_prop(): void
+    {
+        ConferenceSetting::set('submission_deadline', '2026-08-13');
+        $this->travelTo('2026-08-14 09:00:00');
+
+        $expected = fn (Assert $page) => $page
+            ->where('submissionWindow.is_open', false)
+            ->where('submissionWindow.deadline', '2026-08-13')
+            ->where('submissionWindow.closed_message', 'The deadline for abstract submissions passed on 13 August 2026.')
+            ->etc();
+
+        $this->get('/')->assertOk()->assertInertia($expected);
+        $this->get('/login')->assertOk()->assertInertia($expected);
+
+        $this->actingAs(User::factory()->create());
+        $this->get('/dashboard')->assertOk()->assertInertia($expected);
+        $this->get(route('abstracts.index'))->assertOk()->assertInertia($expected);
+    }
+
+    public function test_the_window_reads_as_open_while_the_deadline_stands(): void
+    {
+        ConferenceSetting::set('submission_deadline', '2026-08-13');
+        $this->travelTo('2026-08-13 09:00:00');
+
+        $this->get('/')->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->where('submissionWindow.is_open', true)
+            ->where('submissionWindow.closed_message', null)
+            ->etc());
     }
 
     public function test_an_unset_or_garbled_deadline_leaves_the_call_open(): void

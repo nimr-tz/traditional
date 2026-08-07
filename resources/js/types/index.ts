@@ -21,10 +21,18 @@ export interface NavItem {
     isActive?: boolean;
 }
 
+/** Whether new abstracts are still being accepted. Mirrors App\Support\SubmissionWindow. */
+export interface SubmissionWindow {
+    deadline: string | null;
+    is_open: boolean;
+    closed_message: string | null;
+}
+
 export interface SharedData {
     name: string;
     quote: { message: string; author: string };
     conference: Record<string, string | null>;
+    submissionWindow: SubmissionWindow;
     auth: Auth;
     [key: string]: unknown;
 }

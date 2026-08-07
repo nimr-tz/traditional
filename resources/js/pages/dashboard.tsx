@@ -2,8 +2,8 @@ import { DashboardCard, IconTile } from '@/components/dashboard-card';
 import { StatusPill, type PillTone } from '@/components/status-pill';
 import AppLayout from '@/layouts/app-layout';
 import { cn } from '@/lib/utils';
-import { type BreadcrumbItem } from '@/types';
-import { Head, Link } from '@inertiajs/react';
+import { type BreadcrumbItem, type SharedData } from '@/types';
+import { Head, Link, usePage } from '@inertiajs/react';
 import { ArrowRight, Award, BadgeCheck, CalendarDays, FileText, MapPin, Sparkles, Wallet } from 'lucide-react';
 
 const breadcrumbs: BreadcrumbItem[] = [{ title: 'Dashboard', href: '/dashboard' }];
@@ -38,7 +38,6 @@ interface DashboardProps {
     venue: string | null;
     conferenceStartDate: string | null;
     submissionDeadline: string | null;
-    submissionWindow: { deadline: string | null; is_open: boolean; closed_message: string | null };
 }
 
 const paymentStatusLabel: Record<PaymentStatus, string> = {
@@ -159,8 +158,8 @@ export default function Dashboard({
     venue,
     conferenceStartDate,
     submissionDeadline,
-    submissionWindow,
 }: DashboardProps) {
+    const { submissionWindow } = usePage<SharedData>().props;
     const firstName = userName?.split(' ')[0] ?? '';
     const hasAbstract = abstractsCount > 0;
     const formattedConferenceDate = formatDate(conferenceStartDate);
