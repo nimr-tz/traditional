@@ -5,7 +5,19 @@ import { RoleSwitcher } from '@/components/role-switcher';
 import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar';
 import { type NavItem, type SharedData } from '@/types';
 import { Link, usePage } from '@inertiajs/react';
-import { BadgeCheck, ClipboardList, GraduationCap, LayoutGrid, ScrollText, Settings, Wallet } from 'lucide-react';
+import {
+    BadgeCheck,
+    ChartColumn,
+    ClipboardList,
+    GraduationCap,
+    LayoutGrid,
+    Mail,
+    ScrollText,
+    Settings,
+    Users,
+    UsersRound,
+    Wallet,
+} from 'lucide-react';
 import AppLogo from './app-logo';
 
 const registrantNavItems: NavItem[] = [
@@ -32,15 +44,26 @@ const financeNavItems: NavItem[] = [
 // even though admin/super_admin can still reach it directly by URL if needed.
 const adminNavItems: NavItem[] = [
     { title: 'Dashboard', url: '/admin', icon: BadgeCheck },
+    { title: 'Management Report', url: '/admin/management', icon: ChartColumn },
     { title: 'Registrations', url: '/admin/registrations', icon: ClipboardList },
+    { title: 'Email Manager', url: '/admin/emails', icon: Mail },
     { title: 'Student Verification', url: '/admin/students', icon: GraduationCap },
     { title: 'Abstracts Review', url: '/admin/abstracts', icon: ScrollText },
+    { title: 'Reviewer Assignments', url: '/admin/assignments', icon: Users },
 ];
 
-// Super admin's own lane: users/roles and conference settings — not the
-// abstract-review/student-verification queues that admin and reviewer handle.
+// Super admins are implicitly allowed everywhere (see EnsureUserHasRole), so
+// this list is about what they can *find*, not what they may do. Abstracts are
+// linked here because a super admin is an eligible reviewer and makes final
+// decisions — leaving the link out made the whole review side of the app
+// reachable only by typing the URL.
 const superAdminNavItems: NavItem[] = [
+    { title: 'Management Report', url: '/admin/management', icon: ChartColumn },
     { title: 'Registrations', url: '/admin/registrations', icon: ClipboardList },
+    { title: 'Email Manager', url: '/admin/emails', icon: Mail },
+    { title: 'Abstracts Review', url: '/admin/abstracts', icon: ScrollText },
+    { title: 'Reviewer Assignments', url: '/admin/assignments', icon: Users },
+    { title: 'Users & Roles', url: '/admin/users', icon: UsersRound },
     { title: 'Conference Settings', url: '/admin/settings', icon: Settings },
 ];
 

@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\AdministratorAccessChange;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
 class AdministratorManagementTest extends TestCase
@@ -17,7 +18,7 @@ class AdministratorManagementTest extends TestCase
         $participant = User::factory()->create(['name' => 'Amina Mushi', 'email' => 'amina@example.com']);
         $reviewer = User::factory()->reviewer()->create(['name' => 'Amina Reviewer', 'email' => 'reviewer@example.com']);
 
-        $response = $this->actingAs($superAdmin)->getJson(route('admin.settings.users.index', ['query' => 'Amina']));
+        $response = $this->actingAs($superAdmin)->getJson(route('admin.users.search', ['query' => 'Amina']));
 
         $response->assertOk()->assertJsonCount(2, 'data');
         $ids = collect($response->json('data'))->pluck('id')->all();
@@ -31,7 +32,7 @@ class AdministratorManagementTest extends TestCase
         User::factory()->create();
         User::factory()->reviewer()->create();
 
-        $response = $this->actingAs($superAdmin)->getJson(route('admin.settings.users.index', ['role' => 'reviewer']));
+        $response = $this->actingAs($superAdmin)->getJson(route('admin.users.search', ['role' => 'reviewer']));
 
         $response->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.role', 'reviewer');
     }
@@ -42,7 +43,7 @@ class AdministratorManagementTest extends TestCase
         $reviewer = User::factory()->reviewer()->create(['name' => 'Existing Reviewer']);
 
         $this->actingAs($superAdmin)
-            ->patch(route('admin.settings.users.update-roles', $reviewer), ['roles' => ['admin'], 'primary_role' => 'admin'])
+            ->patch(route('admin.users.update-roles', $reviewer), ['roles' => ['admin'], 'primary_role' => 'admin'])
             ->assertRedirect()
             ->assertSessionHas('success');
 
@@ -69,7 +70,7 @@ class AdministratorManagementTest extends TestCase
         $participant = User::factory()->create();
 
         $this->actingAs($superAdmin)
-            ->patch(route('admin.settings.users.update-roles', $participant), [
+            ->patch(route('admin.users.update-roles', $participant), [
                 'roles' => ['user', 'reviewer'],
                 'primary_role' => 'reviewer',
             ])
@@ -89,7 +90,7 @@ class AdministratorManagementTest extends TestCase
         $reviewer = User::factory()->reviewer()->create(['name' => 'Removed Reviewer']);
 
         $this->actingAs($superAdmin)
-            ->patch(route('admin.settings.users.update-roles', $reviewer), ['roles' => ['user'], 'primary_role' => 'user'])
+            ->patch(route('admin.users.update-roles', $reviewer), ['roles' => ['user'], 'primary_role' => 'user'])
             ->assertRedirect()
             ->assertSessionHas('success');
 
@@ -108,7 +109,7 @@ class AdministratorManagementTest extends TestCase
         $candidate = User::factory()->unverified()->create();
 
         $this->actingAs($superAdmin)
-            ->patch(route('admin.settings.users.update-roles', $candidate), ['roles' => ['reviewer'], 'primary_role' => 'reviewer'])
+            ->patch(route('admin.users.update-roles', $candidate), ['roles' => ['reviewer'], 'primary_role' => 'reviewer'])
             ->assertSessionHasErrors('roles');
 
         $this->assertSame('user', $candidate->fresh()->role);
@@ -121,7 +122,7 @@ class AdministratorManagementTest extends TestCase
         User::factory()->superAdmin()->create();
 
         $this->actingAs($superAdmin)
-            ->patch(route('admin.settings.users.update-roles', $superAdmin), ['roles' => ['admin'], 'primary_role' => 'admin'])
+            ->patch(route('admin.users.update-roles', $superAdmin), ['roles' => ['admin'], 'primary_role' => 'admin'])
             ->assertSessionHasErrors('roles');
 
         $this->assertSame('super_admin', $superAdmin->fresh()->role);
@@ -134,7 +135,7 @@ class AdministratorManagementTest extends TestCase
         $candidate = User::factory()->create();
 
         $this->actingAs($admin)
-            ->patch(route('admin.settings.users.update-roles', $candidate), ['roles' => ['reviewer'], 'primary_role' => 'reviewer'])
+            ->patch(route('admin.users.update-roles', $candidate), ['roles' => ['reviewer'], 'primary_role' => 'reviewer'])
             ->assertForbidden();
 
         $this->assertSame('user', $candidate->fresh()->role);
@@ -146,7 +147,7 @@ class AdministratorManagementTest extends TestCase
         $candidate = User::factory()->create();
 
         $this->actingAs($user)
-            ->patch(route('admin.settings.users.update-roles', $candidate), ['roles' => ['reviewer'], 'primary_role' => 'reviewer'])
+            ->patch(route('admin.users.update-roles', $candidate), ['roles' => ['reviewer'], 'primary_role' => 'reviewer'])
             ->assertForbidden();
 
         $this->assertSame('user', $candidate->fresh()->role);
@@ -159,6 +160,39 @@ class AdministratorManagementTest extends TestCase
 
         $this->actingAs($superAdmin)->get(route('admin.settings.edit'))->assertOk();
         $this->actingAs($admin)->get(route('admin.settings.edit'))->assertForbidden();
+    }
+
+    public function test_role_management_has_its_own_page_and_is_super_admin_only(): void
+    {
+        $superAdmin = User::factory()->superAdmin()->create();
+        $admin = User::factory()->admin()->create();
+
+        $this->actingAs($superAdmin)
+            ->get(route('admin.users.index'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('admin/users/index')
+                ->has('roleAccessChanges')
+            );
+
+        $this->actingAs($admin)->get(route('admin.users.index'))->assertForbidden();
+        $this->actingAs($admin)->getJson(route('admin.users.search'))->assertForbidden();
+    }
+
+    /** Conference settings is about the conference, not about who can do what. */
+    public function test_conference_settings_no_longer_carries_role_management(): void
+    {
+        $superAdmin = User::factory()->superAdmin()->create();
+
+        $this->actingAs($superAdmin)
+            ->get(route('admin.settings.edit'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('admin/settings/index')
+                ->has('conferenceSettings')
+                ->has('feeCategories')
+                ->missing('roleAccessChanges')
+            );
     }
 
     public function test_a_plain_admin_can_still_assign_reviewers_and_verify_students(): void

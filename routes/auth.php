@@ -11,10 +11,15 @@ use App\Http\Controllers\Auth\VerifyEmailController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware('guest')->group(function () {
+    // Registration is throttled because every accepted POST writes a user row,
+    // queues a confirmation email, and (for students) accepts a 10 MB upload —
+    // all from an unauthenticated, publicly advertised URL.
     Route::get('register', [RegisteredUserController::class, 'create'])
+        ->middleware('registration.open')
         ->name('register');
 
-    Route::post('register', [RegisteredUserController::class, 'store']);
+    Route::post('register', [RegisteredUserController::class, 'store'])
+        ->middleware(['registration.open', 'throttle:10,1']);
 
     Route::get('login', [AuthenticatedSessionController::class, 'create'])
         ->name('login');
@@ -24,7 +29,10 @@ Route::middleware('guest')->group(function () {
     Route::get('forgot-password', [PasswordResetLinkController::class, 'create'])
         ->name('password.request');
 
+    // The password broker only throttles per-address; this stops one client
+    // cycling through many addresses to fish for which ones exist.
     Route::post('forgot-password', [PasswordResetLinkController::class, 'store'])
+        ->middleware('throttle:6,1')
         ->name('password.email');
 
     Route::get('reset-password/{token}', [NewPasswordController::class, 'create'])

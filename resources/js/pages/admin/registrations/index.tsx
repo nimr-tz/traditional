@@ -1,14 +1,17 @@
 import { IconTile } from '@/components/dashboard-card';
+import InputError from '@/components/input-error';
 import { StatusPill, type PillTone } from '@/components/status-pill';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import AppLayout from '@/layouts/app-layout';
 import { cn } from '@/lib/utils';
 import { type BreadcrumbItem } from '@/types';
-import { Head, Link, router } from '@inertiajs/react';
-import { ClipboardList, Download, Search } from 'lucide-react';
-import { FormEventHandler, useState } from 'react';
+import { Head, Link, router, useForm } from '@inertiajs/react';
+import { ClipboardList, Download, LoaderCircle, Mail, Search } from 'lucide-react';
+import { FormEventHandler, useEffect, useState } from 'react';
 
 const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Admin', href: '/admin' },
@@ -21,6 +24,7 @@ interface Registration {
     id: number;
     name: string;
     email: string;
+    email_verified_at: string | null;
     institution: string | null;
     participant_type: string | null;
     fee_category: string | null;
@@ -41,10 +45,20 @@ interface Paginated<T> {
     total: number;
 }
 
+interface EmailChange {
+    id: number;
+    previous_email: string;
+    new_email: string;
+    changed_by_name: string;
+    reason: string | null;
+    created_at: string;
+}
+
 interface RegistrationsIndexProps {
     registrations: Paginated<Registration>;
     filters: { payment_status?: string; search?: string };
     counts: { total: number; pending: number; submitted: number; verified: number };
+    emailChanges: EmailChange[];
 }
 
 const paymentConfig: Record<PaymentStatus, { label: string; tone: PillTone }> = {
@@ -76,8 +90,32 @@ function formatDate(value: string | null) {
     return new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
 }
 
-export default function RegistrationsIndex({ registrations, filters, counts }: RegistrationsIndexProps) {
+export default function RegistrationsIndex({ registrations, filters, counts, emailChanges }: RegistrationsIndexProps) {
     const [search, setSearch] = useState(filters.search ?? '');
+    const [editing, setEditing] = useState<Registration | null>(null);
+
+    const emailForm = useForm({ email: '', reason: '' });
+
+    useEffect(() => {
+        if (editing) {
+            emailForm.setDefaults({ email: editing.email, reason: '' });
+            emailForm.reset();
+            emailForm.clearErrors();
+        }
+        // Re-seeding the form is keyed on which registrant is open, not on the
+        // form object itself (which changes identity on every keystroke).
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [editing?.id]);
+
+    const submitEmail: FormEventHandler = (event) => {
+        event.preventDefault();
+        if (!editing) return;
+
+        emailForm.patch(route('admin.registrations.email.update', editing.id), {
+            preserveScroll: true,
+            onSuccess: () => setEditing(null),
+        });
+    };
 
     const applyFilters: FormEventHandler = (event) => {
         event.preventDefault();
@@ -106,7 +144,8 @@ export default function RegistrationsIndex({ registrations, filters, counts }: R
                             <p className="text-xs font-bold tracking-[0.18em] text-[#4c8a1f] uppercase">Conference operations</p>
                             <h1 className="mt-2 font-serif text-3xl font-semibold">Registrations</h1>
                             <p className="text-muted-foreground mt-2 text-sm">
-                                Payment status is updated automatically from GePG. This page is read-only.
+                                Payment status is updated automatically from GePG. Correcting a mistyped email address is the only change you can make
+                                here.
                             </p>
                         </div>
                     </div>
@@ -180,6 +219,7 @@ export default function RegistrationsIndex({ registrations, filters, counts }: R
                                     <th className="p-4">Control number</th>
                                     <th className="p-4">Payment</th>
                                     <th className="p-4">Paid at</th>
+                                    <th className="p-4 text-right">Actions</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y">
@@ -197,7 +237,14 @@ export default function RegistrationsIndex({ registrations, filters, counts }: R
                                                         </div>
                                                         <div className="min-w-0">
                                                             <div className="font-semibold">{registration.name}</div>
-                                                            <div className="text-muted-foreground mt-0.5 truncate text-xs">{registration.email}</div>
+                                                            <div className="mt-0.5 flex items-center gap-1.5">
+                                                                <span className="text-muted-foreground truncate text-xs">{registration.email}</span>
+                                                                {!registration.email_verified_at && (
+                                                                    <span className="shrink-0 rounded-full bg-[#fdf1e7] px-1.5 py-0.5 text-[10px] font-bold text-[#b5651d] dark:bg-[#b5651d]/15 dark:text-[#e0a06a]">
+                                                                        Unverified
+                                                                    </span>
+                                                                )}
+                                                            </div>
                                                             <div className="text-muted-foreground mt-0.5 max-w-56 truncate text-xs">
                                                                 {registration.institution}
                                                             </div>
@@ -222,12 +269,18 @@ export default function RegistrationsIndex({ registrations, filters, counts }: R
                                                     <StatusPill tone={payment.tone}>{payment.label}</StatusPill>
                                                 </td>
                                                 <td className="text-muted-foreground p-4 text-xs">{formatDate(registration.paid_at)}</td>
+                                                <td className="p-4 text-right">
+                                                    <Button variant="ghost" size="sm" onClick={() => setEditing(registration)}>
+                                                        <Mail className="size-4" />
+                                                        Fix email
+                                                    </Button>
+                                                </td>
                                             </tr>
                                         );
                                     })
                                 ) : (
                                     <tr>
-                                        <td colSpan={6} className="p-12 text-center">
+                                        <td colSpan={7} className="p-12 text-center">
                                             <Search className="text-muted-foreground mx-auto size-7" />
                                             <p className="mt-3 font-semibold">No registrations match these filters</p>
                                             <p className="text-muted-foreground mt-1 text-sm">Clear a filter or try a different search.</p>
@@ -238,6 +291,76 @@ export default function RegistrationsIndex({ registrations, filters, counts }: R
                         </table>
                     </div>
                 </section>
+
+                {emailChanges.length > 0 && (
+                    <section className="bg-card rounded-2xl border p-5">
+                        <h2 className="font-serif text-lg font-semibold">Recent email corrections</h2>
+                        <p className="text-muted-foreground mt-1 text-sm">
+                            Every change to a registrant's email address is recorded here permanently.
+                        </p>
+                        <ul className="mt-4 divide-y text-sm">
+                            {emailChanges.map((change) => (
+                                <li key={change.id} className="flex flex-wrap items-baseline gap-x-2 gap-y-1 py-2.5">
+                                    <span className="text-muted-foreground line-through">{change.previous_email}</span>
+                                    <span className="text-muted-foreground">→</span>
+                                    <span className="font-semibold">{change.new_email}</span>
+                                    <span className="text-muted-foreground ml-auto text-xs">
+                                        {change.changed_by_name} · {formatDate(change.created_at)}
+                                        {change.reason ? ` · ${change.reason}` : ''}
+                                    </span>
+                                </li>
+                            ))}
+                        </ul>
+                    </section>
+                )}
+
+                <Dialog open={editing !== null} onOpenChange={(open) => !open && setEditing(null)}>
+                    <DialogContent>
+                        <form onSubmit={submitEmail}>
+                            <DialogHeader>
+                                <DialogTitle>Correct email address</DialogTitle>
+                                <DialogDescription>
+                                    {editing?.name} currently receives everything at {editing?.email}. Changing it marks the account unverified and
+                                    sends a fresh verification link to the new address.
+                                </DialogDescription>
+                            </DialogHeader>
+
+                            <div className="mt-5 grid gap-4">
+                                <div className="grid gap-2">
+                                    <Label htmlFor="corrected_email">New email address</Label>
+                                    <Input
+                                        id="corrected_email"
+                                        type="email"
+                                        value={emailForm.data.email}
+                                        onChange={(event) => emailForm.setData('email', event.target.value.toLowerCase())}
+                                        autoComplete="off"
+                                    />
+                                    <InputError message={emailForm.errors.email} />
+                                </div>
+                                <div className="grid gap-2">
+                                    <Label htmlFor="corrected_email_reason">Reason (optional)</Label>
+                                    <Input
+                                        id="corrected_email_reason"
+                                        value={emailForm.data.reason}
+                                        onChange={(event) => emailForm.setData('reason', event.target.value)}
+                                        placeholder="e.g. typo reported by phone"
+                                    />
+                                    <InputError message={emailForm.errors.reason} />
+                                </div>
+                            </div>
+
+                            <DialogFooter className="mt-6">
+                                <Button type="button" variant="outline" onClick={() => setEditing(null)}>
+                                    Cancel
+                                </Button>
+                                <Button type="submit" disabled={emailForm.processing}>
+                                    {emailForm.processing && <LoaderCircle className="size-4 animate-spin" />}
+                                    Update and re-send verification
+                                </Button>
+                            </DialogFooter>
+                        </form>
+                    </DialogContent>
+                </Dialog>
 
                 {registrations.links.length > 3 && (
                     <nav className="flex flex-wrap gap-1" aria-label="Pagination">

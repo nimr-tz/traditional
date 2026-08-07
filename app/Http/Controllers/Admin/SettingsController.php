@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\AdministratorAccessChange;
 use App\Models\ConferenceSetting;
 use App\Models\FeeCategory;
 use App\Models\Institution;
@@ -17,23 +16,12 @@ class SettingsController extends Controller
     public function edit(): Response
     {
         // This whole page is super_admin only (see routes/admin.php).
+        // User roles are deliberately not here — see AdministratorController.
         return Inertia::render('admin/settings/index', [
             'feeCategories' => FeeCategory::orderBy('sort_order')->get(),
             'subthemes' => Subtheme::orderBy('sort_order')->get(),
             'institutions' => Institution::orderBy('sort_order')->get(),
             'conferenceSettings' => ConferenceSetting::allSettings(),
-            'roleAccessChanges' => AdministratorAccessChange::query()
-                ->latest()
-                ->limit(10)
-                ->get([
-                    'id',
-                    'target_name',
-                    'target_email',
-                    'changed_by_name',
-                    'action',
-                    'role',
-                    'created_at',
-                ]),
         ]);
     }
 
@@ -119,7 +107,14 @@ class SettingsController extends Controller
             'start_date' => 'nullable|date_format:Y-m-d',
             'end_date' => 'nullable|date_format:Y-m-d',
             'submission_deadline' => 'nullable|date_format:Y-m-d',
+            // Registration closes at the end of `registration_deadline`;
+            // `registration_closed` is the manual override that shuts (or holds
+            // open) the door regardless of the date. See App\Support\RegistrationWindow.
+            'registration_deadline' => 'nullable|date_format:Y-m-d',
+            'registration_closed' => 'nullable|in:0,1',
             'abstract_notification_date' => 'nullable|date_format:Y-m-d',
+            // Last day a presenter may upload or replace their presentation.
+            'presentation_deadline' => 'nullable|date_format:Y-m-d',
             'tm_week_dates' => 'nullable|string|max:100',
             'gepg_payee_name' => 'nullable|string|max:255',
             'contact_phone' => 'nullable|string|max:50',

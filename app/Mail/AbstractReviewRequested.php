@@ -20,15 +20,20 @@ class AbstractReviewRequested extends Mailable implements ShouldQueue
     public function envelope(): Envelope
     {
         return new Envelope(
+            // Framed as a re-review, not a new one: the reviewer already knows
+            // this abstract and will be judging it against their own earlier
+            // comments rather than reading it cold.
             subject: $this->isRevision
-                ? 'Revised TMSC Abstract Awaiting Review'
+                ? 'TMSC Abstract Awaiting Re-review'
                 : 'New TMSC Abstract Awaiting Review',
         );
     }
 
     public function content(): Content
     {
-        $this->submission->loadMissing(['user', 'subtheme']);
+        // Blind review: the author relation is deliberately not loaded — this
+        // email goes to reviewers and must not carry the author's identity.
+        $this->submission->loadMissing(['subtheme']);
 
         return new Content(
             view: 'emails.abstract-review-requested',

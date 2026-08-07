@@ -18,7 +18,7 @@ class MultiRoleTest extends TestCase
         $user->roleAssignments()->create(['role' => 'finance']);
 
         $this->actingAs($superAdmin)
-            ->patch(route('admin.settings.users.update-roles', $user), [
+            ->patch(route('admin.users.update-roles', $user), [
                 'roles' => ['reviewer', 'finance'],
                 'primary_role' => 'reviewer',
             ]);
@@ -70,7 +70,7 @@ class MultiRoleTest extends TestCase
         $participant = User::factory()->create();
 
         $this->actingAs($admin)
-            ->patch(route('admin.settings.users.update-roles', $participant), [
+            ->patch(route('admin.users.update-roles', $participant), [
                 'roles' => ['user', 'reviewer'],
                 'primary_role' => 'reviewer',
             ])

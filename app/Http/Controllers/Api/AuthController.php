@@ -34,7 +34,15 @@ class AuthController extends Controller
 
         return response()->json([
             'token' => $token,
-            'user' => ['id' => $user->id, 'name' => $user->name, 'email' => $user->email],
+            'user' => [
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                // Drives which screens the app offers. The API enforces the same
+                // boundary on every finance route — this is for the UI, not the
+                // guard, so a tampered client gains nothing.
+                'can_manage_finance' => $user->canManageFinance(),
+            ],
         ]);
     }
 

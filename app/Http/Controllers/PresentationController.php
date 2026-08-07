@@ -2,10 +2,9 @@
 
 namespace App\Http\Controllers;
 
-use App\Mail\PresentationSubmittedForReview;
 use App\Mail\PresentationUploaded;
 use App\Models\AbstractSubmission;
-use App\Models\User;
+use App\Support\PresentationWindow;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -29,11 +28,12 @@ class PresentationController extends Controller
                 $abstract->only([
                     'id', 'title', 'presentation_type', 'presentation_status',
                     'presentation_original_name', 'presentation_uploaded_at',
-                    'presentation_notes', 'presentation_review_notes',
+                    'presentation_notes',
                 ]),
                 ['can_upload' => $abstract->canUploadPresentation()],
             ),
             'requirements' => $abstract->presentationRequirements(),
+            'window' => PresentationWindow::toArray(),
         ]);
     }
 
@@ -67,7 +67,6 @@ class PresentationController extends Controller
                     'presentation_uploaded_at' => now(),
                     'presentation_notes' => $data['presentation_notes'] ?? null,
                     'presentation_status' => 'uploaded',
-                    'presentation_review_notes' => null,
                 ])->save();
             });
         } catch (\Throwable $exception) {
@@ -79,12 +78,9 @@ class PresentationController extends Controller
             Storage::disk('local')->delete($oldPath);
         }
 
+        // Only the presenter is told. Presentations aren't reviewed, so there is
+        // nothing for reviewers or admins to action on upload.
         Mail::to($abstract->user->email)->send(new PresentationUploaded($abstract, $isReplacement));
-
-        User::query()
-            ->withRole(User::ABSTRACT_REVIEWER_ROLES)
-            ->pluck('email')
-            ->each(fn (string $email) => Mail::to($email)->send(new PresentationSubmittedForReview($abstract, $isReplacement)));
 
         return back()->with('success', 'Your presentation file has been submitted.');
     }

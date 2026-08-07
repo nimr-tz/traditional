@@ -3,8 +3,11 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\RegistrationEmailChange;
 use App\Models\User;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
@@ -32,7 +35,66 @@ class RegistrationController extends Controller
                 'submitted' => User::withRole(User::ROLE_USER)->where('payment_status', 'submitted')->count(),
                 'verified' => User::withRole(User::ROLE_USER)->where('payment_status', 'verified')->count(),
             ],
+            'emailChanges' => RegistrationEmailChange::query()
+                ->latest()
+                ->limit(10)
+                ->get(['id', 'previous_email', 'new_email', 'changed_by_name', 'reason', 'created_at']),
         ]);
+    }
+
+    /**
+     * Correct a registrant's email address.
+     *
+     * Registrants can't change their own email (it's their identity for the
+     * badge, certificate, and control number — see ProfileUpdateRequest), which
+     * leaves a typo at registration otherwise unrecoverable: the verification
+     * link goes to an address they don't own, so they can never reach the
+     * dashboard, never get a control number, and the mistyped address stays
+     * permanently claimed by the dead account.
+     *
+     * Changing it necessarily un-verifies the account — the new address hasn't
+     * proven ownership — so this re-sends verification to the corrected
+     * address, and records who did it.
+     */
+    public function updateEmail(Request $request, User $user): RedirectResponse
+    {
+        abort_unless($user->hasRole(User::ROLE_USER), 403, 'Only registrant accounts can be corrected here.');
+
+        $data = $request->validate([
+            'email' => [
+                'required', 'string', 'lowercase', 'email', 'max:255',
+                Rule::unique('users', 'email')->ignore($user->id),
+            ],
+            'reason' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        if ($data['email'] === $user->email) {
+            return back()->with('error', 'That is already this registrant\'s email address.');
+        }
+
+        $previousEmail = $user->email;
+
+        $user->forceFill([
+            'email' => $data['email'],
+            'email_verified_at' => null,
+        ])->save();
+
+        RegistrationEmailChange::create([
+            'user_id' => $user->id,
+            'previous_email' => $previousEmail,
+            'new_email' => $user->email,
+            'changed_by' => $request->user()->id,
+            'changed_by_name' => $request->user()->name,
+            'changed_by_email' => $request->user()->email,
+            'reason' => $data['reason'] ?? null,
+        ]);
+
+        $user->sendEmailVerificationNotification();
+
+        return back()->with(
+            'success',
+            "Email updated to {$user->email}. A new verification link has been sent to that address."
+        );
     }
 
     public function export(): StreamedResponse

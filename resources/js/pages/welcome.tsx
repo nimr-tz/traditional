@@ -20,10 +20,17 @@ interface FeeCategory {
     currency: string;
 }
 
+interface RegistrationWindow {
+    is_open: boolean;
+    deadline: string | null;
+    closed_message: string | null;
+}
+
 interface WelcomeProps {
     conference: Record<string, string | null>;
     subthemes: Subtheme[];
     feeCategories: FeeCategory[];
+    registrationWindow: RegistrationWindow;
     seo?: {
         title: string;
         description: string;
@@ -91,8 +98,8 @@ const INSTRUCTIONS = [
     'Please indicate whether your presentation is Oral or Poster.',
 ];
 
-export default function Welcome({ conference, subthemes, feeCategories, seo }: WelcomeProps) {
-    const { auth } = usePage<SharedData>().props;
+export default function Welcome({ conference, subthemes, feeCategories, registrationWindow, seo }: WelcomeProps) {
+    const { auth, submissionWindow } = usePage<SharedData>().props;
     const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
     const conferenceName = conference.conference_name || 'Traditional Medicine Scientific Conference';
@@ -113,13 +120,27 @@ export default function Welcome({ conference, subthemes, feeCategories, seo }: W
         { label: 'Conference date', value: formatConferenceDate(conference.start_date), dateTime: startDateIso },
         { label: 'Location', value: conference.venue, dateTime: null },
         {
-            label: 'Abstract deadline',
+            label: submissionWindow.is_open ? 'Abstract deadline' : 'Abstracts closed',
             value: formatConferenceDate(conference.submission_deadline),
             dateTime: toIsoDate(conference.submission_deadline),
         },
+        registrationWindow.is_open && registrationWindow.deadline
+            ? {
+                  label: 'Registration deadline',
+                  value: formatConferenceDate(registrationWindow.deadline),
+                  dateTime: registrationWindow.deadline,
+              }
+            : { label: '', value: '', dateTime: null },
     ].filter((fact) => fact.value);
 
-    const factGridClass = factStrip.length === 1 ? 'sm:grid-cols-1' : factStrip.length === 2 ? 'sm:grid-cols-2' : 'sm:grid-cols-3';
+    const factGridClass =
+        factStrip.length === 1
+            ? 'sm:grid-cols-1'
+            : factStrip.length === 2
+              ? 'sm:grid-cols-2'
+              : factStrip.length >= 4
+                ? 'sm:grid-cols-2 lg:grid-cols-4'
+                : 'sm:grid-cols-3';
 
     const footerContacts = [
         conference.contact_phone && { label: 'Call', value: conference.contact_phone },
@@ -224,6 +245,16 @@ export default function Welcome({ conference, subthemes, feeCategories, seo }: W
                     )}
                 </header>
 
+                {!registrationWindow.is_open && (
+                    <div className="bg-[#fdf1e7] px-4 py-3 text-center text-sm font-semibold text-[#8a4d16]">
+                        {registrationWindow.closed_message} Already registered?{' '}
+                        <Link href={route('login')} className="underline underline-offset-2">
+                            Log in
+                        </Link>{' '}
+                        to complete your payment and download your badge.
+                    </div>
+                )}
+
                 <section className="bg-[#135eeb] text-white">
                     <div className="mx-auto max-w-7xl px-4 pt-16 sm:px-8">
                         <div className="grid items-center gap-10 md:grid-cols-[1.3fr_1fr]">
@@ -311,13 +342,15 @@ export default function Welcome({ conference, subthemes, feeCategories, seo }: W
                                     <p className="text-xs font-semibold tracking-widest text-[#135eeb] uppercase">Programme</p>
                                     <h2 className="mt-2 font-serif text-3xl font-semibold">Five conversations shaping traditional medicine</h2>
                                 </div>
-                                <Button
-                                    asChild
-                                    size="lg"
-                                    className="h-auto max-w-xs bg-[#135eeb] px-6 py-3 text-right leading-snug whitespace-normal text-white hover:bg-[#135eeb]/90"
-                                >
-                                    <Link href={route('register')}>Submit your abstract under any of the five conference sub-themes.</Link>
-                                </Button>
+                                {submissionWindow.is_open && (
+                                    <Button
+                                        asChild
+                                        size="lg"
+                                        className="h-auto max-w-xs bg-[#135eeb] px-6 py-3 text-right leading-snug whitespace-normal text-white hover:bg-[#135eeb]/90"
+                                    >
+                                        <Link href={route('register')}>Submit your abstract under any of the five conference sub-themes.</Link>
+                                    </Button>
+                                )}
                             </div>
 
                             <div className="flex flex-wrap justify-center gap-4">
@@ -413,7 +446,7 @@ export default function Welcome({ conference, subthemes, feeCategories, seo }: W
                                         {conference.submission_deadline && (
                                             <div>
                                                 <div className="text-[11px] font-semibold tracking-wide text-[#135eeb] uppercase">
-                                                    Abstract deadline
+                                                    {submissionWindow.is_open ? 'Abstract deadline' : 'Abstracts closed'}
                                                 </div>
                                                 <time
                                                     dateTime={toIsoDate(conference.submission_deadline) ?? undefined}
@@ -443,9 +476,16 @@ export default function Welcome({ conference, subthemes, feeCategories, seo }: W
                                             </div>
                                         )}
                                     </div>
-                                    <Button variant="secondary" asChild>
-                                        <Link href={route('register')}>Create an account to submit</Link>
-                                    </Button>
+                                    {submissionWindow.is_open ? (
+                                        <Button variant="secondary" asChild>
+                                            <Link href={route('register')}>Create an account to submit</Link>
+                                        </Button>
+                                    ) : (
+                                        <p className="max-w-xs rounded-xl bg-white/15 px-4 py-3 text-sm leading-6 font-semibold">
+                                            {submissionWindow.closed_message} Authors already under review can still sign in to answer reviewer
+                                            comments.
+                                        </p>
+                                    )}
                                 </div>
                             )}
                         </div>

@@ -30,6 +30,9 @@ class AbstractController extends Controller
             ->latest()
             ->get();
 
+        // The submission window reaches the page as a shared prop
+        // (HandleInertiaRequests), so every page that renders the deadline
+        // stops inviting submissions at the same moment the route guard does.
         return Inertia::render('abstracts/index', [
             'submissions' => $submissions,
         ]);
@@ -72,13 +75,21 @@ class AbstractController extends Controller
 
         $abstract->load(['subtheme', 'reviewer:id,name', 'reviewHistory.actor:id,name', 'reviewerDecisions.comments']);
 
+        // Comments from superseded rounds are kept now rather than deleted, so
+        // each one carries the round it came from — otherwise feedback the
+        // author already dealt with would reappear looking current.
+        $currentRound = $abstract->review_round ?? 1;
+
         $reviewerComments = $abstract->reviewerDecisions
+            ->sortBy('round')
             ->flatMap(fn ($decision) => $decision->comments->map(fn ($comment) => [
                 'id' => $comment->id,
                 'section' => $comment->section,
                 'body' => $comment->body,
                 'addressed' => $comment->isAddressed(),
                 'reviewer_label' => $abstract->reviewerLabelFor($decision->reviewer_id) ?? 'Reviewer',
+                'round' => $decision->round,
+                'is_current' => $decision->round === $currentRound,
                 'created_at' => $comment->created_at,
             ]))
             ->values();
@@ -112,18 +123,30 @@ class AbstractController extends Controller
             ] : []));
 
             if ($isRevision) {
+                $previousRound = $abstract->review_round ?? 1;
+                $nextRound = $previousRound + 1;
+
                 // Only the reviewer(s) who asked for a revision or rejected need
-                // to re-review the revised content. A reviewer who already
-                // accepted keeps their recommendation and isn't asked again —
-                // only clear/re-open the decisions that weren't an acceptance.
+                // to look again. A reviewer who already accepted keeps their
+                // recommendation and isn't asked twice.
                 $reviewersToNotify = $abstract->reviewerDecisions()
+                    ->where('round', $previousRound)
                     ->whereIn('recommendation', ['revision_requested', 'rejected'])
                     ->pluck('reviewer_id')
                     ->all();
 
+                // An acceptance carries forward into the new round rather than
+                // being re-asked...
                 $abstract->reviewerDecisions()
-                    ->whereIn('recommendation', ['revision_requested', 'rejected'])
-                    ->delete();
+                    ->where('round', $previousRound)
+                    ->where('recommendation', 'accepted')
+                    ->update(['round' => $nextRound]);
+
+                // ...and everything else simply stays behind on the old round.
+                // Nothing is deleted: the reviewer needs their previous comments
+                // to judge whether the revision answered them, and the record of
+                // why a revision was requested has to survive.
+                $abstract->forceFill(['review_round' => $nextRound])->save();
 
                 $abstract->reviewHistory()->create([
                     'acted_by' => Auth::id(),

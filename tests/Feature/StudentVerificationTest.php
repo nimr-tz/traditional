@@ -114,6 +114,83 @@ class StudentVerificationTest extends TestCase
         Mail::assertQueued(StudentVerificationApproved::class, fn ($mail) => $mail->hasTo($student->email));
     }
 
+    public function test_admin_can_reopen_a_mistaken_verification_and_reject_it_properly(): void
+    {
+        Mail::fake();
+
+        $admin = User::factory()->admin()->create();
+        $student = User::factory()->create([
+            'fee_category' => 'student_east_africa',
+            'student_document_path' => 'student-verification/id.pdf',
+            'student_verification_status' => 'pending',
+        ]);
+
+        $this->actingAs($admin)->post(route('admin.students.verify', $student))->assertRedirect();
+        $this->assertSame('verified', $student->fresh()->student_verification_status);
+
+        $this->actingAs($admin)->post(route('admin.students.reopen', $student))->assertRedirect();
+
+        $student->refresh();
+
+        $this->assertSame('pending', $student->student_verification_status);
+        $this->assertNull($student->student_verified_at);
+        $this->assertNull($student->student_verified_by);
+        $this->assertStringContainsString('previously verified', $student->student_verification_notes);
+
+        // Reopening is silent; the follow-up decision is what the student hears about.
+        Mail::assertNotQueued(StudentVerificationRejected::class);
+
+        $this->actingAs($admin)->post(route('admin.students.reject', $student), [
+            'notes' => 'The student ID had expired.',
+        ])->assertRedirect();
+
+        $student->refresh();
+
+        $this->assertSame('rejected', $student->student_verification_status);
+        $this->assertSame('The student ID had expired.', $student->student_verification_notes);
+        Mail::assertQueued(StudentVerificationRejected::class, fn ($mail) => $mail->hasTo($student->email));
+    }
+
+    public function test_a_pending_student_review_cannot_be_reopened(): void
+    {
+        $admin = User::factory()->admin()->create();
+        $student = User::factory()->create([
+            'fee_category' => 'student_east_africa',
+            'student_document_path' => 'student-verification/id.pdf',
+            'student_verification_status' => 'pending',
+        ]);
+
+        $this->actingAs($admin)
+            ->post(route('admin.students.reopen', $student))
+            ->assertStatus(422);
+
+        $this->assertSame('pending', $student->fresh()->student_verification_status);
+    }
+
+    public function test_reopening_blocks_a_new_student_rate_control_number(): void
+    {
+        Mail::fake();
+
+        $admin = User::factory()->admin()->create();
+        $student = User::factory()->create([
+            'fee_category' => 'student_east_africa',
+            'fee_amount' => 50000,
+            'currency' => 'TZS',
+            'student_document_path' => 'student-verification/id.pdf',
+            'student_verification_status' => 'verified',
+            'student_verified_at' => now(),
+            'student_verified_by' => $admin->id,
+        ]);
+
+        $this->actingAs($admin)->post(route('admin.students.reopen', $student))->assertRedirect();
+
+        $this->actingAs($student->fresh())
+            ->post(route('payment.control-number'))
+            ->assertSessionHas('error', 'Your student status must be verified before a control number can be issued.');
+
+        $this->assertNull($student->fresh()->billing_request_id);
+    }
+
     public function test_rejected_student_can_submit_a_replacement_document(): void
     {
         Storage::fake('local');

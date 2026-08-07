@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity } from 'react-native';
+import { apiErrorMessage } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 
 export default function LoginScreen() {
@@ -14,8 +15,8 @@ export default function LoginScreen() {
         setLoading(true);
         try {
             await signIn(email.trim(), password);
-        } catch (e: any) {
-            setError(e?.response?.data?.message ?? 'Login failed. Check your credentials and connection.');
+        } catch (e) {
+            setError(apiErrorMessage(e, 'Login failed. Check your credentials and connection.'));
         } finally {
             setLoading(false);
         }

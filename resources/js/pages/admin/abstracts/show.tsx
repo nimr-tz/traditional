@@ -4,14 +4,16 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import AppLayout from '@/layouts/app-layout';
+import { cn } from '@/lib/utils';
 import { type BreadcrumbItem, type SharedData } from '@/types';
 import { Head, Link, router, usePage } from '@inertiajs/react';
-import { ArrowLeft, Check, Clock3, Download, FilePenLine, FileUp, Plus, Presentation, UserRound, X } from 'lucide-react';
+import { ArrowLeft, Check, Clock3, Download, EyeOff, FilePenLine, FileUp, History, Plus, Presentation, UserRound, X } from 'lucide-react';
 import { FormEventHandler, useState } from 'react';
 
 type AbstractStatus = 'submitted' | 'revision_requested' | 'accepted' | 'rejected';
 type ReviewAction = 'accepted' | 'revision_requested' | 'rejected';
-type PresentationStatus = 'pending' | 'uploaded' | 'approved';
+/** Presentations aren't reviewed — a file is either on record or it isn't. */
+type PresentationStatus = 'pending' | 'uploaded';
 
 interface Author {
     name: string;
@@ -80,37 +82,60 @@ function labelForSection(section: string | null): string {
 interface Submission {
     id: number;
     title: string;
-    background: string;
-    objective: string;
-    methods: string;
-    results: string;
-    conclusion: string;
+    // Nullable: abstracts submitted before the five-section split carry their
+    // whole text in `background` and null everywhere else (see the
+    // split_abstract_text_into_sections migration).
+    background: string | null;
+    objective: string | null;
+    methods: string | null;
+    results: string | null;
+    conclusion: string | null;
     authors: Author[];
     presentation_type: 'oral' | 'poster';
     presentation_status: PresentationStatus;
     presentation_original_name: string | null;
     presentation_uploaded_at: string | null;
     presentation_notes: string | null;
-    presentation_review_notes: string | null;
     status: AbstractStatus;
     decision_notes: string | null;
     created_at: string;
     resubmitted_at: string | null;
     decided_at: string | null;
-    user: {
+    // Absent for blind reviewers — the server never sends it (see
+    // App\Support\BlindReview), so the type must force a check at every use.
+    user?: {
         id: number;
         name: string;
         email: string;
         phone: string | null;
         institution: string | null;
         country: string | null;
-    };
+    } | null;
+    is_blinded?: boolean;
     subtheme: { title: string } | null;
     reviewer: { name: string } | null;
     reviewer_one: ReviewerRef | null;
     reviewer_two: ReviewerRef | null;
     reviewer_decisions: ReviewerDecision[];
     review_history: History[];
+    /**
+     * Earlier review rounds. A reviewer only ever receives their own; admins
+     * receive both reviewers'. Empty on a first-round abstract.
+     */
+    prior_rounds: PriorRound[];
+    review_round: number;
+    completed_rounds: number;
+    is_re_review: boolean;
+}
+
+interface PriorRound {
+    id: number;
+    round: number;
+    reviewer_id: number;
+    reviewer_name: string | null;
+    recommendation: ReviewAction;
+    decided_at: string | null;
+    comments: ReviewerComment[];
 }
 
 const statusConfig: Record<AbstractStatus, { label: string; className: string }> = {
@@ -143,19 +168,27 @@ export default function AbstractReviewShow({ submission, eligibleReviewers }: Ab
     const isAssignedReviewer = auth.user.id === submission.reviewer_one?.id || auth.user.id === submission.reviewer_two?.id;
     const myDecision = submission.reviewer_decisions.find((d) => d.reviewer_id === auth.user.id) ?? null;
     const otherDecision = submission.reviewer_decisions.find((d) => d.reviewer_id !== auth.user.id) ?? null;
+    const isReReview = Boolean(submission.is_re_review);
+    const myPriorRounds = submission.prior_rounds ?? [];
     const bothReviewersAssigned = Boolean(submission.reviewer_one && submission.reviewer_two);
     const bothReviewersDecided = bothReviewersAssigned && submission.reviewer_decisions.length === 2;
 
     const [notes, setNotes] = useState('');
     const [processing, setProcessing] = useState(false);
     const [errors, setErrors] = useState<Record<string, string>>({});
-    const [presentationNotes, setPresentationNotes] = useState('');
-    const [presentationProcessing, setPresentationProcessing] = useState(false);
     const status = statusConfig[submission.status];
     const wordCount = ABSTRACT_SECTIONS.reduce((total, { key }) => {
-        const value = submission[key];
-        return total + (value.trim() ? value.trim().split(/\s+/).length : 0);
+        const value = submission[key]?.trim() ?? '';
+        return total + (value ? value.split(/\s+/).length : 0);
     }, 0);
+    // A pre-split submission: everything in Background, nothing else filled.
+    // Worth calling out, otherwise four empty headings read as a bug.
+    const isLegacyFormat =
+        Boolean(submission.background?.trim()) &&
+        !submission.objective?.trim() &&
+        !submission.methods?.trim() &&
+        !submission.results?.trim() &&
+        !submission.conclusion?.trim();
     const canDecide = isAdmin && submission.status === 'submitted' && bothReviewersDecided;
     const breadcrumbs: BreadcrumbItem[] = [
         { title: 'Admin', href: '/admin' },
@@ -254,31 +287,6 @@ export default function AbstractReviewShow({ submission, eligibleReviewers }: Ab
         );
     };
 
-    const approvePresentation = () => {
-        if (!window.confirm('Approve this presentation file?')) return;
-
-        router.post(
-            route('admin.abstracts.presentation.approve', submission.id),
-            {},
-            { preserveScroll: true, onStart: () => setPresentationProcessing(true), onFinish: () => setPresentationProcessing(false) },
-        );
-    };
-
-    const rejectPresentation = () => {
-        if (!presentationNotes.trim()) return;
-
-        router.post(
-            route('admin.abstracts.presentation.reject', submission.id),
-            { notes: presentationNotes },
-            {
-                preserveScroll: true,
-                onStart: () => setPresentationProcessing(true),
-                onSuccess: () => setPresentationNotes(''),
-                onFinish: () => setPresentationProcessing(false),
-            },
-        );
-    };
-
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title={`Review: ${submission.title}`} />
@@ -320,15 +328,25 @@ export default function AbstractReviewShow({ submission, eligibleReviewers }: Ab
                                     <h2 className="text-sm font-bold tracking-[0.14em] uppercase">Abstract</h2>
                                     <span className="text-muted-foreground text-xs tabular-nums">{wordCount} words combined</span>
                                 </div>
+                                {isLegacyFormat && (
+                                    <p className="mb-5 rounded-lg border border-[#b5651d]/25 bg-[#b5651d]/5 px-4 py-3 text-sm leading-relaxed text-[#8a4d16]">
+                                        This abstract was submitted before the structured five-section format, so its full text sits under Background.
+                                        The remaining sections were never filled in.
+                                    </p>
+                                )}
                                 <div className="space-y-6">
-                                    {ABSTRACT_SECTIONS.map(({ key, label }) => (
-                                        <div key={key}>
-                                            <h3 className="text-xs font-bold tracking-[0.1em] text-[#4c8a1f] uppercase">{label}</h3>
-                                            <div className="mt-2 text-[15px] leading-8 whitespace-pre-wrap text-slate-800 dark:text-slate-200">
-                                                {submission[key]}
+                                    {ABSTRACT_SECTIONS.map(({ key, label }) => {
+                                        const body = submission[key]?.trim() ?? '';
+
+                                        return (
+                                            <div key={key}>
+                                                <h3 className="text-xs font-bold tracking-[0.1em] text-[#4c8a1f] uppercase">{label}</h3>
+                                                <div className="mt-2 text-[15px] leading-8 whitespace-pre-wrap text-slate-800 dark:text-slate-200">
+                                                    {body || <span className="text-muted-foreground text-sm italic">Not provided.</span>}
+                                                </div>
                                             </div>
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             </section>
                         </article>
@@ -341,20 +359,25 @@ export default function AbstractReviewShow({ submission, eligibleReviewers }: Ab
                                     </span>
                                     <div>
                                         <h2 className="text-lg font-semibold">Presentation file</h2>
+                                        {/* Presentations aren't reviewed — this panel is read-only. */}
                                         <p className="text-muted-foreground mt-1 text-sm">
-                                            {submission.presentation_status === 'pending' && !submission.presentation_original_name
-                                                ? 'Not uploaded yet.'
-                                                : submission.presentation_status === 'pending'
-                                                  ? 'Rejected — waiting for a replacement.'
-                                                  : submission.presentation_status === 'uploaded'
-                                                    ? 'Awaiting review.'
-                                                    : 'Approved.'}
+                                            {submission.presentation_status === 'uploaded'
+                                                ? 'Submitted by the presenter. They may replace it until the upload deadline.'
+                                                : 'Not uploaded yet.'}
                                         </p>
                                     </div>
                                 </div>
 
                                 {submission.presentation_original_name && (
-                                    <div className="dark:bg-muted/40 mt-5 flex items-center justify-between gap-4 rounded-xl bg-slate-50 p-4">
+                                    <div
+                                        className={cn(
+                                            'mt-5 flex items-center justify-between gap-4 rounded-xl border p-4',
+                                            // Mirrors the author's view so both sides read the same at a glance.
+                                            submission.presentation_status === 'uploaded'
+                                                ? 'border-[#4c8a1f]/30 bg-[#eef7e6] dark:border-[#67b52f]/25 dark:bg-[#67b52f]/10'
+                                                : 'dark:bg-muted/40 border-transparent bg-slate-50',
+                                        )}
+                                    >
                                         <div className="min-w-0">
                                             <p className="truncate text-sm font-semibold">{submission.presentation_original_name}</p>
                                             {submission.presentation_uploaded_at && (
@@ -368,44 +391,16 @@ export default function AbstractReviewShow({ submission, eligibleReviewers }: Ab
                                                 </p>
                                             )}
                                         </div>
-                                        <Button asChild variant="outline" size="sm" className="shrink-0">
-                                            <a href={route('admin.abstracts.presentation.download', submission.id)}>
-                                                <Download className="size-4" />
-                                                Download
-                                            </a>
-                                        </Button>
-                                    </div>
-                                )}
-
-                                {submission.presentation_status === 'uploaded' && (
-                                    <div className="mt-5 space-y-3">
-                                        <Button
-                                            onClick={approvePresentation}
-                                            disabled={presentationProcessing}
-                                            className="bg-[#4c8a1f] font-bold hover:bg-[#3f751a]"
-                                        >
-                                            <Check className="size-4" />
-                                            Approve presentation
-                                        </Button>
-
-                                        <div className="grid gap-2">
-                                            <Textarea
-                                                value={presentationNotes}
-                                                onChange={(e) => setPresentationNotes(e.target.value)}
-                                                rows={3}
-                                                placeholder="Explain what needs to change before this can be approved."
-                                            />
-                                            <Button
-                                                type="button"
-                                                variant="outline"
-                                                onClick={rejectPresentation}
-                                                disabled={presentationProcessing || !presentationNotes.trim()}
-                                                className="w-fit border-red-200 font-bold text-red-700 hover:bg-red-50 hover:text-red-800"
-                                            >
-                                                <X className="size-4" />
-                                                Reject presentation
+                                        {/* Uploaded files are often named after their author, so the
+                                            download is admin-only — enforced server-side too. */}
+                                        {isAdmin && (
+                                            <Button asChild variant="outline" size="sm" className="shrink-0">
+                                                <a href={route('admin.abstracts.presentation.download', submission.id)}>
+                                                    <Download className="size-4" />
+                                                    Download
+                                                </a>
                                             </Button>
-                                        </div>
+                                        )}
                                     </div>
                                 )}
                             </section>
@@ -413,12 +408,19 @@ export default function AbstractReviewShow({ submission, eligibleReviewers }: Ab
 
                         <section className="bg-card rounded-2xl border p-6 md:p-8">
                             <h2 className="text-lg font-semibold">Authors</h2>
+                            {submission.is_blinded && (
+                                <p className="text-muted-foreground mt-1 text-sm">
+                                    Names and affiliations are withheld for blind review — only the number of authors and who presents is shown.
+                                </p>
+                            )}
                             <div className="mt-4 divide-y">
                                 {submission.authors.map((author, index) => (
                                     <div key={`${author.name}-${index}`} className="flex items-start justify-between gap-4 py-4 first:pt-0 last:pb-0">
                                         <div>
-                                            <p className="font-semibold">{author.name}</p>
-                                            <p className="text-muted-foreground mt-1 text-sm">{author.institution}</p>
+                                            <p className={submission.is_blinded ? 'text-muted-foreground font-medium italic' : 'font-semibold'}>
+                                                {author.name}
+                                            </p>
+                                            {author.institution && <p className="text-muted-foreground mt-1 text-sm">{author.institution}</p>}
                                         </div>
                                         {author.is_presenter && (
                                             <span className="rounded-full bg-[#eef7e6] px-2.5 py-1 text-xs font-bold text-[#4c8a1f]">Presenter</span>
@@ -453,39 +455,57 @@ export default function AbstractReviewShow({ submission, eligibleReviewers }: Ab
                     </main>
 
                     <aside className="space-y-5 lg:sticky lg:top-6">
-                        <section className="dark:bg-card rounded-2xl border border-[#135eeb]/10 bg-white p-5 shadow-[0_1px_2px_rgba(19,94,235,0.06)]">
-                            <div className="flex items-center gap-3">
-                                <span className="flex size-10 items-center justify-center rounded-xl bg-[#eef7e6] text-[#4c8a1f]">
-                                    <UserRound className="size-5" />
-                                </span>
-                                <div>
-                                    <h2 className="font-semibold">Submitting author</h2>
-                                    <p className="text-muted-foreground text-xs">Participant record</p>
-                                </div>
-                            </div>
-                            <dl className="mt-5 space-y-4 text-sm">
-                                <div>
-                                    <dt className="text-muted-foreground text-xs">Name</dt>
-                                    <dd className="mt-1 font-semibold">{submission.user.name}</dd>
-                                </div>
-                                <div>
-                                    <dt className="text-muted-foreground text-xs">Email</dt>
-                                    <dd className="mt-1 break-all">{submission.user.email}</dd>
-                                </div>
-                                {submission.user.institution && (
+                        {submission.user ? (
+                            <section className="dark:bg-card rounded-2xl border border-[#135eeb]/10 bg-white p-5 shadow-[0_1px_2px_rgba(19,94,235,0.06)]">
+                                <div className="flex items-center gap-3">
+                                    <span className="flex size-10 items-center justify-center rounded-xl bg-[#eef7e6] text-[#4c8a1f]">
+                                        <UserRound className="size-5" />
+                                    </span>
                                     <div>
-                                        <dt className="text-muted-foreground text-xs">Institution</dt>
-                                        <dd className="mt-1">{submission.user.institution}</dd>
+                                        <h2 className="font-semibold">Submitting author</h2>
+                                        <p className="text-muted-foreground text-xs">Visible to admins only</p>
                                     </div>
-                                )}
-                                {submission.user.phone && (
+                                </div>
+                                <dl className="mt-5 space-y-4 text-sm">
                                     <div>
-                                        <dt className="text-muted-foreground text-xs">Phone</dt>
-                                        <dd className="mt-1">{submission.user.phone}</dd>
+                                        <dt className="text-muted-foreground text-xs">Name</dt>
+                                        <dd className="mt-1 font-semibold">{submission.user.name}</dd>
                                     </div>
-                                )}
-                            </dl>
-                        </section>
+                                    <div>
+                                        <dt className="text-muted-foreground text-xs">Email</dt>
+                                        <dd className="mt-1 break-all">{submission.user.email}</dd>
+                                    </div>
+                                    {submission.user.institution && (
+                                        <div>
+                                            <dt className="text-muted-foreground text-xs">Institution</dt>
+                                            <dd className="mt-1">{submission.user.institution}</dd>
+                                        </div>
+                                    )}
+                                    {submission.user.phone && (
+                                        <div>
+                                            <dt className="text-muted-foreground text-xs">Phone</dt>
+                                            <dd className="mt-1">{submission.user.phone}</dd>
+                                        </div>
+                                    )}
+                                </dl>
+                            </section>
+                        ) : (
+                            <section className="rounded-2xl border border-[#b5651d]/25 bg-[#b5651d]/5 p-5">
+                                <div className="flex items-center gap-3">
+                                    <span className="flex size-10 items-center justify-center rounded-xl bg-[#b5651d]/10 text-[#b5651d]">
+                                        <EyeOff className="size-5" />
+                                    </span>
+                                    <div>
+                                        <h2 className="font-semibold text-[#8a4d16]">Blind review</h2>
+                                        <p className="text-xs text-[#8a4d16]/80">Author identity withheld</p>
+                                    </div>
+                                </div>
+                                <p className="mt-4 text-sm leading-6 text-[#8a4d16]">
+                                    Judge this abstract on its content alone. The author, their institution, and their affiliations are hidden from
+                                    reviewers, and they will never see which named reviewer wrote which comment.
+                                </p>
+                            </section>
+                        )}
 
                         {isAdmin && submission.status === 'submitted' && (
                             <section className="bg-card rounded-2xl border p-5">
@@ -581,12 +601,58 @@ export default function AbstractReviewShow({ submission, eligibleReviewers }: Ab
                             </section>
                         )}
 
+                        {/* A revision is a re-review, not a fresh one: show what this
+                            reviewer asked for last time so they can judge whether the
+                            author answered it. Only their own rounds are ever sent. */}
+                        {myPriorRounds.length > 0 && (
+                            <section className="rounded-2xl border border-[#135eeb]/25 bg-[#135eeb]/5 p-5">
+                                <div className="flex items-center gap-2">
+                                    <History className="size-4 text-[#135eeb]" />
+                                    <h2 className="text-lg font-semibold text-[#0f2350] dark:text-[#a9c6ff]">
+                                        {isAdmin ? 'Previous review rounds' : 'What you asked for last time'}
+                                    </h2>
+                                </div>
+
+                                <div className="mt-4 space-y-4">
+                                    {myPriorRounds.map((prior) => (
+                                        <div key={prior.id} className="rounded-xl bg-white/70 p-4 dark:bg-black/20">
+                                            <div className="flex flex-wrap items-baseline justify-between gap-2">
+                                                <p className="text-sm font-semibold">
+                                                    Round {prior.round}
+                                                    {isAdmin && prior.reviewer_name ? ` · ${prior.reviewer_name}` : ''}
+                                                </p>
+                                                <span className="text-xs font-bold text-[#135eeb]">
+                                                    {recommendationLabel[prior.recommendation] ?? prior.recommendation}
+                                                </span>
+                                            </div>
+
+                                            {prior.comments.length > 0 ? (
+                                                <div className="mt-3 space-y-2">
+                                                    {prior.comments.map((comment) => (
+                                                        <div key={comment.id} className="text-sm leading-6">
+                                                            <span className="mr-1.5 inline-flex rounded-full bg-white px-2 py-0.5 text-[11px] font-bold text-[#135eeb] dark:bg-black/30">
+                                                                {labelForSection(comment.section)}
+                                                            </span>
+                                                            <span className="text-muted-foreground">{comment.body}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            ) : (
+                                                <p className="text-muted-foreground mt-2 text-sm">No comments were left in that round.</p>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            </section>
+                        )}
+
                         {isAssignedReviewer && submission.status === 'submitted' && (
                             <section className="bg-card rounded-2xl border p-5">
-                                <h2 className="text-lg font-semibold">Your recommendation</h2>
+                                <h2 className="text-lg font-semibold">{isReReview ? 'Your re-review' : 'Your recommendation'}</h2>
                                 <p className="text-muted-foreground mt-1 text-xs leading-5">
-                                    If both reviewers recommend acceptance, the abstract is accepted automatically. Any other combination is left for
-                                    an admin to decide.
+                                    {isReReview
+                                        ? `This is round ${submission.review_round} — the author has revised the abstract ${submission.completed_rounds === 1 ? 'once' : `${submission.completed_rounds} times`}. Judge the revision against the comments above.`
+                                        : 'If both reviewers recommend acceptance, the abstract is accepted automatically. Any other combination is left for an admin to decide.'}
                                 </p>
                                 <form onSubmit={submitRecommendation} className="mt-4 space-y-3">
                                     <div className="grid gap-2">

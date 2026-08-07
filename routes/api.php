@@ -29,9 +29,20 @@ Route::post('checkin/login', [AuthController::class, 'login'])
 
 Route::middleware('auth:sanctum')->prefix('checkin')->name('checkin.')->group(function () {
     Route::post('logout', [AuthController::class, 'logout'])->name('logout');
+    Route::get('fee-categories', [CheckinController::class, 'feeCategories'])->name('fee-categories');
     Route::post('register', [CheckinController::class, 'register'])->name('register');
     Route::post('scan', [CheckinController::class, 'scan'])->name('scan');
     Route::get('lookup', [CheckinController::class, 'lookup'])->name('lookup');
     Route::post('users/{user}/check-in', [CheckinController::class, 'checkInById'])->name('check-in-by-id');
+    Route::post('users/{user}/control-number', [CheckinController::class, 'requestControlNumber'])->name('control-number');
     Route::get('recent', [CheckinController::class, 'recent'])->name('recent');
+
+    // Settling a payment is finance's alone. Staff at the desk can register a
+    // walk-in, hand out a control number, and scan badges, but nothing they can
+    // reach turns an unpaid registrant into a paid one — and without payment
+    // there is no badge code to scan.
+    Route::middleware('role:finance,admin,super_admin')->group(function () {
+        Route::post('users/{user}/verify-payment', [CheckinController::class, 'verifyPayment'])->name('verify-payment');
+        Route::post('users/{user}/waive', [CheckinController::class, 'waivePayment'])->name('waive');
+    });
 });

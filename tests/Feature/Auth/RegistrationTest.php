@@ -76,8 +76,8 @@ class RegistrationTest extends TestCase
             'participant_type' => 'researcher',
             'country' => 'Tanzania',
             'fee_category' => 'participant_east_africa',
-            'password' => 'password',
-            'password_confirmation' => 'password',
+            'password' => 'Password1234',
+            'password_confirmation' => 'Password1234',
         ]);
 
         $this->assertAuthenticated();
@@ -110,8 +110,8 @@ class RegistrationTest extends TestCase
             'participant_type' => 'practitioner',
             'country' => 'Tanzania',
             'fee_category' => 'participant_east_africa',
-            'password' => 'password',
-            'password_confirmation' => 'password',
+            'password' => 'Password1234',
+            'password_confirmation' => 'Password1234',
         ]);
 
         $this->assertAuthenticated();
@@ -121,6 +121,105 @@ class RegistrationTest extends TestCase
         $user = User::where('email', 'other-institute@example.com')->firstOrFail();
         $this->assertNull($user->institution_id);
         $this->assertSame('Village Health Clinic', $user->institution);
+    }
+
+    /**
+     * The regional tiers differ by roughly USD 95, and `country` is the only
+     * thing that decides which one a registrant is entitled to — so the server
+     * has to check it, not just the form.
+     */
+    public function test_an_international_registrant_cannot_claim_the_east_african_rate()
+    {
+        Mail::fake();
+
+        FeeCategory::create(['key' => 'participant_east_africa', 'label' => 'East Africa Participants', 'amount' => 150000, 'currency' => 'TZS', 'active' => true]);
+
+        $response = $this->post('/register', [
+            'salutation' => 'Dr.',
+            'first_name' => 'Cheap',
+            'last_name' => 'Tier',
+            'email' => 'cheap-tier@example.com',
+            'institution_id' => 'other',
+            'institution_other' => 'Somewhere Abroad',
+            'phone' => '+49 30 000000',
+            'participant_type' => 'researcher',
+            'country' => 'Germany',
+            'fee_category' => 'participant_east_africa',
+            'password' => 'Password1234',
+            'password_confirmation' => 'Password1234',
+        ]);
+
+        $response->assertSessionHasErrors('fee_category');
+        $this->assertDatabaseMissing('users', ['email' => 'cheap-tier@example.com']);
+    }
+
+    public function test_an_east_african_registrant_cannot_be_put_on_the_international_rate()
+    {
+        Mail::fake();
+
+        FeeCategory::create(['key' => 'participant_non_east_africa', 'label' => 'Non-East African Participants', 'amount' => 150, 'currency' => 'USD', 'active' => true]);
+
+        $this->post('/register', [
+            'salutation' => 'Dr.',
+            'first_name' => 'Wrong',
+            'last_name' => 'Tier',
+            'email' => 'wrong-tier@example.com',
+            'institution_id' => 'other',
+            'institution_other' => 'NIMR',
+            'phone' => '+255700000000',
+            'participant_type' => 'researcher',
+            'country' => 'Tanzania',
+            'fee_category' => 'participant_non_east_africa',
+            'password' => 'Password1234',
+            'password_confirmation' => 'Password1234',
+        ])->assertSessionHasErrors('fee_category');
+
+        $this->assertDatabaseMissing('users', ['email' => 'wrong-tier@example.com']);
+    }
+
+    /**
+     * `is_east_africa` is derived by an exact match against the configured
+     * list, so a free-text country would drop locals onto the USD rate.
+     */
+    public function test_country_must_come_from_the_configured_list()
+    {
+        Mail::fake();
+
+        FeeCategory::create(['key' => 'participant_east_africa', 'label' => 'East Africa Participants', 'amount' => 150000, 'currency' => 'TZS', 'active' => true]);
+
+        $this->post('/register', [
+            'salutation' => 'Dr.',
+            'first_name' => 'Lower',
+            'last_name' => 'Case',
+            'email' => 'lowercase-country@example.com',
+            'institution_id' => 'other',
+            'institution_other' => 'NIMR',
+            'phone' => '+255700000000',
+            'participant_type' => 'researcher',
+            'country' => 'tanzania',
+            'fee_category' => 'participant_east_africa',
+            'password' => 'Password1234',
+            'password_confirmation' => 'Password1234',
+        ])->assertSessionHasErrors('country');
+
+        $this->assertDatabaseMissing('users', ['email' => 'lowercase-country@example.com']);
+    }
+
+    /**
+     * Every accepted POST writes a user row, queues a confirmation email, and
+     * (for students) accepts a 10 MB upload, all unauthenticated. The limiter
+     * runs ahead of the controller, so rejected attempts are counted too —
+     * which is what a bot hammering the endpoint actually produces.
+     */
+    public function test_registration_is_rate_limited()
+    {
+        Mail::fake();
+
+        for ($i = 0; $i < 10; $i++) {
+            $this->post('/register', [])->assertStatus(302);
+        }
+
+        $this->post('/register', [])->assertStatus(429);
     }
 
     public function test_registering_sends_a_verification_email_and_gates_the_dashboard()
@@ -142,8 +241,8 @@ class RegistrationTest extends TestCase
             'participant_type' => 'academic',
             'country' => 'Tanzania',
             'fee_category' => 'participant_east_africa',
-            'password' => 'password',
-            'password_confirmation' => 'password',
+            'password' => 'Password1234',
+            'password_confirmation' => 'Password1234',
         ]);
 
         $user = User::where('email', 'unverified@example.com')->firstOrFail();

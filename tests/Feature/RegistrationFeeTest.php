@@ -68,7 +68,7 @@ class RegistrationFeeTest extends TestCase
             'institution_other' => 'Healers Guild',
             'phone' => '+1 555 0100',
             'participant_type' => 'practitioner',
-            'country' => 'United States',
+            'country' => 'United States of America',
             'fee_category' => 'participant_non_east_africa',
             'password' => 'password123',
             'password_confirmation' => 'password123',

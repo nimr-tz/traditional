@@ -62,7 +62,7 @@ export default function ResetPassword({ token, email }: ResetPasswordProps) {
                         onChange={(e) => setData('password', e.target.value)}
                         placeholder="Password"
                     />
-                    <p className="text-xs text-[hsl(30,8%,42%)]">At least 8 characters.</p>
+                    <p className="text-xs text-[hsl(30,8%,42%)]">At least 10 characters, including letters and numbers.</p>
                     <InputError message={errors.password} />
                 </div>
 

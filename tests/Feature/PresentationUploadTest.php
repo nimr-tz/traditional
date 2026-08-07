@@ -2,16 +2,15 @@
 
 namespace Tests\Feature;
 
-use App\Mail\PresentationApproved;
-use App\Mail\PresentationRejected;
-use App\Mail\PresentationSubmittedForReview;
 use App\Mail\PresentationUploaded;
 use App\Models\AbstractSubmission;
+use App\Models\ConferenceSetting;
 use App\Models\Subtheme;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -81,7 +80,8 @@ class PresentationUploadTest extends TestCase
         $this->assertNotNull($submission->presentation_uploaded_at);
         Storage::disk('local')->assertExists($submission->presentation_file);
         Mail::assertQueued(PresentationUploaded::class, fn ($mail) => $mail->hasTo($submission->user->email) && ! $mail->isReplacement);
-        Mail::assertQueued(PresentationSubmittedForReview::class, fn ($mail) => $mail->hasTo($admin->email));
+        // Nobody reviews a presentation, so no organizer is notified.
+        Mail::assertNotQueued(PresentationUploaded::class, fn ($mail) => $mail->hasTo($admin->email));
     }
 
     public function test_wrong_file_type_for_the_presentation_type_is_rejected(): void
@@ -155,54 +155,90 @@ class PresentationUploadTest extends TestCase
         $this->actingAs($admin)->get(route('abstracts.presentation.download', $submission))->assertOk();
     }
 
-    public function test_admin_can_approve_an_uploaded_presentation_and_it_locks_further_uploads(): void
+    /**
+     * Presentations aren't reviewed. Whatever the presenter has on file when
+     * the window closes is what gets presented, so the only thing that ends
+     * their ability to change it is the deadline.
+     */
+    public function test_a_presenter_can_keep_replacing_their_file_while_the_window_is_open(): void
     {
         Storage::fake('local');
         Mail::fake();
 
-        $admin = User::factory()->admin()->create();
+        ConferenceSetting::set('presentation_deadline', now()->addWeek()->toDateString());
         $submission = $this->acceptedSubmission();
 
-        $this->actingAs($submission->user)->post(route('abstracts.presentation.store', $submission), [
-            'presentation_file' => UploadedFile::fake()->create('slides.pdf', 100),
-        ]);
-
-        $this->actingAs($admin)->post(route('admin.abstracts.presentation.approve', $submission))->assertRedirect();
+        foreach (['first.pdf', 'second.pdf', 'third.pdf'] as $name) {
+            $this->actingAs($submission->user)->post(route('abstracts.presentation.store', $submission), [
+                'presentation_file' => UploadedFile::fake()->create($name, 100),
+            ])->assertRedirect();
+        }
 
         $submission->refresh();
-        $this->assertSame('approved', $submission->presentation_status);
-        $this->assertFalse($submission->canUploadPresentation());
-        Mail::assertQueued(PresentationApproved::class, fn ($mail) => $mail->hasTo($submission->user->email));
-
-        $this->actingAs($submission->user)->post(route('abstracts.presentation.store', $submission), [
-            'presentation_file' => UploadedFile::fake()->create('another.pdf', 100),
-        ])->assertStatus(422);
+        $this->assertSame('uploaded', $submission->presentation_status);
+        $this->assertSame('third.pdf', $submission->presentation_original_name);
+        $this->assertTrue($submission->canUploadPresentation());
     }
 
-    public function test_admin_rejection_requires_notes_and_reopens_upload(): void
+    public function test_uploads_close_once_the_deadline_has_passed(): void
     {
         Storage::fake('local');
         Mail::fake();
 
-        $admin = User::factory()->admin()->create();
+        ConferenceSetting::set('presentation_deadline', now()->addWeek()->toDateString());
         $submission = $this->acceptedSubmission();
 
         $this->actingAs($submission->user)->post(route('abstracts.presentation.store', $submission), [
             'presentation_file' => UploadedFile::fake()->create('slides.pdf', 100),
-        ]);
-
-        $this->actingAs($admin)->post(route('admin.abstracts.presentation.reject', $submission), [
-            'notes' => '',
-        ])->assertSessionHasErrors('notes');
-
-        $this->actingAs($admin)->post(route('admin.abstracts.presentation.reject', $submission), [
-            'notes' => 'Slides are missing the required disclosure slide.',
         ])->assertRedirect();
 
-        $submission->refresh();
-        $this->assertSame('pending', $submission->presentation_status);
-        $this->assertSame('Slides are missing the required disclosure slide.', $submission->presentation_review_notes);
-        $this->assertTrue($submission->canUploadPresentation());
-        Mail::assertQueued(PresentationRejected::class, fn ($mail) => $mail->hasTo($submission->user->email));
+        ConferenceSetting::set('presentation_deadline', now()->subDay()->toDateString());
+
+        $this->assertFalse($submission->refresh()->canUploadPresentation());
+
+        $this->actingAs($submission->user)->post(route('abstracts.presentation.store', $submission), [
+            'presentation_file' => UploadedFile::fake()->create('late.pdf', 100),
+        ])->assertStatus(422);
+
+        $this->actingAs($submission->user)
+            ->delete(route('abstracts.presentation.destroy', $submission))
+            ->assertStatus(422);
+
+        // The file uploaded before the deadline stands.
+        $this->assertSame('slides.pdf', $submission->refresh()->presentation_original_name);
+    }
+
+    /** The presenter is told; nobody is asked to review it. */
+    public function test_uploading_notifies_only_the_presenter(): void
+    {
+        Storage::fake('local');
+        Mail::fake();
+
+        User::factory()->reviewer()->create();
+        User::factory()->admin()->create();
+        $submission = $this->acceptedSubmission();
+
+        $this->actingAs($submission->user)->post(route('abstracts.presentation.store', $submission), [
+            'presentation_file' => UploadedFile::fake()->create('slides.pdf', 100),
+        ])->assertRedirect();
+
+        Mail::assertQueued(PresentationUploaded::class, 1);
+        Mail::assertQueued(PresentationUploaded::class, fn ($mail) => $mail->hasTo($submission->user->email));
+    }
+
+    /** The approve/reject endpoints are gone entirely, not merely hidden. */
+    public function test_there_is_no_presentation_review_endpoint(): void
+    {
+        $this->assertFalse(Route::has('admin.abstracts.presentation.approve'));
+        $this->assertFalse(Route::has('admin.abstracts.presentation.reject'));
+    }
+
+    public function test_an_open_deadline_still_requires_the_abstract_to_be_accepted(): void
+    {
+        ConferenceSetting::set('presentation_deadline', now()->addWeek()->toDateString());
+        $submission = $this->acceptedSubmission();
+        $submission->forceFill(['status' => 'submitted'])->save();
+
+        $this->assertFalse($submission->refresh()->canUploadPresentation());
     }
 }

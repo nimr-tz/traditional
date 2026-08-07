@@ -11,15 +11,41 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
+use Inertia\Inertia;
+use Inertia\Response;
 
 class AdministratorController extends Controller
 {
     /**
-     * Browse/search every user for the super admin's role-management panel —
-     * unlike the old grant-only flow, this is not scoped to plain 'user'
-     * accounts, since a super admin can change anyone's role directly.
+     * The Users & Roles console. Deliberately its own page rather than a panel
+     * on Conference Settings: who can do what is people administration, not a
+     * property of the conference.
      */
-    public function index(Request $request): JsonResponse
+    public function index(): Response
+    {
+        // super_admin only (see routes/admin.php).
+        return Inertia::render('admin/users/index', [
+            'roleAccessChanges' => AdministratorAccessChange::query()
+                ->latest()
+                ->limit(10)
+                ->get([
+                    'id',
+                    'target_name',
+                    'target_email',
+                    'changed_by_name',
+                    'action',
+                    'role',
+                    'created_at',
+                ]),
+        ]);
+    }
+
+    /**
+     * Browse/search every user for the role-management panel — unlike the old
+     * grant-only flow, this is not scoped to plain 'user' accounts, since a
+     * super admin can change anyone's role directly.
+     */
+    public function search(Request $request): JsonResponse
     {
         $data = $request->validate([
             'query' => ['nullable', 'string', 'max:100'],
