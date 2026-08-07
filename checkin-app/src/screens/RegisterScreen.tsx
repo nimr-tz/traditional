@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
     ActivityIndicator,
     KeyboardAvoidingView,
@@ -10,17 +10,7 @@ import {
     TextInput,
     View,
 } from 'react-native';
-import { RegisteredAttendee, registerAttendee } from '../api/client';
-
-const PARTICIPANT_TYPES = [
-    { value: 'researcher', label: 'Researcher' },
-    { value: 'practitioner', label: 'Practitioner' },
-    { value: 'academic', label: 'Academic' },
-    { value: 'policy_maker', label: 'Policy maker' },
-    { value: 'decision_maker', label: 'Decision maker' },
-    { value: 'student', label: 'Student' },
-    { value: 'media', label: 'Media' },
-] as const;
+import { DeskOptions, RegistrationResult, apiErrorMessage, fetchDeskOptions, registerAttendee } from '../api/client';
 
 const EMPTY_FORM = {
     name: '',
@@ -28,21 +18,69 @@ const EMPTY_FORM = {
     phone: '',
     institution: '',
     participant_type: '',
+    country: '',
+    fee_category: '',
 };
+
+function formatAmount(amount: string, currency: string) {
+    const value = Number(amount);
+    return `${currency} ${Number.isNaN(value) ? amount : value.toLocaleString()}`;
+}
 
 export default function RegisterScreen() {
     const [form, setForm] = useState(EMPTY_FORM);
-    const [registered, setRegistered] = useState<RegisteredAttendee | null>(null);
+    const [options, setOptions] = useState<DeskOptions | null>(null);
+    const [countryQuery, setCountryQuery] = useState('');
+    const [registered, setRegistered] = useState<RegistrationResult | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
+
+    useEffect(() => {
+        fetchDeskOptions()
+            .then(setOptions)
+            .catch(() => setError('Could not load the fee categories. Pull the app back to the desk network and reopen this tab.'));
+    }, []);
 
     const update = (field: keyof typeof form, value: string) => {
         setForm((current) => ({ ...current, [field]: value }));
     };
 
+    // The server runs FeeTier::guard on every registration, so a mismatched
+    // country and category is rejected there regardless. Narrowing the list
+    // here just keeps the desk from picking one that will bounce.
+    const selectableCategories = useMemo(() => {
+        if (!options) return [];
+
+        const isEastAfrican = options.east_africa_countries.includes(form.country);
+        const wantsStudent = form.participant_type === 'student';
+
+        return options.fee_categories.filter((category) => {
+            const isStudent = category.key.startsWith('student_');
+            if (isStudent !== wantsStudent) return false;
+            if (!form.country) return true;
+            return isEastAfrican ? category.key.endsWith('_east_africa') : category.key.endsWith('_non_east_africa');
+        });
+    }, [options, form.country, form.participant_type]);
+
+    const countryMatches = useMemo(() => {
+        if (!options || countryQuery.trim().length < 2) return [];
+        const query = countryQuery.trim().toLowerCase();
+        return options.countries.filter((country) => country.toLowerCase().includes(query)).slice(0, 6);
+    }, [options, countryQuery]);
+
     const submit = async () => {
         if (!form.name.trim() || !form.email.trim() || !form.phone.trim() || !form.participant_type) {
             setError('Name, email, phone and participant type are required.');
+            return;
+        }
+
+        if (!form.country) {
+            setError('Select a country — it decides which registration fee applies.');
+            return;
+        }
+
+        if (!form.fee_category) {
+            setError('Select a registration category.');
             return;
         }
 
@@ -58,10 +96,8 @@ export default function RegisterScreen() {
                     institution: form.institution.trim(),
                 }),
             );
-        } catch (requestError: any) {
-            const validationErrors = requestError?.response?.data?.errors;
-            const firstValidationError = validationErrors ? Object.values(validationErrors).flat()[0] : null;
-            setError(String(firstValidationError ?? requestError?.response?.data?.message ?? 'Registration failed. Check the connection.'));
+        } catch (requestError) {
+            setError(apiErrorMessage(requestError, 'Registration failed. Check the connection.'));
         } finally {
             setLoading(false);
         }
@@ -69,28 +105,50 @@ export default function RegisterScreen() {
 
     const reset = () => {
         setForm(EMPTY_FORM);
+        setCountryQuery('');
         setRegistered(null);
         setError(null);
     };
 
     if (registered) {
+        const { user, billing } = registered;
+        const controlNumberReady = billing.status === 'ready' && billing.control_number;
+
         return (
-            <View style={registerStyles.successScreen}>
-                <View style={registerStyles.successMark} accessibilityLabel="Registration successful">
-                    <Text style={registerStyles.successMarkText}>✓</Text>
+            <ScrollView style={registerStyles.screen} contentContainerStyle={registerStyles.successScreen}>
+                <View
+                    style={[registerStyles.successMark, !controlNumberReady && registerStyles.successMarkPending]}
+                    accessibilityLabel="Registration recorded"
+                >
+                    <Text style={registerStyles.successMarkText}>{controlNumberReady ? '✓' : '…'}</Text>
                 </View>
-                <Text style={registerStyles.successTitle}>Registration complete</Text>
-                <Text style={registerStyles.successName}>{registered.name}</Text>
-                <Text style={registerStyles.successDetail}>{registered.email}</Text>
+                <Text style={registerStyles.successTitle}>Registered — payment outstanding</Text>
+                <Text style={registerStyles.successName}>{user.name}</Text>
+                <Text style={registerStyles.successDetail}>{user.email}</Text>
+                {user.fee_amount && user.currency ? (
+                    <Text style={registerStyles.amountDue}>{formatAmount(user.fee_amount, user.currency)} due</Text>
+                ) : null}
+
                 <View style={registerStyles.codeBlock}>
-                    <Text style={registerStyles.codeLabel}>REGISTRATION CODE</Text>
-                    <Text selectable style={registerStyles.code}>{registered.registration_code}</Text>
+                    <Text style={registerStyles.codeLabel}>CONTROL NUMBER</Text>
+                    {controlNumberReady ? (
+                        <Text selectable style={registerStyles.code}>{billing.control_number}</Text>
+                    ) : (
+                        <Text style={registerStyles.codePending}>Not issued yet</Text>
+                    )}
                 </View>
-                <Text style={registerStyles.successHint}>This attendee can now be marked present from Attendance.</Text>
+
+                <Text style={[registerStyles.successHint, billing.status === 'blocked' && registerStyles.blockedHint]}>
+                    {billing.message}
+                </Text>
+                <Text style={registerStyles.successHint}>
+                    No badge is issued until the payment clears. Once they have paid, find them under Attendance to check them in.
+                </Text>
+
                 <Pressable style={registerStyles.primaryButton} onPress={reset} accessibilityRole="button">
                     <Text style={registerStyles.primaryButtonText}>Register another attendee</Text>
                 </Pressable>
-            </View>
+            </ScrollView>
         );
     }
 
@@ -102,7 +160,10 @@ export default function RegisterScreen() {
                 keyboardShouldPersistTaps="handled"
             >
                 <Text style={registerStyles.heading}>Register attendee</Text>
-                <Text style={registerStyles.intro}>Enter the attendee's details. Required fields are marked with *.</Text>
+                <Text style={registerStyles.intro}>
+                    Registers a walk-in and issues a control number to pay with. The badge follows once the payment clears — this does not
+                    check anyone in.
+                </Text>
 
                 <Field label="Full name *">
                     <TextInput
@@ -147,21 +208,105 @@ export default function RegisterScreen() {
 
                 <Text style={registerStyles.label}>Participant type *</Text>
                 <View style={registerStyles.typeOptions}>
-                    {PARTICIPANT_TYPES.map((type) => {
-                        const selected = form.participant_type === type.value;
+                    {Object.entries(options?.participant_types ?? {}).map(([value, label]) => {
+                        const selected = form.participant_type === value;
                         return (
                             <Pressable
-                                key={type.value}
+                                key={value}
                                 style={[registerStyles.typeOption, selected && registerStyles.typeOptionSelected]}
-                                onPress={() => update('participant_type', type.value)}
+                                onPress={() => {
+                                    update('participant_type', value);
+                                    // Student and non-student draw from different
+                                    // price lists, so a held-over choice would be
+                                    // wrong the moment this changes.
+                                    update('fee_category', '');
+                                }}
                                 accessibilityRole="radio"
                                 accessibilityState={{ checked: selected }}
                             >
-                                <Text style={[registerStyles.typeText, selected && registerStyles.typeTextSelected]}>{type.label}</Text>
+                                <Text style={[registerStyles.typeText, selected && registerStyles.typeTextSelected]}>{label}</Text>
                             </Pressable>
                         );
                     })}
                 </View>
+
+                <Text style={registerStyles.label}>Country *</Text>
+                {form.country ? (
+                    <Pressable
+                        style={registerStyles.selectedCountry}
+                        onPress={() => {
+                            update('country', '');
+                            update('fee_category', '');
+                            setCountryQuery('');
+                        }}
+                        accessibilityRole="button"
+                        accessibilityHint="Clears the selected country"
+                    >
+                        <Text style={registerStyles.selectedCountryText}>{form.country}</Text>
+                        <Text style={registerStyles.selectedCountryChange}>Change</Text>
+                    </Pressable>
+                ) : (
+                    <View style={registerStyles.countryPicker}>
+                        <TextInput
+                            style={registerStyles.input}
+                            value={countryQuery}
+                            onChangeText={setCountryQuery}
+                            placeholder="Start typing a country"
+                            autoCapitalize="words"
+                        />
+                        {countryMatches.map((country) => (
+                            <Pressable
+                                key={country}
+                                style={registerStyles.countryMatch}
+                                onPress={() => {
+                                    update('country', country);
+                                    update('fee_category', '');
+                                    setCountryQuery('');
+                                }}
+                                accessibilityRole="button"
+                            >
+                                <Text style={registerStyles.countryMatchText}>{country}</Text>
+                            </Pressable>
+                        ))}
+                    </View>
+                )}
+                <Text style={registerStyles.hint}>The country decides whether the East African or international rate applies.</Text>
+
+                <Text style={registerStyles.label}>Registration category *</Text>
+                {!form.country || !form.participant_type ? (
+                    <Text style={registerStyles.hint}>Pick a participant type and country first.</Text>
+                ) : selectableCategories.length === 0 ? (
+                    <Text style={registerStyles.hint}>No active fee category matches that combination. Check Conference Settings.</Text>
+                ) : (
+                    <View style={registerStyles.categoryOptions}>
+                        {selectableCategories.map((category) => {
+                            const selected = form.fee_category === category.key;
+                            return (
+                                <Pressable
+                                    key={category.key}
+                                    style={[registerStyles.categoryOption, selected && registerStyles.categoryOptionSelected]}
+                                    onPress={() => update('fee_category', category.key)}
+                                    accessibilityRole="radio"
+                                    accessibilityState={{ checked: selected }}
+                                >
+                                    <Text style={[registerStyles.categoryLabel, selected && registerStyles.categoryLabelSelected]}>
+                                        {category.label}
+                                    </Text>
+                                    <Text style={[registerStyles.categoryAmount, selected && registerStyles.categoryLabelSelected]}>
+                                        {formatAmount(category.amount, category.currency)}
+                                    </Text>
+                                </Pressable>
+                            );
+                        })}
+                    </View>
+                )}
+
+                {form.participant_type === 'student' ? (
+                    <Text style={registerStyles.warning}>
+                        Student rates need a verified student ID before a control number can be issued. Registering here is fine, but they
+                        will have to upload the document online before they can pay.
+                    </Text>
+                ) : null}
 
                 {error ? <Text style={registerStyles.error}>{error}</Text> : null}
 
@@ -205,6 +350,59 @@ const registerStyles = StyleSheet.create({
         fontSize: 16,
         paddingHorizontal: 14,
     },
+    hint: { color: '#647168', fontSize: 13, lineHeight: 19, marginBottom: 18 },
+    warning: {
+        color: '#7a5216',
+        backgroundColor: '#fbf1dc',
+        padding: 12,
+        borderRadius: 6,
+        marginBottom: 16,
+        fontSize: 13,
+        lineHeight: 19,
+    },
+    countryPicker: { marginBottom: 8 },
+    countryMatch: {
+        minHeight: 46,
+        justifyContent: 'center',
+        paddingHorizontal: 14,
+        borderBottomWidth: 1,
+        borderColor: '#e1e5e2',
+        backgroundColor: '#ffffff',
+    },
+    countryMatchText: { color: '#24372c', fontSize: 15 },
+    selectedCountry: {
+        minHeight: 50,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 14,
+        borderWidth: 1,
+        borderColor: '#173f2a',
+        borderRadius: 6,
+        backgroundColor: '#ffffff',
+        marginBottom: 8,
+    },
+    selectedCountryText: { color: '#172019', fontSize: 16, fontWeight: '600' },
+    selectedCountryChange: { color: '#1d6b41', fontSize: 14, fontWeight: '700' },
+    categoryOptions: { gap: 8, marginBottom: 18 },
+    categoryOption: {
+        minHeight: 56,
+        justifyContent: 'center',
+        paddingHorizontal: 14,
+        paddingVertical: 10,
+        borderWidth: 1,
+        borderColor: '#aeb8b1',
+        borderRadius: 8,
+        backgroundColor: '#ffffff',
+    },
+    categoryOptionSelected: { backgroundColor: '#173f2a', borderColor: '#173f2a' },
+    categoryLabel: { color: '#24372c', fontSize: 15, fontWeight: '600' },
+    categoryLabelSelected: { color: '#ffffff' },
+    categoryAmount: { color: '#647168', fontSize: 14, marginTop: 3 },
+    amountDue: { color: '#173f2a', fontSize: 17, fontWeight: '700', marginTop: 10 },
+    codePending: { color: '#8a7550', fontSize: 16, fontWeight: '600', textAlign: 'center' },
+    blockedHint: { color: '#7a5216', backgroundColor: '#fbf1dc', padding: 12, borderRadius: 6 },
+    successMarkPending: { backgroundColor: '#b8863b' },
     typeOptions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 20 },
     typeOption: {
         minHeight: 44,
@@ -230,7 +428,7 @@ const registerStyles = StyleSheet.create({
     primaryButtonText: { color: '#ffffff', fontSize: 16, fontWeight: '700' },
     buttonDisabled: { opacity: 0.65 },
     error: { color: '#a73526', backgroundColor: '#f9e7e3', padding: 12, borderRadius: 6, marginBottom: 12, lineHeight: 20 },
-    successScreen: { flex: 1, backgroundColor: '#f7f5ef', alignItems: 'center', justifyContent: 'center', padding: 24 },
+    successScreen: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
     successMark: { width: 64, height: 64, borderRadius: 32, backgroundColor: '#173f2a', alignItems: 'center', justifyContent: 'center' },
     successMarkText: { color: '#ffffff', fontSize: 36, fontWeight: '700', lineHeight: 42 },
     successTitle: { color: '#173f2a', fontSize: 24, fontWeight: '700', marginTop: 20, marginBottom: 12 },

@@ -13,6 +13,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\HasApiTokens;
+use RuntimeException;
 
 class User extends Authenticatable implements MustVerifyEmailContract
 {
@@ -49,8 +50,15 @@ class User extends Authenticatable implements MustVerifyEmailContract
     /** Roles that can verify/reject/waive registrant payments. */
     public const FINANCE_ROLES = [self::ROLE_FINANCE, self::ROLE_ADMIN, self::ROLE_SUPER_ADMIN];
 
-    /** Roles that can sign in to the check-in app and record attendance. */
-    public const CHECKIN_ROLES = [self::ROLE_STAFF, self::ROLE_ADMIN, self::ROLE_SUPER_ADMIN];
+    /**
+     * Roles that can sign in to the check-in app and record attendance.
+     *
+     * Finance is here so the venue desk has a device that can settle a payment:
+     * staff can register a walk-in and scan badges, but only these finance
+     * roles can turn an unpaid registrant into a paid one, and only they see
+     * the app's settle screen.
+     */
+    public const CHECKIN_ROLES = [self::ROLE_STAFF, self::ROLE_FINANCE, self::ROLE_ADMIN, self::ROLE_SUPER_ADMIN];
 
     /**
      * Registration (and any other bare `new User(...)`) never sets `role`
@@ -271,9 +279,28 @@ class User extends Authenticatable implements MustVerifyEmailContract
 
     /**
      * Generate the unique code the badge QR encodes, once payment clears.
+     *
+     * No badge without payment: the code *is* the badge, so minting one for an
+     * unpaid registrant hands out entry that was never paid for. The rule is
+     * enforced here rather than at each caller because the walk-in check-in
+     * endpoint used to mint codes with no money behind them, and a guard on the
+     * one caller would not stop the next one.
+     *
+     * Callers that are settling a payment set `payment_status` on the model
+     * first and generate afterwards, so the in-memory state is already
+     * verified/waived by the time this runs.
+     *
+     * @throws RuntimeException
      */
     public function generateRegistrationCode(): string
     {
+        if (! $this->isPaid()) {
+            throw new RuntimeException(
+                "Refusing to issue a badge code for user [{$this->id}] with payment status ".
+                "[{$this->payment_status}] — a badge requires a verified or waived payment."
+            );
+        }
+
         do {
             $code = 'TMSC-'.strtoupper(Str::random(10));
         } while (static::where('registration_code', $code)->exists());
