@@ -251,9 +251,32 @@ class User extends Authenticatable implements MustVerifyEmailContract
         $this->currency = $category->currency;
     }
 
+    /**
+     * Whether the rate they are *currently on* is a student one, and therefore
+     * has to be backed by a verified document before they can be billed.
+     *
+     * Distinct from having applied for the student rate — see
+     * `hasStudentRateApplication()`. A registrant whose claim was refused sits
+     * on a participant rate and is free to pay it, even while a fresh document
+     * of theirs is waiting to be looked at.
+     */
     public function requiresStudentVerification(): bool
     {
         return str_starts_with($this->fee_category ?? '', 'student_');
+    }
+
+    /**
+     * Whether they have an open or decided claim on the student rate, whatever
+     * rate they are on right now.
+     *
+     * The student rate is granted by approval, never by asking: someone
+     * re-applying after a refusal keeps the participant rate until a reviewer
+     * says otherwise. This is what keeps them visible to the review queue in
+     * the meantime.
+     */
+    public function hasStudentRateApplication(): bool
+    {
+        return $this->student_verification_status !== null;
     }
 
     public function hasVerifiedStudentStatus(): bool

@@ -46,12 +46,26 @@ class RegistrationController extends Controller
 
         FeeTier::guard($data['fee_category'], $data['participant_type'], $user->country);
 
+        $wantsStudentRate = FeeTier::isStudentCategory($data['fee_category']);
+
+        // Once a claim has been refused, the student rate is only ever granted
+        // back by a reviewer accepting a new document — never by the registrant
+        // reselecting the category here. Letting them switch would put them on a
+        // rate they cannot be billed for and take away the participant rate they
+        // are currently free to pay.
+        if ($wantsStudentRate && $user->student_verification_status === 'rejected') {
+            return back()->with(
+                'error',
+                'Your student status was not approved, so the student rate cannot be selected here. Upload a new student document below and it will be reviewed again; if it is approved we will move you onto the student rate ourselves.'
+            );
+        }
+
         // Switching *into* a student rate needs proof, exactly as registering
         // into one does — otherwise this route mints student-priced accounts
         // with a verification queue entry and no document to review. Checked
         // after the tier guard so a wrong category is reported as a wrong
         // category, not as a missing document.
-        $needsDocument = FeeTier::isStudentCategory($data['fee_category']) && ! $user->student_document_path;
+        $needsDocument = $wantsStudentRate && ! $user->student_document_path;
 
         $request->validate([
             'student_document' => [

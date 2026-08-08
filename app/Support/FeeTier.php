@@ -61,6 +61,42 @@ class FeeTier
     }
 
     /**
+     * The standard participant category matching a student category's region —
+     * what a registrant is moved onto when their student status is refused.
+     *
+     * Derived from the region rather than a hardcoded pair, so a rejected East
+     * African student lands on the East African participant rate and an
+     * international one on the international rate. Returns null when the key
+     * doesn't resolve to a region, which the caller must treat as "cannot
+     * convert" rather than guessing a price.
+     */
+    public static function participantEquivalentOf(?string $studentCategory): ?string
+    {
+        return match (self::regionOf($studentCategory)) {
+            self::EAST_AFRICA => 'participant_east_africa',
+            self::INTERNATIONAL => 'participant_non_east_africa',
+            default => null,
+        };
+    }
+
+    /**
+     * The student category matching a category's region — what an approved
+     * claim moves the registrant onto.
+     *
+     * The mirror of `participantEquivalentOf()`: approval is the only thing that
+     * grants the student rate, so this runs when a reviewer accepts a document
+     * from someone sitting on a participant rate.
+     */
+    public static function studentEquivalentOf(?string $category): ?string
+    {
+        return match (self::regionOf($category)) {
+            self::EAST_AFRICA => 'student_east_africa',
+            self::INTERNATIONAL => 'student_non_east_africa',
+            default => null,
+        };
+    }
+
+    /**
      * Assert the selected fee category matches both the participant type and
      * the country. Throws a validation error against `fee_category`, which is
      * where both forms render the message.

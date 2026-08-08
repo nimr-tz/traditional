@@ -16,7 +16,14 @@ class StudentVerificationController extends Controller
     {
         $user = Auth::user();
 
-        abort_unless($user->requiresStudentVerification(), 403);
+        // Either they are on a student rate awaiting proof, or they were refused
+        // one and want another look. The second case is deliberately allowed
+        // while they sit on a participant rate: applying again must not disturb
+        // the rate they are currently free to pay. Only approval moves it.
+        abort_unless(
+            $user->requiresStudentVerification() || $user->hasStudentRateApplication(),
+            403,
+        );
 
         $request->validate([
             'student_document' => ['required', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:10240'],

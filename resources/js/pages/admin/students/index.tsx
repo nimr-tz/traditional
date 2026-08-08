@@ -28,6 +28,8 @@ interface Student {
     student_verified_at: string | null;
     student_verification_notes: string | null;
     control_number: string | null;
+    fee_amount: string | null;
+    currency: string | null;
 }
 
 interface Paginated<T> {
@@ -39,6 +41,7 @@ interface StudentVerificationProps {
     students: Paginated<Student>;
     filters: { status?: string; search?: string };
     stats: { pending: number; verified: number; rejected: number; total: number };
+    participantTypes: Record<string, string>;
 }
 
 const statusConfig: Record<VerificationStatus, { label: string; tone: PillTone }> = {
@@ -67,14 +70,27 @@ function formatDate(value: string): string {
     return new Intl.DateTimeFormat('en', { dateStyle: 'medium' }).format(new Date(value));
 }
 
-function StudentRow({ student }: { student: Student }) {
-    const { data, setData, post, processing, errors, reset } = useForm({ notes: '' });
+function StudentRow({ student, participantTypes }: { student: Student; participantTypes: Record<string, string> }) {
+    // 'researcher' is only the starting point — refusing the student rate has to
+    // set a non-student participant type, and the reviewer is the one who knows
+    // which one fits.
+    const { data, setData, post, processing, errors, reset } = useForm({ notes: '', participant_type: 'researcher' });
 
     const verify = () => {
         post(route('admin.students.verify', student.id), { preserveScroll: true, onSuccess: () => reset() });
     };
 
     const reject = () => {
+        const kept = student.control_number ? ` Control number ${student.control_number} stays valid.` : '';
+
+        if (
+            !window.confirm(
+                `Refuse the student rate for ${student.name} and move them to the standard participant category?${kept} They will be emailed.`,
+            )
+        ) {
+            return;
+        }
+
         post(route('admin.students.reject', student.id), { preserveScroll: true, onSuccess: () => reset() });
     };
 
@@ -137,6 +153,26 @@ function StudentRow({ student }: { student: Student }) {
                             className="text-sm"
                         />
                         {errors.notes && <p className="text-destructive text-xs">{errors.notes}</p>}
+
+                        <label className="text-muted-foreground flex flex-col gap-1 text-xs">
+                            If rejected, register them as
+                            <select
+                                value={data.participant_type}
+                                onChange={(event) => setData('participant_type', event.target.value)}
+                                disabled={processing}
+                                className="border-input bg-background text-foreground h-9 rounded-md border px-2 text-sm"
+                            >
+                                {Object.entries(participantTypes)
+                                    .filter(([value]) => value !== 'student')
+                                    .map(([value, label]) => (
+                                        <option key={value} value={value}>
+                                            {label}
+                                        </option>
+                                    ))}
+                            </select>
+                        </label>
+                        {errors.participant_type && <p className="text-destructive text-xs">{errors.participant_type}</p>}
+
                         <div className="flex gap-2">
                             <Button
                                 size="sm"
@@ -155,7 +191,7 @@ function StudentRow({ student }: { student: Student }) {
                                 className="border-red-200 font-bold text-red-700 hover:bg-red-50 hover:text-red-800"
                             >
                                 <X className="size-4" />
-                                Reject
+                                Reject &amp; move to participant rate
                             </Button>
                         </div>
                     </div>
@@ -169,8 +205,9 @@ function StudentRow({ student }: { student: Student }) {
                             <p className="flex items-start gap-2 text-xs leading-5 text-amber-700 dark:text-amber-500">
                                 <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
                                 <span>
-                                    Control number {student.control_number} was already issued at the student rate. Reopening the review will not void
-                                    it.
+                                    {status === 'rejected'
+                                        ? `Control number ${student.control_number} remains valid.`
+                                        : `Control number ${student.control_number} was already issued at the student rate. Reopening the review will not void it.`}
                                 </span>
                             </p>
                         )}
@@ -190,7 +227,7 @@ function StudentRow({ student }: { student: Student }) {
     );
 }
 
-export default function StudentVerification({ students, filters, stats }: StudentVerificationProps) {
+export default function StudentVerification({ students, filters, stats, participantTypes }: StudentVerificationProps) {
     const [search, setSearch] = useState(filters.search ?? '');
 
     const applyFilters: FormEventHandler = (event) => {
@@ -261,7 +298,7 @@ export default function StudentVerification({ students, filters, stats }: Studen
 
                     <div className="divide-y">
                         {students.data.length ? (
-                            students.data.map((student) => <StudentRow key={student.id} student={student} />)
+                            students.data.map((student) => <StudentRow key={student.id} student={student} participantTypes={participantTypes} />)
                         ) : (
                             <div className="p-12 text-center">
                                 <ShieldCheck className="text-muted-foreground mx-auto size-7" />
