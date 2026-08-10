@@ -20,8 +20,8 @@ class AdministratorManagementTest extends TestCase
 
         $response = $this->actingAs($superAdmin)->getJson(route('admin.users.search', ['query' => 'Amina']));
 
-        $response->assertOk()->assertJsonCount(2, 'data');
-        $ids = collect($response->json('data'))->pluck('id')->all();
+        $response->assertOk()->assertJsonCount(2, 'users.data');
+        $ids = collect($response->json('users.data'))->pluck('id')->all();
         $this->assertContains($participant->id, $ids);
         $this->assertContains($reviewer->id, $ids);
     }
@@ -34,7 +34,41 @@ class AdministratorManagementTest extends TestCase
 
         $response = $this->actingAs($superAdmin)->getJson(route('admin.users.search', ['role' => 'reviewer']));
 
-        $response->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.role', 'reviewer');
+        $response->assertOk()->assertJsonCount(1, 'users.data')->assertJsonPath('users.data.0.role', 'reviewer');
+    }
+
+    /**
+     * The console locks the row of a lone super admin so it can't be demoted.
+     * That count has to come from the whole table: when it was derived from the
+     * search results instead, searching for one super admin by name returned a
+     * result set of one and locked a row that was perfectly safe to change.
+     */
+    public function test_super_admin_count_covers_every_user_not_just_the_search_results(): void
+    {
+        $superAdmin = User::factory()->superAdmin()->create(['name' => 'First Administrator']);
+        User::factory()->superAdmin()->create(['name' => 'Second Administrator']);
+        User::factory()->superAdmin()->create(['name' => 'Third Administrator']);
+
+        $response = $this->actingAs($superAdmin)->getJson(route('admin.users.search', ['query' => 'Second']));
+
+        $response->assertOk()
+            ->assertJsonCount(1, 'users.data')
+            ->assertJsonPath('super_admin_count', 3);
+    }
+
+    public function test_a_super_admin_can_be_demoted_while_another_super_admin_remains(): void
+    {
+        $acting = User::factory()->superAdmin()->create(['name' => 'First Administrator']);
+        $target = User::factory()->superAdmin()->create(['name' => 'Second Administrator']);
+
+        $response = $this->actingAs($acting)->patch(route('admin.users.update-roles', $target), [
+            'roles' => ['user'],
+            'primary_role' => 'user',
+        ]);
+
+        $response->assertSessionHasNoErrors();
+        $this->assertFalse($target->fresh()->isSuperAdmin());
+        $this->assertTrue($acting->fresh()->isSuperAdmin());
     }
 
     public function test_a_super_admin_can_change_any_users_role_directly(): void

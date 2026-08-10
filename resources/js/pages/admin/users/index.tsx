@@ -54,6 +54,12 @@ interface PaginatedUsers {
     next_page_url: string | null;
 }
 
+interface UserSearchResponse {
+    users: PaginatedUsers;
+    /** Across all users, not just this page — see the controller. */
+    super_admin_count: number;
+}
+
 interface RoleAccessChange {
     id: number;
     target_name: string;
@@ -162,6 +168,7 @@ export default function UsersIndex({ roleAccessChanges }: UsersIndexProps) {
     const [roleFilter, setRoleFilter] = useState<UserRole | 'all'>('all');
     const [page, setPage] = useState(1);
     const [users, setUsers] = useState<PaginatedUsers | null>(null);
+    const [superAdminCount, setSuperAdminCount] = useState(0);
     const [loading, setLoading] = useState(true);
     const [loadError, setLoadError] = useState<string | null>(null);
     const [actionError, setActionError] = useState<string | null>(null);
@@ -179,9 +186,12 @@ export default function UsersIndex({ roleAccessChanges }: UsersIndexProps) {
         fetch(route('admin.users.search', params), { headers: { Accept: 'application/json' } })
             .then((response) => {
                 if (!response.ok) throw new Error('Failed to load users');
-                return response.json() as Promise<PaginatedUsers>;
+                return response.json() as Promise<UserSearchResponse>;
             })
-            .then(setUsers)
+            .then((data) => {
+                setUsers(data.users);
+                setSuperAdminCount(data.super_admin_count);
+            })
             .catch(() => setLoadError('Could not load users. Please try again.'))
             .finally(() => setLoading(false));
     };
@@ -195,8 +205,6 @@ export default function UsersIndex({ roleAccessChanges }: UsersIndexProps) {
     useEffect(() => {
         setPage(1);
     }, [search, roleFilter]);
-
-    const superAdminCount = users?.data.filter((u) => u.roles.includes('super_admin')).length ?? 0;
 
     const changeRoles = (user: UserRow, roles: UserRole[], primaryRole: UserRole) => {
         setActionError(null);

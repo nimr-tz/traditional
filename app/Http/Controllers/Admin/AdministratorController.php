@@ -71,7 +71,15 @@ class AdministratorController extends Controller
                 'email_verified' => $user->hasVerifiedEmail(),
             ]);
 
-        return response()->json($users);
+        return response()->json([
+            'users' => $users,
+            // Counted across every user, not just this page of results. The UI
+            // locks the row of a lone super admin so it can't be demoted, and
+            // if it derived that count from the search results, any search
+            // narrow enough to return one super admin would lock a row that is
+            // perfectly safe to change.
+            'super_admin_count' => User::withRole(User::ROLE_SUPER_ADMIN)->count(),
+        ]);
     }
 
     /**
