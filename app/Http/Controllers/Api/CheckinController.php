@@ -9,6 +9,7 @@ use App\Models\Attendance;
 use App\Models\FeeCategory;
 use App\Models\User;
 use App\Services\Billing\GepgService;
+use App\Services\Sms\SmsNotifier;
 use App\Support\FeeTier;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -205,6 +206,7 @@ class CheckinController extends Controller
         $user->save();
 
         Mail::to($user->email)->send(new PaymentConfirmed($user));
+        app(SmsNotifier::class)->paymentConfirmed($user);
 
         return response()->json([
             'message' => "Payment confirmed for {$user->name}.",

@@ -7,6 +7,7 @@ use App\Mail\ControlNumberIssued;
 use App\Mail\PaymentConfirmed;
 use App\Models\FeeCategory;
 use App\Models\User;
+use App\Services\Sms\SmsNotifier;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -172,6 +173,7 @@ class GepgService
     public function notifyControlNumberIssued(User $user): void
     {
         Mail::to($user->email)->send(new ControlNumberIssued($user));
+        app(SmsNotifier::class)->controlNumberIssued($user);
     }
 
     /**
@@ -191,6 +193,7 @@ class GepgService
         $user->save();
 
         Mail::to($user->email)->send(new PaymentConfirmed($user));
+        app(SmsNotifier::class)->paymentConfirmed($user);
     }
 
     /**

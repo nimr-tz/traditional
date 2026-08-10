@@ -8,6 +8,7 @@ use App\Mail\StudentVerificationSubmitted;
 use App\Models\FeeCategory;
 use App\Models\Institution;
 use App\Models\User;
+use App\Services\Sms\SmsNotifier;
 use App\Support\FeeTier;
 use App\Support\RegistrationWindow;
 use Illuminate\Auth\Events\Registered;
@@ -143,6 +144,7 @@ class RegisteredUserController extends Controller
         event(new Registered($user));
 
         Mail::to($user->email)->send(new RegistrationConfirmed($user));
+        app(SmsNotifier::class)->registered($user);
 
         if ($user->requiresStudentVerification()) {
             User::query()

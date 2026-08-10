@@ -8,6 +8,7 @@ use App\Models\AbstractReviewerDecision;
 use App\Models\AbstractSubmission;
 use App\Models\Subtheme;
 use App\Models\User;
+use App\Services\Sms\SmsNotifier;
 use App\Support\BlindReview;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -314,7 +315,10 @@ class AbstractController extends Controller
         });
 
         $abstract->load('user');
-        Mail::to($abstract->user->email)->send(new AbstractDecision($abstract->fresh(['user', 'subtheme', 'reviewer'])));
+        $decided = $abstract->fresh(['user', 'subtheme', 'reviewer']);
+
+        Mail::to($abstract->user->email)->send(new AbstractDecision($decided));
+        app(SmsNotifier::class)->abstractDecision($decided);
     }
 
     public function downloadPresentation(Request $request, AbstractSubmission $abstract): StreamedResponse

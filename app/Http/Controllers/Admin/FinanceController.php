@@ -9,6 +9,7 @@ use App\Mail\PaymentRejected;
 use App\Models\FeeCategory;
 use App\Models\User;
 use App\Services\Billing\GepgService;
+use App\Services\Sms\SmsNotifier;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -136,6 +137,7 @@ class FinanceController extends Controller
         $user->save();
 
         Mail::to($user->email)->send(new PaymentConfirmed($user));
+        app(SmsNotifier::class)->paymentConfirmed($user);
 
         return back()->with('success', "Payment for {$user->name} has been verified.");
     }

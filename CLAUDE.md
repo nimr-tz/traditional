@@ -94,6 +94,31 @@ API's request/response shapes. Integration code:
   implementation, which has drifted from that spec over time — don't copy patterns from AJSC without checking
   against `api.md`.
 
+### SMS (eGA mGov gateway)
+
+Registrants get an SMS alongside (never instead of) the transactional email for four events:
+registration received, control number issued, payment confirmed, and abstract decision. The reference
+implementation for the gateway is `SMS Documentation/code-example.php`.
+
+- `app/Services/Sms/SmsGateway.php` — the transport. Signs the exact JSON body with HMAC-SHA256 using the
+  API key and posts it verbatim, so the request must not be re-encoded by the HTTP client or the `hash`
+  header stops matching.
+- `app/Services/Sms/SmsNotifier.php` — one method per message. Callers sit next to the matching `Mail::to()`
+  line; every send is best-effort and silently skipped, since no SMS failure should break a registration or
+  a billing callback. **Adding a message** (reminders, programme changes) is a template in `config/sms.php`,
+  a key in `config('sms.events')`, and one method here — nothing else changes.
+- `app/Support/TanzanianPhone.php` — normalizes to `255XXXXXXXXX` or returns **null**. TMSC registers people
+  worldwide and `users.phone` is free text, so a number is only accepted when it carries the 255 prefix or is
+  a bare local number from a registrant whose `country` is Tanzania. Do not copy `GepgService::formatPhone()`,
+  which force-prefixes 255 — that's safe for GePG (Tanzania-only payment channels) but would send one
+  registrant's control number to an unrelated Tanzanian subscriber.
+- eGA has not issued TMSC's credentials yet, so `config('sms.sandbox')` (default `true`) logs each message
+  instead of sending. `SMS_ENABLED` is the master switch and defaults to `false`. `php artisan sms:test {phone}`
+  verifies credentials once they arrive.
+- Keep every template under 160 characters — the gateway bills per 160-character part.
+
+`SMS Documentation/hybrdi.md` is USSD documentation, not SMS — no USSD endpoint exists in this app.
+
 ### Frontend (Inertia + React)
 
 - Pages live in `resources/js/pages/`, mirroring route structure (`admin/`, `abstracts/`, `auth/`, `settings/`,
