@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1.7
+
 FROM node:22-alpine AS frontend
 
 WORKDIR /app
@@ -22,6 +24,10 @@ FROM php:8.4-fpm AS runtime
 WORKDIR /var/www
 
 RUN set -eux; \
+    echo 'Acquire::Retries "5";' > /etc/apt/apt.conf.d/80-retries; \
+    echo 'Acquire::http::Timeout "30";' >> /etc/apt/apt.conf.d/80-retries; \
+    echo 'Acquire::https::Timeout "30";' >> /etc/apt/apt.conf.d/80-retries; \
+    echo 'Acquire::http::Pipeline-Depth "0";' >> /etc/apt/apt.conf.d/80-retries; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
         $PHPIZE_DEPS \
