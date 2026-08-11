@@ -11,6 +11,7 @@ use App\Http\Controllers\Admin\RegistrationController as AdminRegistrationContro
 use App\Http\Controllers\Admin\ReviewerAssignmentController as AdminReviewerAssignmentController;
 use App\Http\Controllers\Admin\SettingsController as AdminSettingsController;
 use App\Http\Controllers\Admin\StudentVerificationController as AdminStudentVerificationController;
+use App\Http\Controllers\Staff\DashboardController as StaffDashboardController;
 use Illuminate\Support\Facades\Route;
 
 // Abstract browsing/decisions are shared with reviewers, who don't get the rest of the admin panel.
@@ -85,6 +86,13 @@ Route::middleware(['auth', 'role:super_admin'])->prefix('admin')->name('admin.')
     // mode left behind. Defaults to a dry run — writing needs an explicit dry_run=false.
     Route::post('billing/purge-sandbox', [AdminBillingMaintenanceController::class, 'purgeSandbox'])
         ->name('billing.purge-sandbox');
+});
+
+// Venue check-in staff. Read-only on purpose: attendance is recorded by the
+// Expo app against /api/checkin/*, and a second console that could also write
+// it would only produce two accounts of who walked through the door.
+Route::middleware(['auth', 'role:staff,admin,super_admin'])->prefix('staff')->name('staff.')->group(function () {
+    Route::get('/', [StaffDashboardController::class, 'index'])->name('dashboard');
 });
 
 // Finance manages registrant payment verification, waivers, and reporting — a separate,

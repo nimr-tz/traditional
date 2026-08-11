@@ -194,9 +194,16 @@ class TmscSeeder extends Seeder
         $accounts = [
             ['email' => 'admin@tmsc.nimr.or.tz', 'name' => 'TMSC Administrator', 'role' => User::ROLE_SUPER_ADMIN],
             ['email' => 'admin2@tmsc.nimr.or.tz', 'name' => 'TMSC Admin', 'role' => User::ROLE_ADMIN],
+            // Finance can verify and waive payments, and is the only role that
+            // may settle one from the check-in app — without a seeded account
+            // that whole path is unreachable on a fresh install.
+            ['email' => 'finance@tmsc.nimr.or.tz', 'name' => 'TMSC Finance', 'role' => User::ROLE_FINANCE],
             ['email' => 'reviewer1@tmsc.nimr.or.tz', 'name' => 'Amina Reviewer', 'role' => User::ROLE_REVIEWER],
             ['email' => 'reviewer2@tmsc.nimr.or.tz', 'name' => 'Baraka Reviewer', 'role' => User::ROLE_REVIEWER],
             ['email' => 'staff@tmsc.nimr.or.tz', 'name' => 'TMSC Check-in Staff', 'role' => User::ROLE_STAFF],
+            // A second door account, so "recorded by" on an attendance means
+            // something when more than one person is scanning.
+            ['email' => 'staff2@tmsc.nimr.or.tz', 'name' => 'Second Door Staff', 'role' => User::ROLE_STAFF],
         ];
 
         foreach ($accounts as $account) {
@@ -205,11 +212,13 @@ class TmscSeeder extends Seeder
                 [
                     'name' => $account['name'],
                     'password' => 'password',
-                    'email_verified_at' => now(),
                 ]
             );
             $this->setRole($user, $account['role']);
-            $user->forceFill(['payment_status' => 'verified'])->save();
+            // `email_verified_at` is no more fillable than `role` is, so passing
+            // it to updateOrCreate above dropped it without a word and left every
+            // seeded account stuck behind the verification notice.
+            $user->forceFill(['payment_status' => 'verified', 'email_verified_at' => now()])->save();
         }
 
         $participant = User::updateOrCreate(
@@ -217,7 +226,6 @@ class TmscSeeder extends Seeder
             [
                 'name' => 'Test Participant',
                 'password' => 'password',
-                'email_verified_at' => now(),
                 'salutation' => 'Dr.',
                 'institution' => 'National Institute for Medical Research (NIMR)',
                 'phone' => '+255 700 000 001',
@@ -228,7 +236,7 @@ class TmscSeeder extends Seeder
         );
         $this->setRole($participant, User::ROLE_USER);
         $participant->assignFeeCategory('participant_east_africa');
-        $participant->forceFill(['payment_status' => 'pending'])->save();
+        $participant->forceFill(['payment_status' => 'pending', 'email_verified_at' => now()])->save();
     }
 
     /**

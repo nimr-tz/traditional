@@ -12,6 +12,7 @@ import {
     GraduationCap,
     LayoutGrid,
     Mail,
+    ScanLine,
     ScrollText,
     Settings,
     Users,
@@ -26,9 +27,10 @@ const registrantNavItems: NavItem[] = [
     { title: 'My Abstracts', url: '/abstracts', icon: ScrollText },
 ];
 
-// Staff only use the separate check-in app at the venue — the web app has
-// nothing else for them, so keep this to a plain landing page.
-const staffNavItems: NavItem[] = [{ title: 'Dashboard', url: '/dashboard', icon: LayoutGrid }];
+// Scanning happens in the check-in app; the web side gives staff the live
+// picture of arrivals. Pointing them at /dashboard used to land them on the
+// registrant page, which asked them to pay a fee and submit an abstract.
+const staffNavItems: NavItem[] = [{ title: 'Check-in', url: '/staff', icon: ScanLine }];
 
 const reviewerNavItems: NavItem[] = [
     { title: 'Dashboard', url: '/admin', icon: BadgeCheck },
@@ -79,7 +81,15 @@ export function AppSidebar() {
     const isReviewer = role === 'reviewer';
     const isFinance = role === 'finance';
     const isStaff = role === 'staff';
-    const homeUrl = isSuperAdmin ? '/admin/settings' : isAdmin || isReviewer ? '/admin' : isFinance ? '/admin/finance' : '/dashboard';
+    const homeUrl = isSuperAdmin
+        ? '/admin/settings'
+        : isAdmin || isReviewer
+          ? '/admin'
+          : isFinance
+            ? '/admin/finance'
+            : isStaff
+              ? '/staff'
+              : '/dashboard';
     const navItems = isSuperAdmin
         ? superAdminNavItems
         : isAdmin

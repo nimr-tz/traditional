@@ -212,6 +212,7 @@ class User extends Authenticatable implements MustVerifyEmailContract
             self::ROLE_SUPER_ADMIN => route('admin.settings.edit', absolute: false),
             self::ROLE_ADMIN, self::ROLE_REVIEWER => route('admin.dashboard', absolute: false),
             self::ROLE_FINANCE => route('admin.finance.dashboard', absolute: false),
+            self::ROLE_STAFF => route('staff.dashboard', absolute: false),
             default => route('dashboard', absolute: false),
         };
     }
