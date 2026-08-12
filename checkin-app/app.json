@@ -8,11 +8,13 @@
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
+      "bundleIdentifier": "tz.or.nimr.tmsc.attendance",
       "infoPlist": {
         "NSCameraUsageDescription": "Used to scan attendee QR codes for attendance."
       }
     },
     "android": {
+      "package": "tz.or.nimr.tmsc.attendance",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -31,10 +33,17 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Used to scan attendee QR codes for attendance."
+          "cameraPermission": "Used to scan attendee QR codes for attendance.",
+          "recordAudioAndroid": false
         }
       ],
       "expo-status-bar"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "82c2c769-c7da-4dc7-a578-7e92c86d7a07"
+      }
+    },
+    "owner": "kmchaina"
   }
 }

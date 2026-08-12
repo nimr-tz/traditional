@@ -7,7 +7,22 @@ import AppLayout from '@/layouts/app-layout';
 import { cn } from '@/lib/utils';
 import { type BreadcrumbItem, type SharedData } from '@/types';
 import { Head, Link, router, usePage } from '@inertiajs/react';
-import { ArrowLeft, Check, Clock3, Download, EyeOff, FilePenLine, FileUp, History, Plus, Presentation, UserRound, X } from 'lucide-react';
+import {
+    ArrowLeft,
+    Check,
+    Clock3,
+    Download,
+    EyeOff,
+    FilePenLine,
+    FileUp,
+    Gavel,
+    History,
+    MessageSquare,
+    Plus,
+    Presentation,
+    UserRound,
+    X,
+} from 'lucide-react';
 import { FormEventHandler, useState } from 'react';
 
 type AbstractStatus = 'submitted' | 'revision_requested' | 'accepted' | 'rejected';
@@ -157,6 +172,125 @@ function formatDate(value: string) {
     return new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
 }
 
+/**
+ * Where the abstract stands, and what — if anything — is owed next.
+ *
+ * The outcome used to live only in a grey sidebar box at the very bottom titled
+ * "Final decision", so the single most important fact about a decided abstract
+ * was the last thing you reached, and an accepted one never showed *when* it was
+ * accepted at all.
+ */
+function outcomeFor(submission: Submission, viewer: { isAdmin: boolean; bothAssigned: boolean; bothDecided: boolean }) {
+    const decidedOn = submission.decided_at ? formatDate(submission.decided_at) : null;
+
+    if (submission.status === 'accepted') {
+        return {
+            tone: 'accepted' as const,
+            headline: 'Accepted for the conference',
+            detail: decidedOn ? `Decided ${decidedOn}.` : 'Decision recorded.',
+            next: null,
+        };
+    }
+
+    if (submission.status === 'rejected') {
+        return {
+            tone: 'rejected' as const,
+            headline: 'Not accepted',
+            detail: decidedOn ? `Decided ${decidedOn}. This is final.` : 'This is final.',
+            next: null,
+        };
+    }
+
+    if (submission.status === 'revision_requested') {
+        return {
+            tone: 'revision' as const,
+            headline: 'Sent back to the author',
+            detail: decidedOn ? `Revision requested ${decidedOn}. Waiting for them to resubmit.` : 'Waiting for the author to resubmit.',
+            next: null,
+        };
+    }
+
+    // Still under review — say precisely who is holding it up.
+    if (!viewer.bothAssigned) {
+        return {
+            tone: 'waiting' as const,
+            headline: 'Not yet under review',
+            detail: 'Two reviewers must be assigned before review can begin.',
+            next: viewer.isAdmin ? 'Assign reviewers' : null,
+        };
+    }
+
+    if (viewer.bothDecided) {
+        return {
+            tone: 'ready' as const,
+            headline: 'Both reviewers have reported',
+            detail: 'Their recommendations did not resolve automatically, so the decision is yours.',
+            next: viewer.isAdmin ? 'Record the final decision' : null,
+        };
+    }
+
+    const pending = [submission.reviewer_one, submission.reviewer_two]
+        .filter((reviewer): reviewer is ReviewerRef => Boolean(reviewer))
+        .filter((reviewer) => !submission.reviewer_decisions.some((decision) => decision.reviewer_id === reviewer.id));
+
+    return {
+        tone: 'waiting' as const,
+        headline: submission.is_re_review ? `Under re-review · round ${submission.review_round}` : 'Under review',
+        detail:
+            viewer.isAdmin && pending.length
+                ? `Waiting on ${pending.map((reviewer) => reviewer.name).join(' and ')}.`
+                : 'Waiting for reviewer recommendations.',
+        next: null,
+    };
+}
+
+const outcomeTone: Record<'accepted' | 'rejected' | 'revision' | 'waiting' | 'ready', string> = {
+    accepted: 'border-[#4c8a1f]/30 bg-[#f3f9ee] dark:bg-[#4c8a1f]/10',
+    rejected: 'border-red-200 bg-red-50 dark:border-red-900/40 dark:bg-red-950/20',
+    revision: 'border-[#135eeb]/25 bg-[#135eeb]/5',
+    waiting: 'border-amber-200 bg-amber-50 dark:border-amber-900/40 dark:bg-amber-950/20',
+    ready: 'border-[#4c8a1f]/40 bg-[#f3f9ee] dark:bg-[#4c8a1f]/10',
+};
+
+const outcomeIcon: Record<'accepted' | 'rejected' | 'revision' | 'waiting' | 'ready', typeof Check> = {
+    accepted: Check,
+    rejected: X,
+    revision: FilePenLine,
+    waiting: Clock3,
+    ready: Gavel,
+};
+
+/**
+ * Whether the two reviewers agreed, stated in one line.
+ *
+ * With only the per-reviewer boxes, working out "did they agree" meant reading
+ * both and comparing — the first thing an admin actually wants to know.
+ */
+function consensusFor(submission: Submission): { label: string; tone: 'positive' | 'attention' | 'negative' | 'neutral' } | null {
+    const recommendations = submission.reviewer_decisions
+        .map((decision) => decision.recommendation)
+        .filter((recommendation): recommendation is ReviewAction => Boolean(recommendation));
+
+    if (recommendations.length < 2) {
+        return null;
+    }
+
+    const [first, second] = recommendations;
+
+    if (first === second) {
+        return first === 'accepted'
+            ? { label: 'Both recommend acceptance', tone: 'positive' }
+            : first === 'rejected'
+              ? { label: 'Both recommend rejection', tone: 'negative' }
+              : { label: 'Both ask for revision', tone: 'attention' };
+    }
+
+    return {
+        label: `Split — ${recommendationLabel[first].toLowerCase()} vs ${recommendationLabel[second].toLowerCase()}`,
+        tone: 'attention',
+    };
+}
+
 interface AbstractReviewShowProps {
     submission: Submission;
     eligibleReviewers: ReviewerRef[];
@@ -190,6 +324,13 @@ export default function AbstractReviewShow({ submission, eligibleReviewers }: Ab
         !submission.results?.trim() &&
         !submission.conclusion?.trim();
     const canDecide = isAdmin && submission.status === 'submitted' && bothReviewersDecided;
+    const outcome = outcomeFor(submission, { isAdmin, bothAssigned: bothReviewersAssigned, bothDecided: bothReviewersDecided });
+    const OutcomeIcon = outcomeIcon[outcome.tone];
+    const consensus = isAdmin ? consensusFor(submission) : null;
+    // Every comment the viewer is allowed to see, this round and earlier.
+    const commentCount =
+        submission.reviewer_decisions.reduce((total, decision) => total + decision.comments.length, 0) +
+        myPriorRounds.reduce((total, prior) => total + prior.comments.length, 0);
     const breadcrumbs: BreadcrumbItem[] = [
         { title: 'Admin', href: '/admin' },
         { title: 'Abstract Review', href: '/admin/abstracts' },
@@ -301,6 +442,44 @@ export default function AbstractReviewShow({ submission, eligibleReviewers }: Ab
 
                 <div className="mt-5 grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
                     <main className="space-y-5">
+                        {/* The outcome, first. What happened, when, why, and what is
+                            owed next — before the abstract text an admin has usually
+                            already read. */}
+                        <section className={cn('rounded-2xl border p-5', outcomeTone[outcome.tone])}>
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                                <div className="flex items-start gap-3">
+                                    <OutcomeIcon className="mt-0.5 size-5 shrink-0" />
+                                    <div>
+                                        <h2 className="text-lg leading-6 font-semibold">{outcome.headline}</h2>
+                                        <p className="text-muted-foreground mt-1 text-sm leading-6">{outcome.detail}</p>
+                                    </div>
+                                </div>
+                                {consensus && <StatusPill tone={consensus.tone}>{consensus.label}</StatusPill>}
+                            </div>
+
+                            {/* The reason the author was given, quoted rather than
+                                tucked into a grey sidebar box. */}
+                            {submission.decision_notes && submission.status !== 'submitted' && (
+                                <blockquote className="mt-4 border-l-2 border-current/25 pl-4 text-sm leading-6 italic">
+                                    {submission.decision_notes}
+                                </blockquote>
+                            )}
+
+                            {(commentCount > 0 || outcome.next) && (
+                                <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs font-semibold">
+                                    {commentCount > 0 && (
+                                        <span className="flex items-center gap-1.5">
+                                            <MessageSquare className="size-3.5" />
+                                            {commentCount} reviewer comment{commentCount === 1 ? '' : 's'}
+                                            {submission.completed_rounds > 0 &&
+                                                ` across ${submission.review_round} round${submission.review_round === 1 ? '' : 's'}`}
+                                        </span>
+                                    )}
+                                    {outcome.next && <span className="text-[#33620f] dark:text-[#8fd45a]">Next: {outcome.next}</span>}
+                                </div>
+                            )}
+                        </section>
+
                         <article className="bg-card rounded-2xl border">
                             <header className="border-b p-6 md:p-8">
                                 <div className="flex flex-wrap items-center gap-2">
@@ -569,19 +748,45 @@ export default function AbstractReviewShow({ submission, eligibleReviewers }: Ab
                                         const decision = submission.reviewer_decisions.find((d) => d.reviewer_id === reviewer.id);
 
                                         return (
-                                            <div key={reviewer.id} className="rounded-xl bg-slate-50 p-4 dark:bg-slate-900">
+                                            <div
+                                                key={reviewer.id}
+                                                className={cn(
+                                                    'rounded-xl border-l-2 bg-slate-50 p-4 dark:bg-slate-900',
+                                                    decision?.recommendation === 'accepted'
+                                                        ? 'border-l-[#4c8a1f]'
+                                                        : decision?.recommendation === 'rejected'
+                                                          ? 'border-l-red-400'
+                                                          : decision?.recommendation
+                                                            ? 'border-l-[#135eeb]'
+                                                            : 'border-l-slate-300 dark:border-l-slate-700',
+                                                )}
+                                            >
                                                 <div className="flex items-center justify-between gap-2">
                                                     <p className="text-sm font-semibold">
                                                         Reviewer {index === 0 ? 'A' : 'B'} · {reviewer.name}
                                                     </p>
                                                     {decision?.recommendation ? (
-                                                        <span className="text-xs font-bold text-[#4c8a1f]">
+                                                        <span
+                                                            className={cn(
+                                                                'text-xs font-bold',
+                                                                decision.recommendation === 'accepted'
+                                                                    ? 'text-[#4c8a1f]'
+                                                                    : decision.recommendation === 'rejected'
+                                                                      ? 'text-red-700 dark:text-red-400'
+                                                                      : 'text-[#135eeb]',
+                                                            )}
+                                                        >
                                                             {recommendationLabel[decision.recommendation]}
                                                         </span>
                                                     ) : (
                                                         <span className="text-muted-foreground text-xs">Pending</span>
                                                     )}
                                                 </div>
+                                                {/* Recommendations without comments are legitimate — only an
+                                                    acceptance may be silent — so say so rather than leaving a gap. */}
+                                                {decision && decision.comments.length === 0 && (
+                                                    <p className="text-muted-foreground mt-2 text-xs">No comments left.</p>
+                                                )}
                                                 {decision && decision.comments.length > 0 && (
                                                     <div className="mt-3 space-y-2">
                                                         {decision.comments.map((comment) => (
@@ -745,9 +950,13 @@ export default function AbstractReviewShow({ submission, eligibleReviewers }: Ab
                             </section>
                         )}
 
-                        {isAdmin && (
+                        {/* Only shown when there is something to do. Once decided, the
+                            outcome and its reasoning lead the page instead — this panel
+                            used to render a second, greyer copy of it under a heading
+                            that promised an action it no longer offered. */}
+                        {isAdmin && submission.status === 'submitted' && (
                             <section className="bg-card rounded-2xl border p-5">
-                                <h2 className="text-lg font-semibold">Final decision</h2>
+                                <h2 className="text-lg font-semibold">{canDecide ? 'Final decision' : 'Decision'}</h2>
                                 {canDecide ? (
                                     <>
                                         <label htmlFor="decision-notes" className="mt-4 block text-sm font-semibold">
@@ -797,7 +1006,7 @@ export default function AbstractReviewShow({ submission, eligibleReviewers }: Ab
                                         </div>
                                         <p className="text-muted-foreground mt-4 text-center text-xs">Accept and permanent rejection are final.</p>
                                     </>
-                                ) : submission.status === 'submitted' ? (
+                                ) : (
                                     <div className="mt-4 rounded-xl bg-slate-50 p-4 dark:bg-slate-900">
                                         <div className="flex items-center gap-2 font-semibold">
                                             <Clock3 className="size-4 text-[#4c8a1f]" />
@@ -808,19 +1017,6 @@ export default function AbstractReviewShow({ submission, eligibleReviewers }: Ab
                                                 ? 'Assign two reviewers above to start the review.'
                                                 : 'Both assigned reviewers must submit a recommendation. If they both recommend acceptance, the abstract is accepted automatically — otherwise you’ll be asked to decide here.'}
                                         </p>
-                                    </div>
-                                ) : (
-                                    <div className="mt-4 rounded-xl bg-slate-50 p-4 dark:bg-slate-900">
-                                        <div className="flex items-center gap-2 font-semibold">
-                                            <Clock3 className="size-4 text-[#4c8a1f]" />
-                                            {status.label}
-                                        </div>
-                                        {submission.decision_notes && (
-                                            <p className="text-muted-foreground mt-3 text-sm leading-6">{submission.decision_notes}</p>
-                                        )}
-                                        {submission.reviewer && (
-                                            <p className="text-muted-foreground mt-3 text-xs">Reviewed by {submission.reviewer.name}</p>
-                                        )}
                                     </div>
                                 )}
                             </section>

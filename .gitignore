@@ -26,3 +26,7 @@ npm-debug.log
 yarn-error.log
 /dashboard.html
 /recent.html
+
+# Reference copy of the NIMR billing system, downloaded for comparison against
+# api.md. Several megabytes of vendored source that is not ours to carry.
+/nimr-billing-main.zip

@@ -7,13 +7,17 @@ import { ArrowRight, CheckCircle2, ClipboardCheck, FileClock, FilePenLine } from
 
 const breadcrumbs: BreadcrumbItem[] = [{ title: 'Admin', href: '/admin' }];
 
+/**
+ * No `user` field on purpose — review is blind, so the author never reaches this
+ * payload. See App\Support\BlindReview.
+ */
 interface QueueAbstract {
     id: number;
     title: string;
     presentation_type: 'oral' | 'poster';
     created_at: string;
     resubmitted_at: string | null;
-    user: { name: string; institution: string | null };
+    review_round: number;
     subtheme: { title: string } | null;
 }
 
@@ -21,8 +25,9 @@ interface ReviewerDashboardProps {
     stats: {
         assigned_total: number;
         awaiting_my_decision: number;
-        accepted: number;
-        revision_requested: number;
+        reviewed_by_me: number;
+        revisions_i_requested: number;
+        acceptances_i_recommended: number;
     };
     reviewQueue: QueueAbstract[];
 }
@@ -56,11 +61,15 @@ export default function ReviewerDashboard({ stats, reviewQueue }: ReviewerDashbo
                     </div>
                 </header>
 
+                {/* The first three account for everything assigned: awaiting +
+                    reviewed = assigned. The last two describe the recommendations
+                    this reviewer has made, which is a different question. */}
                 <section className="grid gap-3 sm:grid-cols-3" aria-label="Your review totals">
                     {[
                         {
                             label: 'Assigned to you',
                             value: stats.assigned_total,
+                            hint: `${stats.awaiting_my_decision} awaiting · ${stats.reviewed_by_me} reviewed`,
                             icon: ClipboardCheck,
                             tone: 'blue' as const,
                             classes: 'border-blue-200 bg-blue-50 dark:border-blue-900/40 dark:bg-blue-950/30',
@@ -69,14 +78,16 @@ export default function ReviewerDashboard({ stats, reviewQueue }: ReviewerDashbo
                         {
                             label: 'Awaiting your decision',
                             value: stats.awaiting_my_decision,
+                            hint: 'Includes revised abstracts needing another look',
                             icon: FileClock,
                             tone: 'amber' as const,
                             classes: 'border-amber-200 bg-amber-50 dark:border-amber-900/40 dark:bg-amber-950/30',
                             valueClasses: 'text-amber-700 dark:text-amber-300',
                         },
                         {
-                            label: 'Sent back for revision',
-                            value: stats.revision_requested,
+                            label: 'Revisions you requested',
+                            value: stats.revisions_i_requested,
+                            hint: `${stats.acceptances_i_recommended} acceptance${stats.acceptances_i_recommended === 1 ? '' : 's'} recommended`,
                             icon: FilePenLine,
                             tone: 'indigo' as const,
                             classes: 'border-indigo-200 bg-indigo-50 dark:border-indigo-900/40 dark:bg-indigo-950/30',
@@ -86,9 +97,10 @@ export default function ReviewerDashboard({ stats, reviewQueue }: ReviewerDashbo
                         const Icon = item.icon;
                         return (
                             <div key={item.label} className={`flex min-h-28 items-center justify-between rounded-2xl border p-5 ${item.classes}`}>
-                                <div>
+                                <div className="min-w-0">
                                     <div className={`text-3xl font-bold tabular-nums ${item.valueClasses}`}>{item.value}</div>
                                     <div className="text-muted-foreground mt-2 text-xs font-semibold">{item.label}</div>
+                                    {item.hint && <div className="text-muted-foreground/80 mt-1 text-[11px] leading-4">{item.hint}</div>}
                                 </div>
                                 <IconTile tone={item.tone}>
                                     <Icon className="size-5" />
@@ -124,7 +136,7 @@ export default function ReviewerDashboard({ stats, reviewQueue }: ReviewerDashbo
                                         <div className="flex flex-wrap items-center gap-2">
                                             {submission.resubmitted_at && (
                                                 <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
-                                                    Revised
+                                                    Revised{submission.review_round > 1 ? ` · round ${submission.review_round}` : ''}
                                                 </span>
                                             )}
                                             <span className="text-muted-foreground text-xs capitalize">
@@ -132,9 +144,11 @@ export default function ReviewerDashboard({ stats, reviewQueue }: ReviewerDashbo
                                             </span>
                                         </div>
                                         <h3 className="mt-2 leading-6 font-semibold text-balance">{submission.title}</h3>
-                                        <p className="text-muted-foreground mt-1 text-xs">
-                                            {submission.subtheme?.title ?? submission.user.institution}
-                                        </p>
+                                        {/* Subtheme only. This used to fall back to the author's
+                                            institution, which named them outright. */}
+                                        {submission.subtheme?.title && (
+                                            <p className="text-muted-foreground mt-1 text-xs">{submission.subtheme.title}</p>
+                                        )}
                                         <p className="text-muted-foreground mt-2 text-xs">
                                             {submission.resubmitted_at ? 'Resubmitted' : 'Submitted'}{' '}
                                             {formatDate(submission.resubmitted_at ?? submission.created_at)}

@@ -12,6 +12,7 @@ use App\Http\Controllers\Admin\ReviewerAssignmentController as AdminReviewerAssi
 use App\Http\Controllers\Admin\SettingsController as AdminSettingsController;
 use App\Http\Controllers\Admin\StudentVerificationController as AdminStudentVerificationController;
 use App\Http\Controllers\Staff\DashboardController as StaffDashboardController;
+use App\Http\Controllers\Staff\RegistrantController as StaffRegistrantController;
 use Illuminate\Support\Facades\Route;
 
 // Abstract browsing/decisions are shared with reviewers, who don't get the rest of the admin panel.
@@ -91,8 +92,24 @@ Route::middleware(['auth', 'role:super_admin'])->prefix('admin')->name('admin.')
 // Venue check-in staff. Read-only on purpose: attendance is recorded by the
 // Expo app against /api/checkin/*, and a second console that could also write
 // it would only produce two accounts of who walked through the door.
-Route::middleware(['auth', 'role:staff,admin,super_admin'])->prefix('staff')->name('staff.')->group(function () {
+// Finance is in the outer group too, or the finance-only settle routes nested
+// below would be unreachable for the very role they exist for.
+Route::middleware(['auth', 'role:staff,finance,admin,super_admin'])->prefix('staff')->name('staff.')->group(function () {
     Route::get('/', [StaffDashboardController::class, 'index'])->name('dashboard');
+    // The whole register, for browsing. The desk itself opens on a search.
+    Route::get('registrants', [StaffRegistrantController::class, 'index'])->name('registrants');
+    Route::post('walk-ins', [StaffDashboardController::class, 'registerWalkIn'])->name('walk-ins.store');
+    Route::post('registrants/{user}/control-number', [StaffDashboardController::class, 'issueControlNumber'])->name('control-number');
+    // Reprints are allowed and logged — the desk warns first, then prints.
+    Route::get('registrants/{user}/badge', [StaffDashboardController::class, 'printBadge'])->name('badge');
+
+    // Settling is finance's alone. Staff can register a walk-in and hand out a
+    // control number, but nothing they can reach turns an unpaid registrant
+    // into a paid one — and without payment there is no badge to scan.
+    Route::middleware('role:finance,admin,super_admin')->group(function () {
+        Route::post('registrants/{user}/confirm-payment', [StaffDashboardController::class, 'confirmPayment'])->name('confirm-payment');
+        Route::post('registrants/{user}/waive', [StaffDashboardController::class, 'waivePayment'])->name('waive');
+    });
 });
 
 // Finance manages registrant payment verification, waivers, and reporting — a separate,

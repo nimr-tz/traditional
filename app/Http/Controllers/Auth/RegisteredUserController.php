@@ -35,7 +35,7 @@ class RegisteredUserController extends Controller
             'salutations' => config('tmsc.salutations'),
             'participantTypes' => config('tmsc.participant_types'),
             'feeCategories' => FeeCategory::query()
-                ->where('active', true)
+                ->selectableByPublic()
                 ->orderBy('sort_order')
                 ->get(['key', 'label', 'amount', 'currency']),
             'countries' => config('tmsc.countries'),
@@ -78,7 +78,9 @@ class RegisteredUserController extends Controller
             'country' => ['required', 'string', Rule::in(config('tmsc.countries'))],
             'fee_category' => [
                 'required',
-                Rule::exists('fee_categories', 'key')->where(fn ($query) => $query->where('active', true)),
+                // Complimentary categories are granted at the venue desk, never
+                // claimed by whoever is filling in this form.
+                Rule::exists('fee_categories', 'key')->where(fn ($query) => $query->where('active', true)->where('is_complimentary', false)),
             ],
             'student_document' => [
                 Rule::requiredIf(fn () => $request->participant_type === 'student'),

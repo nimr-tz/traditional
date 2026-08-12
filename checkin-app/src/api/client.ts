@@ -40,12 +40,22 @@ export interface Registrant {
     control_number: string | null;
     student_verification_status: 'pending' | 'verified' | 'rejected' | null;
     is_paid: boolean;
+    /** Attended on any day of the conference. */
     is_checked_in: boolean;
+    /** Attended today — the one that decides whether a scan is a duplicate. */
+    is_checked_in_today: boolean;
+    days_attended: number;
 }
 
+/**
+ * Attendance is recorded once per person per day, so `already_checked_in` means
+ * "already recorded today", not "already recorded ever" — a returning attendee
+ * scans in again each morning.
+ */
 export interface ScanResult {
     already_checked_in: boolean;
     checked_in_at: string;
+    days_attended: number;
     user: Registrant;
 }
 

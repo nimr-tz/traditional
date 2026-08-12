@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Mail\CriticalErrorAlert;
+use App\Models\FeeCategory;
 use App\Models\User;
 use App\Services\CriticalErrorAlertService;
 use Database\Seeders\ProductionReferenceDataSeeder;
@@ -20,7 +21,16 @@ class OperationsReadinessTest extends TestCase
     {
         $this->seed(ProductionReferenceDataSeeder::class);
 
-        $this->assertDatabaseCount('fee_categories', 4);
+        // Four paying tiers, plus the complimentary roles that attend free —
+        // media, secretariat, invited guests and exhibitors. Asserted as a split
+        // rather than a total so a miscount says which half went wrong.
+        $this->assertSame(4, FeeCategory::where('is_complimentary', false)->count());
+        $this->assertSame(4, FeeCategory::where('is_complimentary', true)->count());
+
+        // Complimentary rates are granted at the venue desk, so they must never
+        // reach the public registration form.
+        $this->assertSame(4, FeeCategory::selectableByPublic()->count());
+
         $this->assertDatabaseCount('users', 0);
         $this->assertDatabaseCount('abstract_submissions', 0);
     }

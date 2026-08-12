@@ -3,8 +3,10 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\AbstractReviewerDecision;
 use App\Models\AbstractSubmission;
 use App\Models\User;
+use App\Support\BlindReview;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -69,23 +71,48 @@ class DashboardController extends Controller
             $query->where('reviewer_one_id', $user->id)->orWhere('reviewer_two_id', $user->id);
         });
 
+        // Scoped to the *current* round. Without that, a reviewer who asked for
+        // a revision still counted as having decided, so the revised abstract
+        // never came back to them — the one case review rounds exist for.
+        $decidedByMeThisRound = fn ($query) => $query
+            ->where('reviewer_id', $user->id)
+            ->whereColumn('abstract_reviewer_decisions.round', 'abstract_submissions.review_round');
+
         $awaitingMyDecision = (clone $assigned)
             ->where('status', 'submitted')
-            ->whereDoesntHave('reviewerDecisions', fn ($query) => $query->where('reviewer_id', $user->id));
+            ->whereDoesntHave('reviewerDecisions', $decidedByMeThisRound);
 
         return Inertia::render('admin/reviewer-dashboard', [
             'stats' => [
                 'assigned_total' => (clone $assigned)->count(),
                 'awaiting_my_decision' => (clone $awaitingMyDecision)->count(),
-                'accepted' => (clone $assigned)->where('status', 'accepted')->count(),
-                'revision_requested' => (clone $assigned)->where('status', 'revision_requested')->count(),
+                // Counts my own recorded recommendation for this round, so the
+                // two together account for everything assigned to me.
+                'reviewed_by_me' => (clone $assigned)->whereHas('reviewerDecisions', $decidedByMeThisRound)->count(),
+                // My own recommendations, across every round — a record of what
+                // I sent back. The old tile counted abstracts whose *current
+                // status* was revision_requested, which was neither mine (a
+                // co-reviewer's request counted too) nor durable: the moment the
+                // author resubmitted, the status flipped to `submitted` and the
+                // number silently dropped.
+                'revisions_i_requested' => AbstractReviewerDecision::where('reviewer_id', $user->id)
+                    ->where('recommendation', 'revision_requested')
+                    ->count(),
+                'acceptances_i_recommended' => AbstractReviewerDecision::where('reviewer_id', $user->id)
+                    ->where('recommendation', 'accepted')
+                    ->count(),
             ],
+            // Author identity is stripped here as it is everywhere else a
+            // reviewer can see an abstract. This queue used to eager-load the
+            // author and hand it straight to the page — see App\Support\BlindReview.
             'reviewQueue' => (clone $awaitingMyDecision)
-                ->with(['user:id,name,institution', 'subtheme:id,title'])
+                ->with('subtheme:id,title')
                 ->oldest('resubmitted_at')
                 ->oldest('created_at')
                 ->limit(10)
-                ->get(),
+                ->get()
+                ->map(fn (AbstractSubmission $abstract) => BlindReview::redactSubmission($abstract->toArray(), $abstract))
+                ->all(),
         ]);
     }
 }

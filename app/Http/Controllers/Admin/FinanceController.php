@@ -10,11 +10,11 @@ use App\Models\FeeCategory;
 use App\Models\User;
 use App\Services\Billing\GepgService;
 use App\Services\Sms\SmsNotifier;
+use App\Support\ConferenceEmail;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Mail;
 use Inertia\Inertia;
 use Inertia\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -136,7 +136,7 @@ class FinanceController extends Controller
 
         $user->save();
 
-        Mail::to($user->email)->send(new PaymentConfirmed($user));
+        ConferenceEmail::sendTo($user, new PaymentConfirmed($user));
         app(SmsNotifier::class)->paymentConfirmed($user);
 
         return back()->with('success', "Payment for {$user->name} has been verified.");
@@ -160,7 +160,7 @@ class FinanceController extends Controller
             ])->save();
         }
 
-        Mail::to($user->email)->send(new PaymentRejected($user, $request->notes));
+        ConferenceEmail::sendTo($user, new PaymentRejected($user, $request->notes));
 
         return back()->with('success', "Payment for {$user->name} has been rejected.");
     }
@@ -183,7 +183,7 @@ class FinanceController extends Controller
 
         $user->save();
 
-        Mail::to($user->email)->send(new FeeWaived($user, $request->notes));
+        ConferenceEmail::sendTo($user, new FeeWaived($user, $request->notes));
 
         return back()->with('success', "Registration fee for {$user->name} has been waived.");
     }

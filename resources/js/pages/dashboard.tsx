@@ -274,6 +274,11 @@ export default function Dashboard({
                             </div>
 
                             <div className="mt-auto pt-4">
+                                {/* The badge only exists once the payment is verified or
+                                    waived, so the link only appears then. */}
+                                {registration.is_paid && (
+                                    <ActionRow href={route('badge.download')} download compact title="Download your badge" tone="green" />
+                                )}
                                 <ActionRow
                                     href={route('payment.show')}
                                     compact
@@ -376,12 +381,15 @@ export default function Dashboard({
                                                 <Sparkles className="size-4 text-[#67b52f]" />
                                             </h3>
                                             <p className="text-muted-foreground mt-2 max-w-2xl text-sm leading-6">
-                                                Your attendance has been confirmed. Your personalized conference certificate is ready to save or
-                                                print.
+                                                Your attendance has been recorded. Certificates unlock partway through the closing day — the
+                                                certificate page shows where yours stands.
                                             </p>
                                         </div>
                                     </div>
-                                    <ActionRow href={route('certificate.download')} title="Download my certificate" download />
+                                    {/* Points at the page, not the file: the download can be
+                                        blocked by the release time, and a link that just fails
+                                        explains nothing. */}
+                                    <ActionRow href={route('certificate.show')} title="My certificate" />
                                 </div>
                             </DashboardCard>
                         )}

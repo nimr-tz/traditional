@@ -6,6 +6,7 @@ use App\Mail\FeeWaived;
 use App\Mail\PaymentConfirmed;
 use App\Models\FeeCategory;
 use App\Models\User;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
 use RuntimeException;
@@ -256,6 +257,59 @@ class CheckinApiTest extends TestCase
             'email' => $staff->email,
             'password' => 'password123',
         ])->assertOk()->assertJsonPath('user.can_manage_finance', false);
+    }
+
+    /**
+     * The bug this replaced: attendance was one record for the whole
+     * conference, so anyone scanned on the first morning was refused on every
+     * later day and their return went unrecorded.
+     */
+    public function test_a_returning_attendee_is_recorded_again_on_a_new_day(): void
+    {
+        $staff = User::factory()->staff()->create();
+        $attendee = User::factory()->create([
+            'payment_status' => 'verified',
+            'registration_code' => 'TMSC-MULTIDAY01',
+        ]);
+
+        $this->travelTo('2026-08-28 09:05:00');
+        $this->actingAs($staff, 'sanctum')
+            ->postJson('/api/checkin/scan', ['code' => 'TMSC-MULTIDAY01'])
+            ->assertOk()
+            ->assertJson(['already_checked_in' => false, 'days_attended' => 1]);
+
+        // Same day again is a duplicate, and reports the original time.
+        $this->travelTo('2026-08-28 14:40:00');
+        $this->actingAs($staff, 'sanctum')
+            ->postJson('/api/checkin/scan', ['code' => 'TMSC-MULTIDAY01'])
+            ->assertOk()
+            ->assertJson(['already_checked_in' => true, 'days_attended' => 1]);
+
+        // The next morning is a fresh arrival.
+        $this->travelTo('2026-08-29 08:50:00');
+        $this->actingAs($staff, 'sanctum')
+            ->postJson('/api/checkin/scan', ['code' => 'TMSC-MULTIDAY01'])
+            ->assertOk()
+            ->assertJson(['already_checked_in' => false, 'days_attended' => 2]);
+
+        $this->assertSame(2, $attendee->attendance()->count());
+        $this->assertSame(
+            ['2026-08-28', '2026-08-29'],
+            $attendee->attendance()->orderBy('attendance_date')->pluck('attendance_date')
+                ->map(fn ($date) => $date->toDateString())->all(),
+        );
+    }
+
+    /** The database refuses a second record for the same person and day. */
+    public function test_a_second_record_for_the_same_day_is_impossible(): void
+    {
+        $attendee = User::factory()->create(['payment_status' => 'verified']);
+
+        $attendee->attendance()->create(['checked_in_at' => now()]);
+
+        $this->expectException(QueryException::class);
+
+        $attendee->attendance()->create(['checked_in_at' => now()->addHours(3)]);
     }
 
     public function test_scanning_an_unpaid_registrants_code_is_rejected(): void

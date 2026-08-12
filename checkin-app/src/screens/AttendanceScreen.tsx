@@ -170,15 +170,22 @@ export default function AttendanceScreen() {
                 <View style={[attendanceStyles.resultMark, alreadyPresent && attendanceStyles.resultMarkWarning]}>
                     <Text style={attendanceStyles.resultMarkText}>{alreadyPresent ? '!' : '✓'}</Text>
                 </View>
-                <Text style={attendanceStyles.resultTitle}>{alreadyPresent ? 'Already marked present' : 'Attendance recorded'}</Text>
+                {/* Attendance is per day, so a repeat scan means "already today",
+                    not "already ever" — a returning attendee is recorded afresh
+                    each morning. */}
+                <Text style={attendanceStyles.resultTitle}>{alreadyPresent ? 'Already recorded today' : 'Attendance recorded'}</Text>
                 <Text style={attendanceStyles.resultName}>{result.user.name}</Text>
                 {result.user.institution ? <Text style={attendanceStyles.resultDetail}>{result.user.institution}</Text> : null}
                 {result.user.participant_type ? (
                     <Text style={attendanceStyles.resultDetail}>{formatParticipantType(result.user.participant_type)}</Text>
                 ) : null}
                 <Text style={attendanceStyles.resultTime}>
-                    {alreadyPresent ? 'First recorded' : 'Recorded'} at {new Date(result.checked_in_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    {alreadyPresent ? 'Scanned today at' : 'Recorded at'}{' '}
+                    {new Date(result.checked_in_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </Text>
+                {result.days_attended > 1 ? (
+                    <Text style={attendanceStyles.resultDetail}>{result.days_attended} days attended so far</Text>
+                ) : null}
                 <Pressable style={attendanceStyles.primaryButton} onPress={reset} accessibilityRole="button">
                     <Text style={attendanceStyles.primaryButtonText}>Take next attendance</Text>
                 </Pressable>
@@ -316,9 +323,11 @@ export default function AttendanceScreen() {
                                     {item.institution ? <Text style={attendanceStyles.matchDetail}>{item.institution}</Text> : null}
                                     <Text style={item.is_paid ? attendanceStyles.paidTag : attendanceStyles.unpaidTag}>
                                         {item.is_paid
-                                            ? item.is_checked_in
-                                                ? 'Paid · already present'
-                                                : 'Paid'
+                                            ? item.is_checked_in_today
+                                                ? 'Paid · in today'
+                                                : item.days_attended > 0
+                                                  ? `Paid · returning (${item.days_attended} day${item.days_attended === 1 ? '' : 's'})`
+                                                  : 'Paid'
                                             : `Unpaid${formatAmount(item.fee_amount, item.currency) ? ` · ${formatAmount(item.fee_amount, item.currency)} due` : ''}`}
                                     </Text>
                                 </View>

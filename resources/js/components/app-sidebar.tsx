@@ -30,7 +30,10 @@ const registrantNavItems: NavItem[] = [
 // Scanning happens in the check-in app; the web side gives staff the live
 // picture of arrivals. Pointing them at /dashboard used to land them on the
 // registrant page, which asked them to pay a fee and submit an abstract.
-const staffNavItems: NavItem[] = [{ title: 'Check-in', url: '/staff', icon: ScanLine }];
+const staffNavItems: NavItem[] = [
+    { title: 'Check-in', url: '/staff', icon: ScanLine },
+    { title: 'All registrants', url: '/staff/registrants', icon: Users },
+];
 
 const reviewerNavItems: NavItem[] = [
     { title: 'Dashboard', url: '/admin', icon: BadgeCheck },

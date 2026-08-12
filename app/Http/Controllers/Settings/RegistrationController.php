@@ -40,7 +40,9 @@ class RegistrationController extends Controller
             'participant_type' => ['required', Rule::in(array_keys(config('tmsc.participant_types')))],
             'fee_category' => [
                 'required',
-                Rule::exists('fee_categories', 'key')->where(fn ($query) => $query->where('active', true)),
+                // As on the register form: nobody puts themselves on a
+                // complimentary rate from their own settings page.
+                Rule::exists('fee_categories', 'key')->where(fn ($query) => $query->where('active', true)->where('is_complimentary', false)),
             ],
         ]);
 

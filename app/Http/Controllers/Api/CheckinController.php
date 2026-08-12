@@ -8,16 +8,11 @@ use App\Mail\PaymentConfirmed;
 use App\Models\Attendance;
 use App\Models\FeeCategory;
 use App\Models\User;
-use App\Services\Billing\GepgService;
 use App\Services\Sms\SmsNotifier;
-use App\Support\FeeTier;
+use App\Services\WalkInRegistrar;
+use App\Support\ConferenceEmail;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Arr;
-use Illuminate\Support\Facades\Mail;
-use Illuminate\Support\Str;
-use Illuminate\Validation\Rule;
-use RuntimeException;
 
 class CheckinController extends Controller
 {
@@ -31,39 +26,15 @@ class CheckinController extends Controller
      * to every revenue total. A walk-in now lands `pending` like any other
      * registrant and gets their badge when GePG confirms the payment.
      */
-    public function register(Request $request, GepgService $gepg): JsonResponse
+    public function register(Request $request, WalkInRegistrar $registrar): JsonResponse
     {
-        $validated = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'string', 'lowercase', 'email', 'max:255', 'unique:users,email'],
-            'phone' => ['required', 'string', 'max:50'],
-            'institution' => ['nullable', 'string', 'max:255'],
-            'participant_type' => ['required', Rule::in(array_keys(config('tmsc.participant_types')))],
-            'country' => ['required', Rule::in(config('tmsc.countries'))],
-            'fee_category' => ['required', Rule::exists('fee_categories', 'key')->where('active', true)],
-        ]);
+        $validated = $request->validate(WalkInRegistrar::rules());
 
-        // The same tier rules the public form runs: the desk is a faster path to
-        // registration, not a cheaper one.
-        FeeTier::guard($validated['fee_category'], $validated['participant_type'], $validated['country']);
-
-        $user = new User([
-            ...Arr::except($validated, 'fee_category'),
-            'password' => Str::password(32),
-        ]);
-        $user->email_verified_at = now();
-        $user->is_east_africa = FeeTier::isEastAfricaCountry($validated['country']);
-        $user->assignFeeCategory($validated['fee_category']);
-        $user->save();
-
-        // Billing first: it moves the registrant to `submitted` and may attach a
-        // control number, and the desk needs to see the state it left behind,
-        // not the one from a moment earlier.
-        $billing = $this->startBilling($user, $gepg);
+        ['user' => $user, 'billing' => $billing] = $registrar->register($validated);
 
         return response()->json([
             'message' => 'Attendee registered. They can pay with the control number below.',
-            'user' => $this->registrantPayload($user->fresh()),
+            'user' => $this->registrantPayload($user),
             'billing' => $billing,
         ], 201);
     }
@@ -77,58 +48,16 @@ class CheckinController extends Controller
      * and there is no document upload at the desk. Rather than block the
      * registration, we complete it and hand the staff member the reason.
      */
-    public function requestControlNumber(Request $request, User $user, GepgService $gepg): JsonResponse
+    public function requestControlNumber(Request $request, User $user, WalkInRegistrar $registrar): JsonResponse
     {
         abort_unless($user->hasRole(User::ROLE_USER), 404);
 
-        if ($user->isPaid()) {
-            return response()->json([
-                'message' => "{$user->name} has already paid.",
-                'user' => $this->registrantPayload($user),
-                'billing' => ['status' => 'paid', 'control_number' => $user->control_number],
-            ]);
-        }
+        $billing = $registrar->startBilling($user);
 
         return response()->json([
             'user' => $this->registrantPayload($user->fresh()),
-            'billing' => $this->startBilling($user, $gepg),
+            'billing' => $billing,
         ]);
-    }
-
-    /** @return array{status: string, control_number: string|null, message: string} */
-    private function startBilling(User $user, GepgService $gepg): array
-    {
-        if (! config('billing.enabled')) {
-            return [
-                'status' => 'unavailable',
-                'control_number' => null,
-                'message' => 'The payment portal is closed, so no control number could be issued.',
-            ];
-        }
-
-        try {
-            $gepg->requestControlNumber($user);
-        } catch (RuntimeException $exception) {
-            return [
-                'status' => 'blocked',
-                'control_number' => null,
-                'message' => $exception->getMessage(),
-            ];
-        }
-
-        $user->refresh();
-
-        return $user->control_number
-            ? [
-                'status' => 'ready',
-                'control_number' => $user->control_number,
-                'message' => 'Give the attendee this control number to pay.',
-            ]
-            : [
-                'status' => 'pending',
-                'control_number' => null,
-                'message' => 'The control number is being generated. Search for this attendee again in a moment.',
-            ];
     }
 
     /**
@@ -138,13 +67,34 @@ class CheckinController extends Controller
     {
         $request->validate(['code' => 'required|string']);
 
-        $user = User::where('registration_code', $request->code)->first();
+        $user = User::where('registration_code', self::registrationCodeFrom($request->code))->first();
 
         if (! $user) {
             return response()->json(['message' => 'No registrant found for this code.'], 404);
         }
 
         return $this->checkIn($user, $request);
+    }
+
+    /**
+     * Pull the registration code out of whatever the camera read.
+     *
+     * Badges now encode a verification URL so an ordinary phone camera can open
+     * a public page confirming the holder. This app reads the same square, so it
+     * takes the code off the end of that URL — while still accepting a bare code
+     * from badges printed before the change, and from anyone typing one in.
+     */
+    public static function registrationCodeFrom(string $scanned): string
+    {
+        $scanned = trim($scanned);
+
+        if (! str_contains($scanned, '/')) {
+            return $scanned;
+        }
+
+        $path = parse_url($scanned, PHP_URL_PATH) ?: $scanned;
+
+        return rawurldecode(basename(rtrim($path, '/')));
     }
 
     /**
@@ -205,7 +155,7 @@ class CheckinController extends Controller
         $user->generateRegistrationCode();
         $user->save();
 
-        Mail::to($user->email)->send(new PaymentConfirmed($user));
+        ConferenceEmail::sendTo($user, new PaymentConfirmed($user));
         app(SmsNotifier::class)->paymentConfirmed($user);
 
         return response()->json([
@@ -241,7 +191,7 @@ class CheckinController extends Controller
         $user->generateRegistrationCode();
         $user->save();
 
-        Mail::to($user->email)->send(new FeeWaived($user, $validated['notes']));
+        ConferenceEmail::sendTo($user, new FeeWaived($user, $validated['notes']));
 
         return response()->json([
             'message' => "Fee waived for {$user->name}.",
@@ -260,6 +210,9 @@ class CheckinController extends Controller
             ]),
             'is_paid' => $user->isPaid(),
             'is_checked_in' => $user->isCheckedIn(),
+            // The door cares about today; the total is for context.
+            'is_checked_in_today' => $user->isCheckedInToday(),
+            'days_attended' => $user->attendance()->count(),
         ];
     }
 
@@ -293,12 +246,16 @@ class CheckinController extends Controller
             ], 422);
         }
 
-        $existing = $user->attendance()->first();
+        // Scoped to today, not to all time. This used to look for any record at
+        // all, so anyone scanned on the first morning was refused on every
+        // later day of the conference and their return went unrecorded.
+        $existing = $user->attendanceToday();
 
         if ($existing) {
             return response()->json([
                 'already_checked_in' => true,
                 'checked_in_at' => $existing->checked_in_at,
+                'days_attended' => $user->attendance()->count(),
                 'user' => $this->registrantPayload($user),
             ]);
         }
@@ -311,6 +268,7 @@ class CheckinController extends Controller
         return response()->json([
             'already_checked_in' => false,
             'checked_in_at' => $attendance->checked_in_at,
+            'days_attended' => $user->attendance()->count(),
             'user' => $this->registrantPayload($user),
         ]);
     }
@@ -323,9 +281,10 @@ class CheckinController extends Controller
     {
         return response()->json([
             'fee_categories' => FeeCategory::query()
-                ->where('active', true)
+                ->active()
+                ->orderBy('is_complimentary')
                 ->orderBy('amount')
-                ->get(['key', 'label', 'amount', 'currency']),
+                ->get(['key', 'label', 'amount', 'currency', 'is_complimentary']),
             'participant_types' => config('tmsc.participant_types'),
             'countries' => config('tmsc.countries'),
             'east_africa_countries' => config('tmsc.east_africa_countries'),

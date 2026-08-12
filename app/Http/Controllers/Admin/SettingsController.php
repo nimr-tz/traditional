@@ -115,6 +115,11 @@ class SettingsController extends Controller
             'abstract_notification_date' => 'nullable|date_format:Y-m-d',
             // Last day a presenter may upload or replace their presentation.
             'presentation_deadline' => 'nullable|date_format:Y-m-d',
+            // When certificates unlock. Without it they would be downloadable
+            // the moment someone is scanned in on the first morning — a
+            // certificate for a conference that has not happened. Defaults to
+            // 14:00 on the closing day; see App\Support\CertificateWindow.
+            'certificate_release_at' => 'nullable|date_format:Y-m-d H:i',
             'tm_week_dates' => 'nullable|string|max:100',
             'gepg_payee_name' => 'nullable|string|max:255',
             'contact_phone' => 'nullable|string|max:50',

@@ -17,7 +17,9 @@ class WelcomeController extends Controller
     public function index(): Response
     {
         $conference = ConferenceSetting::allSettings();
-        $feeCategories = FeeCategory::where('active', true)->orderBy('sort_order')->get(['label', 'amount', 'currency']);
+        // The published fee table lists what people pay. Complimentary
+        // categories are an internal arrangement, not an advertised rate.
+        $feeCategories = FeeCategory::query()->selectableByPublic()->orderBy('sort_order')->get(['label', 'amount', 'currency']);
         $canonicalUrl = route('home');
         $conferenceName = $conference->get('conference_name') ?: 'Traditional Medicine Scientific Conference';
         $startDate = $this->isoDate($conference->get('start_date'));

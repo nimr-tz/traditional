@@ -47,6 +47,12 @@ class TmscSeeder extends Seeder
     public function seedFeeCategories(): void
     {
         $categories = [
+            // Attend by role rather than by fee. Never offered on the public
+            // form — the venue desk registers them. See FeeCategory.
+            'complimentary_media' => ['label' => 'Media', 'amount' => 0, 'currency' => 'TZS', 'sort_order' => 90, 'is_complimentary' => true],
+            'complimentary_secretariat' => ['label' => 'Secretariat', 'amount' => 0, 'currency' => 'TZS', 'sort_order' => 91, 'is_complimentary' => true],
+            'complimentary_invited_guest' => ['label' => 'Invited Guest', 'amount' => 0, 'currency' => 'TZS', 'sort_order' => 92, 'is_complimentary' => true],
+            'complimentary_exhibitor' => ['label' => 'Exhibitor', 'amount' => 0, 'currency' => 'TZS', 'sort_order' => 93, 'is_complimentary' => true],
             'participant_east_africa' => ['label' => 'East African Participants', 'amount' => 150000, 'currency' => 'TZS', 'sort_order' => 1],
             'participant_non_east_africa' => ['label' => 'Non-East African Participants', 'amount' => 150, 'currency' => 'USD', 'sort_order' => 2],
             'student_east_africa' => ['label' => 'East African Students', 'amount' => 50000, 'currency' => 'TZS', 'sort_order' => 3],
@@ -54,7 +60,9 @@ class TmscSeeder extends Seeder
         ];
 
         foreach ($categories as $key => $category) {
-            FeeCategory::updateOrCreate(['key' => $key], $category + ['active' => true]);
+            // Left operand wins, so the complimentary entries above keep their
+            // flag while every paid tier is explicitly pinned to false.
+            FeeCategory::updateOrCreate(['key' => $key], $category + ['active' => true, 'is_complimentary' => false]);
         }
 
         // No practitioner-specific tier in the current fee table.
@@ -171,6 +179,9 @@ class TmscSeeder extends Seeder
             // their file until this date, and whatever is on file then is what
             // gets presented.
             'presentation_deadline' => '2026-08-27',
+            // Certificates unlock partway through the closing day, once having
+            // attended actually means something.
+            'certificate_release_at' => '2026-08-28 14:00',
             'tm_week_dates' => '26–31 August 2026',
             'gepg_payee_name' => 'NATIONAL INSTITUTE FOR MEDICAL RESEARCH',
         ];

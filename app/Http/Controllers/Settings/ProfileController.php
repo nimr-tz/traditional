@@ -25,7 +25,7 @@ class ProfileController extends Controller
             'mustVerifyEmail' => $user instanceof MustVerifyEmail,
             'status' => $request->session()->get('status'),
             'participantTypes' => config('tmsc.participant_types'),
-            'feeCategories' => FeeCategory::query()->where('active', true)->orderBy('sort_order')->get(['key', 'label', 'amount', 'currency']),
+            'feeCategories' => FeeCategory::query()->selectableByPublic()->orderBy('sort_order')->get(['key', 'label', 'amount', 'currency']),
             'registration' => [
                 'participant_type' => $user->participant_type,
                 'fee_category' => $user->fee_category,

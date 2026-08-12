@@ -16,14 +16,14 @@ class FeeTierTest extends TestCase
     /**
      * `guard()` deliberately skips the region check for a key whose shape it
      * doesn't recognise, rather than rejecting a legitimate selection. That
-     * safety valve is only acceptable while every real key does resolve — this
-     * is the test that keeps it honest.
+     * safety valve is only acceptable while every *paying* key does resolve —
+     * this is the test that keeps it honest.
      */
-    public function test_every_seeded_fee_category_resolves_to_a_region(): void
+    public function test_every_seeded_paying_fee_category_resolves_to_a_region(): void
     {
         $this->seed(ProductionReferenceDataSeeder::class);
 
-        $keys = FeeCategory::pluck('key');
+        $keys = FeeCategory::where('is_complimentary', false)->pluck('key');
 
         $this->assertNotEmpty($keys);
 
@@ -32,6 +32,27 @@ class FeeTierTest extends TestCase
                 FeeTier::regionOf($key),
                 "Fee category '{$key}' does not resolve to a regional tier, so the region check would silently be skipped for it."
             );
+        }
+    }
+
+    /**
+     * Complimentary categories have no region on purpose — media and
+     * secretariat attend free wherever they are from, so there is no cheaper
+     * local rate for anyone to slip onto. WalkInRegistrar skips `guard()`
+     * outright for them rather than relying on the null-region safety valve,
+     * and this pins that they are genuinely outside the tier system.
+     */
+    public function test_complimentary_categories_sit_outside_the_regional_tiers(): void
+    {
+        $this->seed(ProductionReferenceDataSeeder::class);
+
+        $keys = FeeCategory::where('is_complimentary', true)->pluck('key');
+
+        $this->assertNotEmpty($keys, 'The complimentary roles should be seeded for production.');
+
+        foreach ($keys as $key) {
+            $this->assertNull(FeeTier::regionOf($key));
+            $this->assertFalse(FeeTier::isStudentCategory($key));
         }
     }
 

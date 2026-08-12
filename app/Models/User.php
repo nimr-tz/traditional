@@ -227,6 +227,26 @@ class User extends Authenticatable implements MustVerifyEmailContract
         return $this->hasMany(Attendance::class);
     }
 
+    public function badgePrints(): HasMany
+    {
+        return $this->hasMany(BadgePrintLog::class);
+    }
+
+    /**
+     * Whether a badge may be produced for them at all.
+     *
+     * Payment is the only condition. A missing `registration_code` is not a
+     * reason to refuse: plenty of accounts were marked paid before the code was
+     * minted on payment, and turning those people away at the desk over a
+     * bookkeeping gap helps nobody. BadgePrinter mints the code on the spot
+     * instead, still through `generateRegistrationCode()`, which enforces the
+     * payment rule itself.
+     */
+    public function canPrintBadge(): bool
+    {
+        return $this->isPaid();
+    }
+
     public function certificates(): HasMany
     {
         return $this->hasMany(Certificate::class);
@@ -296,9 +316,27 @@ class User extends Authenticatable implements MustVerifyEmailContract
         return str_starts_with($this->billing_request_id ?? '', 'SANDBOX-');
     }
 
+    /** Whether they have attended on any day of the conference. */
     public function isCheckedIn(): bool
     {
         return $this->attendance()->exists();
+    }
+
+    /**
+     * Whether they have already been scanned today.
+     *
+     * The one that governs the door: attendance is recorded once per person per
+     * day, so a second scan on the same day is a duplicate while the first scan
+     * of a new day is a fresh arrival.
+     */
+    public function isCheckedInToday(): bool
+    {
+        return $this->attendance()->today()->exists();
+    }
+
+    public function attendanceToday(): ?Attendance
+    {
+        return $this->attendance()->today()->first();
     }
 
     /**

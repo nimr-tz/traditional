@@ -1,41 +1,170 @@
+@php
+    /**
+     * The artwork is the design; everything here is stamped on top of it.
+     *
+     * dompdf has no flexbox and renders synthetic bold badly, so text is
+     * absolutely positioned by percentage and "bolded" by drawing the same
+     * string a few sub-millimetre offsets around itself. Geometry lives in
+     * config/badge.php so re-skinning is an image swap, not a rewrite.
+     */
+    $config = config('badge');
+    $place = $config['placeholders'];
+
+    $backgroundPath = public_path($config['template']['background']);
+    $background = is_file($backgroundPath)
+        ? 'data:image/png;base64,'.base64_encode(file_get_contents($backgroundPath))
+        : null;
+
+    $tidy = fn (?string $value) => preg_replace('/\s+/', ' ', trim((string) $value));
+
+    $badgeName = $tidy($name);
+    $badgeInstitution = $tidy($institution);
+    $badgeCategory = $tidy($categoryLabel);
+
+    // Long names shrink rather than spilling into the institution line.
+    $sizeFor = function (array $spec, string $text) {
+        $size = $spec['font_size'];
+
+        foreach ($spec['shrink_at'] ?? [] as $threshold => $smaller) {
+            if (mb_strlen($text) > $threshold) {
+                $size = $smaller;
+            }
+        }
+
+        return $size;
+    };
+
+    $style = function (array $spec, ?string $fontSize = null) {
+        $rules = [
+            'left: '.$spec['left'],
+            'top: '.$spec['top'],
+            'width: '.$spec['width'],
+            'font-size: '.($fontSize ?? $spec['font_size'] ?? '3mm'),
+            'line-height: '.($spec['line_height'] ?? '1.2'),
+            'letter-spacing: '.($spec['letter_spacing'] ?? '0'),
+            'color: '.($spec['color'] ?? '#000000'),
+            'text-align: '.($spec['align'] ?? 'center'),
+            'text-transform: '.($spec['transform'] ?? 'none'),
+        ];
+
+        return implode('; ', $rules).';';
+    };
+
+    /** The offsets that fake a bold weight dompdf will not render. */
+    $edges = function (array $spec) {
+        $offset = $spec['edge_offset_mm'] ?? 0;
+
+        return $offset > 0
+            ? [[-$offset, 0], [$offset, 0], [0, -$offset], [0, $offset]]
+            : [];
+    };
+@endphp
 <!DOCTYPE html>
 <html>
 <head>
-<meta charset="utf-8">
-<style>
-    @page { margin: 0; }
-    body { font-family: 'Helvetica', sans-serif; margin: 0; padding: 0; }
-    .badge {
-        width: 306px; height: 468px; box-sizing: border-box;
-        background: #faf6ee; border: 4px solid #2f5233;
-        padding: 24px 20px; text-align: center;
-    }
-    .conference-name { font-size: 13px; letter-spacing: 1px; text-transform: uppercase; color: #2f5233; font-weight: bold; }
-    .conference-year { font-size: 11px; color: #c1652f; margin-top: 2px; }
-    .divider { border-top: 2px solid #c1652f; margin: 16px auto; width: 60px; }
-    .name { font-size: 22px; font-weight: bold; color: #2f5233; margin-top: 20px; }
-    .institution { font-size: 13px; color: #444; margin-top: 6px; }
-    .category { display: inline-block; margin-top: 16px; padding: 6px 14px; background: #2f5233; color: #fff; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; border-radius: 3px; }
-    .qr { margin-top: 28px; }
-    .qr img { width: 130px; height: 130px; }
-    .code { font-size: 10px; color: #888; margin-top: 8px; font-family: monospace; }
-</style>
+    <meta charset="utf-8">
+    <title>{{ $conferenceName }} badge — {{ $badgeName }}</title>
+    <style>
+        @page { margin: 0; }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'DejaVu Sans', Helvetica, Arial, sans-serif;
+        }
+
+        .badge {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        .badge-background {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Fallback when the artwork is missing: a plain card still prints,
+           because a desk with no badge at all is worse than an unbranded one. */
+        .badge-plain {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #ffffff;
+            border: 3mm solid #135eeb;
+        }
+
+        .badge-plain-title {
+            position: absolute;
+            top: 8%;
+            left: 6%;
+            width: 88%;
+            text-align: center;
+            font-size: 4mm;
+            font-weight: bold;
+            color: #135eeb;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+        }
+
+        .stamp {
+            position: absolute;
+            display: block;
+        }
+
+        .qr {
+            position: absolute;
+        }
+
+        .qr img {
+            width: 100%;
+        }
+    </style>
 </head>
 <body>
-    <div class="badge">
-        <div class="conference-name">{{ $conferenceName }}</div>
-        <div class="conference-year">{{ $conferenceYear }}</div>
-        <div class="divider"></div>
+<div class="badge">
+    @if ($background)
+        <img src="{{ $background }}" alt="" class="badge-background">
+    @else
+        <div class="badge-plain"></div>
+        <div class="badge-plain-title">{{ $conferenceName }} {{ $conferenceYear }}</div>
+    @endif
 
-        <div class="name">{{ $user->salutation }} {{ $user->name }}</div>
-        <div class="institution">{{ $user->institution }}</div>
+    @php $nameSize = $sizeFor($place['name'], $badgeName); @endphp
+    @foreach ($edges($place['name']) as [$x, $y])
+        <div class="stamp" style="{{ $style($place['name'], $nameSize) }} margin-left: {{ $x }}mm; margin-top: {{ $y }}mm;">{{ $badgeName }}</div>
+    @endforeach
+    <div class="stamp" style="{{ $style($place['name'], $nameSize) }}">{{ $badgeName }}</div>
 
-        <div class="category">{{ $feeCategoryLabel }}</div>
+    @if ($badgeInstitution)
+        @php $institutionSize = $sizeFor($place['institution'], $badgeInstitution); @endphp
+        @foreach ($edges($place['institution']) as [$x, $y])
+            <div class="stamp" style="{{ $style($place['institution'], $institutionSize) }} margin-left: {{ $x }}mm; margin-top: {{ $y }}mm;">{{ $badgeInstitution }}</div>
+        @endforeach
+        <div class="stamp" style="{{ $style($place['institution'], $institutionSize) }}">{{ $badgeInstitution }}</div>
+    @endif
 
-        <div class="qr">
-            <img src="{{ $qr }}" alt="QR code">
-        </div>
-        <div class="code">{{ $user->registration_code }}</div>
+    {{-- How this person qualifies to be here. For a complimentary badge this
+         is the whole point: it says Media or Secretariat rather than leaving a
+         steward to guess why someone has no paid registration. --}}
+    @if ($badgeCategory)
+        @foreach ($edges($place['category']) as [$x, $y])
+            <div class="stamp" style="{{ $style($place['category']) }} margin-left: {{ $x }}mm; margin-top: {{ $y }}mm;">{{ $badgeCategory }}</div>
+        @endforeach
+        <div class="stamp" style="{{ $style($place['category']) }}">{{ $badgeCategory }}</div>
+    @endif
+
+    <div class="qr" style="left: {{ $place['qr']['left'] }}; top: {{ $place['qr']['top'] }}; width: {{ $place['qr']['width'] }};">
+        <img src="{{ $qr }}" alt="">
     </div>
+
+    <div class="stamp" style="{{ $style($place['code']) }}">{{ $registrationCode }}</div>
+</div>
 </body>
 </html>
