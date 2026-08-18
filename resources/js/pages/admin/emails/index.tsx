@@ -8,9 +8,10 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import AppLayout from '@/layouts/app-layout';
-import { type BreadcrumbItem } from '@/types';
-import { Head, Link, router, useForm } from '@inertiajs/react';
-import { LoaderCircle, Mail, Send, Users } from 'lucide-react';
+import { csrfHeader } from '@/lib/csrf';
+import { type BreadcrumbItem, type SharedData } from '@/types';
+import { Head, Link, router, useForm, usePage } from '@inertiajs/react';
+import { Eye, LoaderCircle, Mail, Send, Users } from 'lucide-react';
 import { FormEventHandler, useEffect, useState } from 'react';
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -50,11 +51,15 @@ function formatDate(value: string): string {
 }
 
 export default function EmailsIndex({ segments, parameterisedSegments, audienceOptions, campaigns }: EmailsIndexProps) {
+    const { auth } = usePage<SharedData>().props;
     const form = useForm({ audience: 'all', audience_value: '', subject: '', body: '' });
     const [recipientCount, setRecipientCount] = useState<number | null>(null);
     const [countLoading, setCountLoading] = useState(false);
     const [confirming, setConfirming] = useState(false);
     const [testing, setTesting] = useState(false);
+    const [testEmail, setTestEmail] = useState('');
+    const [previewHtml, setPreviewHtml] = useState<string | null>(null);
+    const [previewLoading, setPreviewLoading] = useState(false);
 
     const needsValue = parameterisedSegments.includes(form.data.audience);
     const valueOptions = form.data.audience === 'by_country' ? audienceOptions.countries : audienceOptions.institutions;
@@ -101,9 +106,28 @@ export default function EmailsIndex({ segments, parameterisedSegments, audienceO
         setTesting(true);
         router.post(
             route('admin.emails.test'),
-            { subject: form.data.subject, body: form.data.body },
+            { subject: form.data.subject, body: form.data.body, email: testEmail || undefined },
             { preserveScroll: true, onFinish: () => setTesting(false) },
         );
+    };
+
+    const openPreview = async () => {
+        setPreviewLoading(true);
+        try {
+            const response = await fetch(route('admin.emails.preview'), {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json', Accept: 'application/json', ...csrfHeader() },
+                body: JSON.stringify({ subject: form.data.subject, body: form.data.body }),
+            });
+
+            if (response.ok) {
+                const { html } = await response.json();
+                setPreviewHtml(html);
+            }
+        } finally {
+            setPreviewLoading(false);
+        }
     };
 
     return (
@@ -212,7 +236,7 @@ export default function EmailsIndex({ segments, parameterisedSegments, audienceO
                             <InputError message={form.errors.body} />
                         </div>
 
-                        <div className="flex flex-wrap items-center gap-3 border-t pt-4">
+                        <div className="flex flex-wrap items-end gap-3 border-t pt-4">
                             <Button type="submit" disabled={!canSend || form.processing}>
                                 <Send className="size-4" />
                                 Send to {recipientCount?.toLocaleString() ?? '—'} recipients
@@ -220,13 +244,40 @@ export default function EmailsIndex({ segments, parameterisedSegments, audienceO
                             <Button
                                 type="button"
                                 variant="outline"
-                                disabled={!form.data.subject.trim() || !form.data.body.trim() || testing}
-                                onClick={sendTest}
+                                disabled={!form.data.subject.trim() || !form.data.body.trim() || previewLoading}
+                                onClick={openPreview}
                             >
-                                {testing && <LoaderCircle className="size-4 animate-spin" />}
-                                Send test to myself
+                                {previewLoading ? <LoaderCircle className="size-4 animate-spin" /> : <Eye className="size-4" />}
+                                Preview
                             </Button>
+                            <div className="flex items-end gap-2">
+                                <div className="grid gap-2">
+                                    <Label htmlFor="test_email" className="text-muted-foreground text-xs font-normal">
+                                        Test recipient (optional)
+                                    </Label>
+                                    <Input
+                                        id="test_email"
+                                        type="email"
+                                        value={testEmail}
+                                        onChange={(e) => setTestEmail(e.target.value)}
+                                        placeholder="you@example.org"
+                                        className="w-56"
+                                    />
+                                </div>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    disabled={!form.data.subject.trim() || !form.data.body.trim() || testing}
+                                    onClick={sendTest}
+                                >
+                                    {testing && <LoaderCircle className="size-4 animate-spin" />}
+                                    Send test
+                                </Button>
+                            </div>
                         </div>
+                        <p className="text-muted-foreground -mt-2 text-xs">
+                            Leave the test recipient blank to send it to your own address ({auth.user.email}).
+                        </p>
                     </div>
                 </form>
 
@@ -302,6 +353,18 @@ export default function EmailsIndex({ segments, parameterisedSegments, audienceO
                                 Send now
                             </Button>
                         </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+
+                <Dialog open={previewHtml !== null} onOpenChange={(open) => !open && setPreviewHtml(null)}>
+                    <DialogContent className="max-w-2xl">
+                        <DialogHeader>
+                            <DialogTitle>Preview</DialogTitle>
+                            <DialogDescription>Exactly what a recipient will see, addressed to you for this preview.</DialogDescription>
+                        </DialogHeader>
+                        {previewHtml !== null && (
+                            <iframe title="Email preview" srcDoc={previewHtml} className="h-[60vh] w-full rounded-lg border bg-white" />
+                        )}
                     </DialogContent>
                 </Dialog>
             </div>

@@ -50,6 +50,7 @@ Route::middleware(['auth', 'role:admin,super_admin'])->prefix('admin')->name('ad
     // the transactional mailables, which fire on events and have no author.
     Route::get('emails', [AdminEmailCampaignController::class, 'index'])->name('emails.index');
     Route::get('emails/recipient-count', [AdminEmailCampaignController::class, 'count'])->name('emails.count');
+    Route::post('emails/preview', [AdminEmailCampaignController::class, 'preview'])->name('emails.preview');
     Route::post('emails/test', [AdminEmailCampaignController::class, 'test'])->name('emails.test');
     Route::post('emails', [AdminEmailCampaignController::class, 'store'])->name('emails.store');
     Route::get('emails/{campaign}', [AdminEmailCampaignController::class, 'show'])->name('emails.show');

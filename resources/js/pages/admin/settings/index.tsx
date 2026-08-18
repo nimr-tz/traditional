@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import AppLayout from '@/layouts/app-layout';
+import { csrfHeader } from '@/lib/csrf';
 import { type BreadcrumbItem } from '@/types';
 import { Head, useForm } from '@inertiajs/react';
 import { Building2, CalendarRange, Eraser, FolderKanban, LoaderCircle, LucideIcon, Settings, TriangleAlert, Wallet } from 'lucide-react';
@@ -125,18 +126,6 @@ interface PurgeResponse {
     count?: number;
     records?: PurgeRecord[];
     message: string;
-}
-
-/**
- * Laravel's ValidateCsrfToken accepts the XSRF-TOKEN cookie echoed back as a
- * header. Inertia's own requests do this transparently, but this endpoint
- * returns plain JSON rather than an Inertia response, so it is fetched
- * directly and has to supply the header itself.
- */
-function csrfHeader(): Record<string, string> {
-    const match = document.cookie.match(/XSRF-TOKEN=([^;]+)/);
-
-    return match ? { 'X-XSRF-TOKEN': decodeURIComponent(match[1]) } : {};
 }
 
 /**

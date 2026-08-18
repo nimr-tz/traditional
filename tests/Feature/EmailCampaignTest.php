@@ -221,6 +221,41 @@ class EmailCampaignTest extends TestCase
         $this->assertSame(0, EmailCampaign::count());
     }
 
+    /** The test-send address can be overridden to check delivery to an inbox other than the admin's own. */
+    public function test_a_test_send_can_be_addressed_to_a_chosen_email(): void
+    {
+        Mail::fake();
+
+        $admin = User::factory()->admin()->create(['email' => 'admin@example.com']);
+
+        $this->actingAs($admin)
+            ->post(route('admin.emails.test'), ['subject' => 'Draft', 'body' => 'Draft body.', 'email' => 'someone-else@example.com'])
+            ->assertRedirect();
+
+        Mail::assertSent(CampaignMessage::class, fn ($mail) => $mail->hasTo('someone-else@example.com'));
+        Mail::assertNotSent(CampaignMessage::class, fn ($mail) => $mail->hasTo('admin@example.com'));
+        $this->assertSame(0, EmailCampaign::count());
+    }
+
+    public function test_previewing_renders_the_email_without_sending_or_recording_anything(): void
+    {
+        Mail::fake();
+
+        $response = $this->actingAs(User::factory()->admin()->create(['name' => 'Amina Admin']))
+            ->postJson(route('admin.emails.preview'), [
+                'subject' => 'Programme published',
+                'body' => "First paragraph.\n\nSecond paragraph.",
+            ])
+            ->assertOk()
+            ->assertJson(fn ($json) => $json->has('html')->etc());
+
+        $this->assertStringContainsString('First paragraph.', $response->json('html'));
+        $this->assertStringContainsString('Amina Admin', $response->json('html'));
+
+        Mail::assertNothingSent();
+        $this->assertSame(0, EmailCampaign::count());
+    }
+
     public function test_a_failed_address_does_not_abort_the_rest_of_the_campaign(): void
     {
         Queue::fake();
@@ -254,6 +289,10 @@ class EmailCampaignTest extends TestCase
 
         $this->actingAs(User::factory()->create())
             ->post(route('admin.emails.store'), ['audience' => 'all', 'subject' => 'S', 'body' => 'B'])
+            ->assertForbidden();
+
+        $this->actingAs(User::factory()->create())
+            ->postJson(route('admin.emails.preview'), ['subject' => 'S', 'body' => 'B'])
             ->assertForbidden();
     }
 

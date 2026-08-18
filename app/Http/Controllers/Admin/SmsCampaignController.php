@@ -49,7 +49,9 @@ class SmsCampaignController extends Controller
     }
 
     /**
-     * Send the composed message to the acting admin's own number only.
+     * Send the composed message to a single number — the acting admin's own
+     * by default, or any number they type in, so a real handset (theirs or
+     * someone else's, with permission) can be checked before the real send.
      * Campaign texts go to real participants and can't be recalled, so there
      * is always a way to see the rendered result first without involving
      * anyone else.
@@ -62,13 +64,23 @@ class SmsCampaignController extends Controller
 
         $data = $request->validate([
             'message' => ['required', 'string', 'max:480'],
+            'phone' => ['nullable', 'string', 'max:20'],
         ]);
 
         $admin = $request->user();
-        $msisdn = TanzanianPhone::normalize($admin->phone, $admin->country);
+        $typedPhone = $data['phone'] ?? null;
+
+        // A typed-in test number is assumed Tanzanian regardless of the
+        // admin's own country — the gateway can't deliver anywhere else
+        // anyway, so there is no other number worth testing with.
+        $msisdn = $typedPhone
+            ? TanzanianPhone::normalize($typedPhone, 'Tanzania')
+            : TanzanianPhone::normalize($admin->phone, $admin->country);
 
         if (! $msisdn) {
-            return back()->with('error', 'Your account doesn\'t have a usable Tanzanian mobile number on file.');
+            return back()->with('error', $typedPhone
+                ? 'Not a recognisable Tanzanian mobile number.'
+                : 'Your account doesn\'t have a usable Tanzanian mobile number on file.');
         }
 
         try {

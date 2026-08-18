@@ -3,13 +3,14 @@ import InputError from '@/components/input-error';
 import { StatusPill, type PillTone } from '@/components/status-pill';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem } from '@/types';
 import { Head, Link, router, useForm } from '@inertiajs/react';
-import { LoaderCircle, MessageSquare, Send, Users } from 'lucide-react';
+import { Eye, LoaderCircle, MessageSquare, Send, Users } from 'lucide-react';
 import { FormEventHandler, useEffect, useState } from 'react';
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -61,6 +62,8 @@ export default function SmsIndex({ segments, parameterisedSegments, audienceOpti
     const [countLoading, setCountLoading] = useState(false);
     const [confirming, setConfirming] = useState(false);
     const [testing, setTesting] = useState(false);
+    const [testPhone, setTestPhone] = useState('');
+    const [previewing, setPreviewing] = useState(false);
 
     const needsValue = parameterisedSegments.includes(form.data.audience);
     const valueOptions = form.data.audience === 'by_country' ? audienceOptions.countries : audienceOptions.institutions;
@@ -106,7 +109,11 @@ export default function SmsIndex({ segments, parameterisedSegments, audienceOpti
 
     const sendTest = () => {
         setTesting(true);
-        router.post(route('admin.sms.test'), { message: form.data.message }, { preserveScroll: true, onFinish: () => setTesting(false) });
+        router.post(
+            route('admin.sms.test'),
+            { message: form.data.message, phone: testPhone || undefined },
+            { preserveScroll: true, onFinish: () => setTesting(false) },
+        );
     };
 
     return (
@@ -207,16 +214,38 @@ export default function SmsIndex({ segments, parameterisedSegments, audienceOpti
                             <InputError message={form.errors.message} />
                         </div>
 
-                        <div className="flex flex-wrap items-center gap-3 border-t pt-4">
+                        <div className="flex flex-wrap items-end gap-3 border-t pt-4">
                             <Button type="submit" disabled={!canSend || form.processing}>
                                 <Send className="size-4" />
                                 Send to {recipientCount?.toLocaleString() ?? '—'} recipients
                             </Button>
-                            <Button type="button" variant="outline" disabled={!form.data.message.trim() || testing} onClick={sendTest}>
-                                {testing && <LoaderCircle className="size-4 animate-spin" />}
-                                Send test to myself
+                            <Button type="button" variant="outline" disabled={!form.data.message.trim()} onClick={() => setPreviewing(true)}>
+                                <Eye className="size-4" />
+                                Preview
                             </Button>
+                            <div className="flex items-end gap-2">
+                                <div className="grid gap-2">
+                                    <Label htmlFor="test_phone" className="text-muted-foreground text-xs font-normal">
+                                        Test recipient (optional)
+                                    </Label>
+                                    <Input
+                                        id="test_phone"
+                                        type="tel"
+                                        value={testPhone}
+                                        onChange={(e) => setTestPhone(e.target.value)}
+                                        placeholder="0712345678"
+                                        className="w-44"
+                                    />
+                                </div>
+                                <Button type="button" variant="outline" disabled={!form.data.message.trim() || testing} onClick={sendTest}>
+                                    {testing && <LoaderCircle className="size-4 animate-spin" />}
+                                    Send test
+                                </Button>
+                            </div>
                         </div>
+                        <p className="text-muted-foreground -mt-2 text-xs">
+                            Leave the test recipient blank to send it to your own number, if one is on file.
+                        </p>
                     </div>
                 </form>
 
@@ -296,6 +325,22 @@ export default function SmsIndex({ segments, parameterisedSegments, audienceOpti
                                 Send now
                             </Button>
                         </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+
+                <Dialog open={previewing} onOpenChange={setPreviewing}>
+                    <DialogContent>
+                        <DialogHeader>
+                            <DialogTitle>Preview</DialogTitle>
+                            <DialogDescription>
+                                Sent exactly as written, with no greeting or signature added — {parts} SMS part{parts === 1 ? '' : 's'}.
+                            </DialogDescription>
+                        </DialogHeader>
+                        <div className="bg-muted/40 rounded-2xl p-4">
+                            <div className="ml-auto max-w-[80%] rounded-2xl rounded-tr-sm bg-[#135eeb] px-4 py-2.5 text-sm whitespace-pre-wrap text-white">
+                                {form.data.message}
+                            </div>
+                        </div>
                     </DialogContent>
                 </Dialog>
             </div>

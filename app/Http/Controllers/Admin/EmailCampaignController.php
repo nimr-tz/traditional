@@ -47,18 +47,42 @@ class EmailCampaignController extends Controller
     }
 
     /**
-     * Send the composed message to the acting admin only. Campaign emails go to
-     * real participants and can't be recalled, so there is always a way to see
-     * the rendered result first without involving anyone else.
+     * Render the composed message exactly as a recipient would receive it,
+     * without sending anything. Lets an admin check formatting/paragraph
+     * breaks before a send that can't be recalled.
      */
-    public function test(Request $request): RedirectResponse
+    public function preview(Request $request): JsonResponse
     {
         $data = $request->validate([
             'subject' => ['required', 'string', 'max:200'],
             'body' => ['required', 'string', 'max:20000'],
         ]);
 
+        $campaign = new EmailCampaign($data);
+
+        return response()->json([
+            'html' => (new CampaignMessage($campaign, $request->user()->name))->render(),
+        ]);
+    }
+
+    /**
+     * Send the composed message to a single address — the acting admin's own
+     * by default, or any address they type in, so a real inbox (their own or
+     * someone else's, with permission) can be checked before the real send.
+     * Campaign emails go to real participants and can't be recalled, so there
+     * is always a way to see the rendered result first without involving
+     * anyone else.
+     */
+    public function test(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'subject' => ['required', 'string', 'max:200'],
+            'body' => ['required', 'string', 'max:20000'],
+            'email' => ['nullable', 'email', 'max:255'],
+        ]);
+
         $admin = $request->user();
+        $to = ($data['email'] ?? null) ?: $admin->email;
 
         // Unsaved: a test is a preview, not a campaign, and must not appear in
         // the sent history or count against anybody's record.
@@ -67,9 +91,9 @@ class EmailCampaignController extends Controller
             'body' => $data['body'],
         ]);
 
-        Mail::to($admin->email)->send(new CampaignMessage($campaign, $admin->name));
+        Mail::to($to)->send(new CampaignMessage($campaign, $admin->name));
 
-        return back()->with('success', "Test email sent to {$admin->email}.");
+        return back()->with('success', "Test email sent to {$to}.");
     }
 
     public function store(Request $request): RedirectResponse

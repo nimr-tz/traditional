@@ -221,6 +221,33 @@ class SmsCampaignTest extends TestCase
             ->assertSessionHas('error');
     }
 
+    /** The test-send number can be overridden to check delivery to a handset other than the admin's own. */
+    public function test_a_test_send_can_be_addressed_to_a_chosen_number(): void
+    {
+        $fake = new FakeSmsGateway;
+        $this->app->instance(SmsGateway::class, $fake);
+
+        // The admin's own number is deliberately different from the typed-in
+        // test number, so a pass here can't be explained by falling back to it.
+        $admin = User::factory()->admin()->create(['country' => 'Tanzania', 'phone' => '0787654321']);
+
+        $this->actingAs($admin)
+            ->post(route('admin.sms.test'), ['message' => 'Draft', 'phone' => '0798765432'])
+            ->assertRedirect();
+
+        $this->assertSame(['255798765432'], $fake->sentTo);
+        $this->assertSame(0, SmsCampaign::count());
+    }
+
+    public function test_a_test_send_rejects_an_unrecognisable_chosen_number(): void
+    {
+        $admin = User::factory()->admin()->create(['country' => 'Tanzania', 'phone' => '0712345678']);
+
+        $this->actingAs($admin)
+            ->post(route('admin.sms.test'), ['message' => 'Draft', 'phone' => 'not-a-number'])
+            ->assertSessionHas('error');
+    }
+
     public function test_the_sms_manager_is_admin_only(): void
     {
         $this->actingAs(User::factory()->reviewer()->create())
