@@ -4,7 +4,7 @@ export type Appearance = 'light' | 'dark' | 'system';
 
 const prefersDark = () => window.matchMedia('(prefers-color-scheme: dark)').matches;
 
-const applyTheme = (appearance: Appearance) => {
+export const applyTheme = (appearance: Appearance) => {
     const isDark = appearance === 'dark' || (appearance === 'system' && prefersDark());
 
     document.documentElement.classList.toggle('dark', isDark);

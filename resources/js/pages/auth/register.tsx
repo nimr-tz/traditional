@@ -1,6 +1,6 @@
 import { Head, useForm } from '@inertiajs/react';
 import { Check, LoaderCircle } from 'lucide-react';
-import { FormEventHandler, useState } from 'react';
+import { FormEventHandler, useEffect, useState } from 'react';
 
 import InputError from '@/components/input-error';
 import TextLink from '@/components/text-link';
@@ -72,7 +72,7 @@ const categoryRegion = (key: string): 'east_africa' | 'international' | null => 
     return null;
 };
 
-const PASSWORD_HINT = 'At least 10 characters, including letters and numbers.';
+const PASSWORD_HINT = 'At least 8 characters.';
 
 const STEP_FIELDS: Record<number, RegisterField[]> = {
     0: ['salutation', 'first_name', 'last_name', 'email'],
@@ -80,6 +80,13 @@ const STEP_FIELDS: Record<number, RegisterField[]> = {
     2: ['participant_type', 'fee_category', 'student_document'],
     3: ['password', 'password_confirmation'],
 };
+
+// Reverse of STEP_FIELDS, so a server-side error on e.g. `email` (only
+// re-checked on the backend — uniqueness, institution validity, fee/region
+// mismatch) can send the wizard back to the step that field lives on.
+const FIELD_STEP: Partial<Record<RegisterField, number>> = Object.fromEntries(
+    Object.entries(STEP_FIELDS).flatMap(([step, fields]) => fields.map((field) => [field, Number(step)])),
+);
 
 export default function Register({
     salutations,
@@ -119,6 +126,18 @@ export default function Register({
               })
             : [];
 
+    // Participant type + country deterministically fix the fee category — there's
+    // never actually more than one option here, so it's not a real choice for the
+    // registrant to make. Auto-fill it and clear the error rather than making them
+    // click a card that just restates a value already implied by their earlier answers.
+    useEffect(() => {
+        if (availableFeeCategories.length === 1 && data.fee_category !== availableFeeCategories[0].key) {
+            setData('fee_category', availableFeeCategories[0].key);
+            clearErrors('fee_category');
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [availableFeeCategories.map((c) => c.key).join(','), data.fee_category]);
+
     const validationMessage = (field: RegisterField, formData: RegisterForm): string => {
         const text = typeof formData[field] === 'string' ? (formData[field] as string).trim() : '';
 
@@ -156,8 +175,7 @@ export default function Register({
             }
             case 'password':
                 if (!text) return 'Password is required.';
-                if (text.length < 10) return 'Password must be at least 10 characters.';
-                if (!/[a-zA-Z]/.test(text) || !/[0-9]/.test(text)) return 'Password must contain both letters and numbers.';
+                if (text.length < 8) return 'Password must be at least 8 characters.';
                 return '';
             case 'password_confirmation':
                 if (!text) return 'Please confirm your password.';
@@ -227,7 +245,19 @@ export default function Register({
 
         if (!fields.map((field) => validateField(field)).every(Boolean)) return;
 
-        post(route('register'));
+        post(route('register'), {
+            onError: (serverErrors) => {
+                // Some things can only be checked server-side (duplicate email,
+                // institution validity, fee/region mismatch) and may live on an
+                // earlier step than the one the user submitted from — jump back
+                // to it so the error is actually visible instead of silently
+                // sitting in state behind the current step.
+                const erroredSteps = Object.keys(serverErrors)
+                    .map((field) => FIELD_STEP[field as RegisterField])
+                    .filter((s): s is number => s !== undefined);
+                if (erroredSteps.length > 0) setStep(Math.min(...erroredSteps));
+            },
+        });
     };
 
     const summaryName = [data.salutation, data.first_name, data.middle_name, data.last_name].filter(Boolean).join(' ') || '—';
@@ -304,6 +334,12 @@ export default function Register({
                 noValidate
                 className="flex flex-col gap-5 rounded-2xl border border-[hsl(35,18%,87%)] bg-[hsl(40,30%,99%)] p-7 shadow-[0_1px_2px_rgba(0,0,0,0.05)]"
             >
+                {Object.keys(errors).length > 0 && (
+                    <div className="rounded-xl border border-[#c14a3a]/30 bg-[#c14a3a]/5 px-4 py-3 text-sm leading-relaxed text-[#8a3327]">
+                        We couldn't complete your registration — please check the highlighted field{Object.keys(errors).length > 1 ? 's' : ''} below.
+                    </div>
+                )}
+
                 {step === 0 && (
                     <div className="flex flex-col gap-5">
                         <div className="grid grid-cols-[8rem_1fr] gap-4">
@@ -511,51 +547,90 @@ export default function Register({
                             <InputError message={errors.participant_type} />
                         </fieldset>
 
-                        {data.participant_type && (
-                            <div className="flex flex-col gap-2.5">
-                                <div className="text-sm font-medium">Registration category *</div>
-                                <div className={cn('grid gap-3', availableFeeCategories.length > 1 ? 'grid-cols-2' : 'grid-cols-1')}>
-                                    {availableFeeCategories.map((category) => {
-                                        const selected = data.fee_category === category.key;
-                                        const accent = isStudentCategory ? '#67b52f' : '#135eeb';
-                                        return (
-                                            <button
-                                                key={category.key}
-                                                type="button"
-                                                onClick={() => {
-                                                    setData({ ...data, fee_category: category.key });
-                                                    clearErrors('fee_category');
-                                                }}
-                                                style={{ borderColor: selected ? accent : undefined }}
+                        {data.participant_type &&
+                            availableFeeCategories.length > 0 &&
+                            (availableFeeCategories.length === 1 ? (
+                                // Participant type + country already fix the fee category — it isn't a
+                                // choice, so show it as a plain summary instead of a card to click.
+                                <div className="flex flex-col gap-2.5">
+                                    <div className="text-sm font-medium">Your registration fee</div>
+                                    <div
+                                        className="flex items-center justify-between gap-3 rounded-xl border p-4.5"
+                                        style={{ borderColor: isStudentCategory ? '#67b52f' : '#135eeb' }}
+                                    >
+                                        <div className="flex flex-col gap-1">
+                                            <span
                                                 className={cn(
-                                                    'flex flex-col items-start gap-2.5 rounded-xl border p-4.5 text-left',
-                                                    selected ? 'border-2' : 'border-[hsl(35,18%,85%)]',
-                                                    selected ? (isStudentCategory ? 'bg-[#67b52f]/[0.08]' : 'bg-[#eaf1ff]') : 'bg-[hsl(40,30%,99%)]',
+                                                    'inline-flex w-fit rounded-full px-3 py-1 text-[11px] font-semibold tracking-wide uppercase',
+                                                    isStudentCategory ? 'bg-[#67b52f]/10 text-[#67b52f]' : 'bg-[#eaf1ff] text-[#135eeb]',
                                                 )}
                                             >
-                                                <span
+                                                {isStudentCategory ? 'Student' : 'Participant'}
+                                            </span>
+                                            <span className="text-sm leading-snug font-semibold">{availableFeeCategories[0].label}</span>
+                                        </div>
+                                        <span
+                                            className="font-serif text-[22px] font-bold"
+                                            style={{ color: isStudentCategory ? '#67b52f' : '#135eeb' }}
+                                        >
+                                            {availableFeeCategories[0].currency} {Number(availableFeeCategories[0].amount).toLocaleString()}
+                                        </span>
+                                    </div>
+                                    <p className="text-xs leading-relaxed text-[hsl(30,8%,42%)]">
+                                        This is the fee and billing category for your control number, based on your participant type and{' '}
+                                        {data.country}.
+                                    </p>
+                                    <InputError message={errors.fee_category} />
+                                </div>
+                            ) : (
+                                <div className="flex flex-col gap-2.5">
+                                    <div className="text-sm font-medium">Registration category *</div>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        {availableFeeCategories.map((category) => {
+                                            const selected = data.fee_category === category.key;
+                                            const accent = isStudentCategory ? '#67b52f' : '#135eeb';
+                                            return (
+                                                <button
+                                                    key={category.key}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setData({ ...data, fee_category: category.key });
+                                                        clearErrors('fee_category');
+                                                    }}
+                                                    style={{ borderColor: selected ? accent : undefined }}
                                                     className={cn(
-                                                        'inline-flex rounded-full px-3 py-1 text-[11px] font-semibold tracking-wide uppercase',
-                                                        isStudentCategory ? 'bg-[#67b52f]/10 text-[#67b52f]' : 'bg-[#eaf1ff] text-[#135eeb]',
+                                                        'flex flex-col items-start gap-2.5 rounded-xl border p-4.5 text-left',
+                                                        selected ? 'border-2' : 'border-[hsl(35,18%,85%)]',
+                                                        selected
+                                                            ? isStudentCategory
+                                                                ? 'bg-[#67b52f]/[0.08]'
+                                                                : 'bg-[#eaf1ff]'
+                                                            : 'bg-[hsl(40,30%,99%)]',
                                                     )}
                                                 >
-                                                    {isStudentCategory ? 'Student' : 'Participant'}
-                                                </span>
-                                                <span className="text-sm leading-snug font-semibold">{category.label}</span>
-                                                <span className="font-serif text-[22px] font-bold" style={{ color: accent }}>
-                                                    {category.currency} {Number(category.amount).toLocaleString()}
-                                                </span>
-                                            </button>
-                                        );
-                                    })}
+                                                    <span
+                                                        className={cn(
+                                                            'inline-flex rounded-full px-3 py-1 text-[11px] font-semibold tracking-wide uppercase',
+                                                            isStudentCategory ? 'bg-[#67b52f]/10 text-[#67b52f]' : 'bg-[#eaf1ff] text-[#135eeb]',
+                                                        )}
+                                                    >
+                                                        {isStudentCategory ? 'Student' : 'Participant'}
+                                                    </span>
+                                                    <span className="text-sm leading-snug font-semibold">{category.label}</span>
+                                                    <span className="font-serif text-[22px] font-bold" style={{ color: accent }}>
+                                                        {category.currency} {Number(category.amount).toLocaleString()}
+                                                    </span>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                    <p className="text-xs leading-relaxed text-[hsl(30,8%,42%)]">
+                                        This selection determines the fee and billing category used for your control number. The tier shown is the one
+                                        that applies to {data.country || 'your country'}.
+                                    </p>
+                                    <InputError message={errors.fee_category} />
                                 </div>
-                                <p className="text-xs leading-relaxed text-[hsl(30,8%,42%)]">
-                                    This selection determines the fee and billing category used for your control number. The tier shown is the one
-                                    that applies to {data.country || 'your country'}.
-                                </p>
-                                <InputError message={errors.fee_category} />
-                            </div>
-                        )}
+                            ))}
 
                         {isStudentCategory && (
                             <div className="flex flex-col gap-2.5 rounded-xl border border-[#67b52f]/25 bg-[#67b52f]/5 p-4">

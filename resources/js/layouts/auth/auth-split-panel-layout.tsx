@@ -1,6 +1,8 @@
 import { AuthPanel } from '@/components/auth-panel';
+import { applyTheme } from '@/hooks/use-appearance';
 import { cn } from '@/lib/utils';
 import { Link } from '@inertiajs/react';
+import { useEffect } from 'react';
 import nimrLogo from '../../../images/nimr-logo-128.webp';
 
 interface AuthSplitPanelLayoutProps {
@@ -9,6 +11,33 @@ interface AuthSplitPanelLayoutProps {
 }
 
 export default function AuthSplitPanelLayout({ children, contentClassName }: AuthSplitPanelLayoutProps) {
+    // This layout's warm, serif-accented look is a deliberate light-only brand
+    // treatment for the public registration/auth flow, not the app's themed
+    // dashboard — its colors are hardcoded to the light palette throughout.
+    // Shared components (Input, Select, ...) read the shadcn CSS variables
+    // though, which flip dark the moment `<html>` carries the app-wide `dark`
+    // class, and Radix's Select dropdown portals straight to <body>, outside
+    // this component's own DOM subtree — so overriding CSS variables locally
+    // can't reach it. Keeping `dark` off `<html>` for as long as this layout
+    // is mounted is the only thing that reaches both. A MutationObserver
+    // guards against the system-theme-change listener in use-appearance.tsx
+    // re-adding it while an auth page is open; unmounting restores whatever
+    // the user's saved appearance actually is.
+    useEffect(() => {
+        const html = document.documentElement;
+        html.classList.remove('dark');
+
+        const observer = new MutationObserver(() => {
+            if (html.classList.contains('dark')) html.classList.remove('dark');
+        });
+        observer.observe(html, { attributes: true, attributeFilter: ['class'] });
+
+        return () => {
+            observer.disconnect();
+            applyTheme((localStorage.getItem('appearance') as 'light' | 'dark' | 'system') || 'system');
+        };
+    }, []);
+
     return (
         <div
             className="flex min-h-svh text-[hsl(20,12%,14%)]"
