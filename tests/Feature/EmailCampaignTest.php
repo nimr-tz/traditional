@@ -148,14 +148,17 @@ class EmailCampaignTest extends TestCase
 
         $author = $this->registrant();
         $this->abstractFor($author, 'accepted');
+        $revising = $this->registrant();
+        $this->abstractFor($revising, 'revision_requested');
         $plain = $this->registrant();
 
         $expectations = [
-            'all' => 2,
-            'abstract_authors' => 1,
+            'all' => 3,
+            'abstract_authors' => 2,
             'accepted_authors' => 1,
+            'revision_requested_authors' => 1,
             'no_abstract' => 1,
-            'by_country' => 2,
+            'by_country' => 3,
         ];
 
         foreach ($expectations as $segment => $expected) {

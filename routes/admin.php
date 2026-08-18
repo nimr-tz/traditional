@@ -10,6 +10,7 @@ use App\Http\Controllers\Admin\ManagementDashboardController as AdminManagementD
 use App\Http\Controllers\Admin\RegistrationController as AdminRegistrationController;
 use App\Http\Controllers\Admin\ReviewerAssignmentController as AdminReviewerAssignmentController;
 use App\Http\Controllers\Admin\SettingsController as AdminSettingsController;
+use App\Http\Controllers\Admin\SmsCampaignController as AdminSmsCampaignController;
 use App\Http\Controllers\Admin\StudentVerificationController as AdminStudentVerificationController;
 use App\Http\Controllers\Staff\DashboardController as StaffDashboardController;
 use App\Http\Controllers\Staff\RegistrantController as StaffRegistrantController;
@@ -50,6 +51,14 @@ Route::middleware(['auth', 'role:admin,super_admin'])->prefix('admin')->name('ad
     Route::post('emails/test', [AdminEmailCampaignController::class, 'test'])->name('emails.test');
     Route::post('emails', [AdminEmailCampaignController::class, 'store'])->name('emails.store');
     Route::get('emails/{campaign}', [AdminEmailCampaignController::class, 'show'])->name('emails.show');
+
+    // Admin-composed SMS announcements — the SMS counterpart to the routes
+    // above, sharing the same audience segments (App\Support\RegistrantAudience).
+    Route::get('sms', [AdminSmsCampaignController::class, 'index'])->name('sms.index');
+    Route::get('sms/recipient-count', [AdminSmsCampaignController::class, 'count'])->name('sms.count');
+    Route::post('sms/test', [AdminSmsCampaignController::class, 'test'])->name('sms.test');
+    Route::post('sms', [AdminSmsCampaignController::class, 'store'])->name('sms.store');
+    Route::get('sms/{campaign}', [AdminSmsCampaignController::class, 'show'])->name('sms.show');
 
     Route::get('registrations', [AdminRegistrationController::class, 'index'])->name('registrations.index');
     Route::get('registrations/export', [AdminRegistrationController::class, 'export'])->name('registrations.export');

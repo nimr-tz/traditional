@@ -7,7 +7,7 @@ use App\Jobs\SendEmailCampaign;
 use App\Mail\CampaignMessage;
 use App\Models\EmailCampaign;
 use App\Models\User;
-use App\Support\EmailAudience;
+use App\Support\RegistrantAudience;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -22,9 +22,9 @@ class EmailCampaignController extends Controller
     public function index(): Response
     {
         return Inertia::render('admin/emails/index', [
-            'segments' => EmailAudience::SEGMENTS,
-            'parameterisedSegments' => EmailAudience::PARAMETERISED,
-            'audienceOptions' => EmailAudience::options(),
+            'segments' => RegistrantAudience::SEGMENTS,
+            'parameterisedSegments' => RegistrantAudience::PARAMETERISED,
+            'audienceOptions' => RegistrantAudience::options(),
             'campaigns' => EmailCampaign::query()
                 ->latest()
                 ->limit(25)
@@ -41,8 +41,8 @@ class EmailCampaignController extends Controller
         $data = $this->validateAudience($request);
 
         return response()->json([
-            'count' => EmailAudience::count($data['audience'], $data['audience_value'] ?? null),
-            'label' => EmailAudience::label($data['audience'], $data['audience_value'] ?? null),
+            'count' => RegistrantAudience::count($data['audience'], $data['audience_value'] ?? null),
+            'label' => RegistrantAudience::label($data['audience'], $data['audience_value'] ?? null),
         ]);
     }
 
@@ -82,7 +82,7 @@ class EmailCampaignController extends Controller
         $audience = $data['audience'];
         $value = $data['audience_value'] ?? null;
 
-        $recipients = EmailAudience::query($audience, $value)->get(['id', 'name', 'email']);
+        $recipients = RegistrantAudience::query($audience, $value)->get(['id', 'name', 'email']);
 
         if ($recipients->isEmpty()) {
             return back()->with('error', 'That audience currently has no recipients, so nothing was sent.');
@@ -93,7 +93,7 @@ class EmailCampaignController extends Controller
                 'subject' => $data['subject'],
                 'body' => $data['body'],
                 'audience' => $audience,
-                'audience_label' => EmailAudience::label($audience, $value),
+                'audience_label' => RegistrantAudience::label($audience, $value),
                 'audience_value' => $value,
                 'recipient_count' => $recipients->count(),
                 'status' => 'queued',
@@ -144,9 +144,9 @@ class EmailCampaignController extends Controller
     private function validateAudience(Request $request, array $extra = []): array
     {
         return $request->validate(array_merge([
-            'audience' => ['required', Rule::in(array_keys(EmailAudience::SEGMENTS))],
+            'audience' => ['required', Rule::in(array_keys(RegistrantAudience::SEGMENTS))],
             'audience_value' => [
-                Rule::requiredIf(fn () => EmailAudience::needsValue((string) $request->input('audience'))),
+                Rule::requiredIf(fn () => RegistrantAudience::needsValue((string) $request->input('audience'))),
                 'nullable',
                 'string',
                 'max:255',

@@ -6,14 +6,17 @@ use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
 
 /**
- * The named segments an admin can send a campaign to.
+ * The named segments an admin can send a campaign to — shared by every
+ * outbound channel (email, SMS, ...), since who belongs to "unpaid
+ * registrants" or "authors of accepted abstracts" doesn't depend on how
+ * they're being reached.
  *
  * Every segment is restricted to accounts holding the plain `user` role —
  * announcements go to conference participants, never to the staff, reviewer,
  * and admin accounts that share the users table. That restriction lives here
  * rather than in the controller so no segment can accidentally omit it.
  */
-final class EmailAudience
+final class RegistrantAudience
 {
     public const SEGMENTS = [
         'all' => 'All registrants',
@@ -23,6 +26,7 @@ final class EmailAudience
         'not_started_payment' => 'Not started payment',
         'abstract_authors' => 'Registrants who submitted an abstract',
         'accepted_authors' => 'Authors of accepted abstracts',
+        'revision_requested_authors' => 'Authors asked for a revision',
         'no_abstract' => 'Registrants without an abstract',
         'students_pending_verification' => 'Students awaiting verification',
         'checked_in' => 'Checked in at the venue',
@@ -77,6 +81,12 @@ final class EmailAudience
             'accepted_authors' => $query->whereHas(
                 'abstractSubmissions',
                 fn (Builder $q) => $q->where('status', 'accepted')
+            ),
+            // Status reverts to 'submitted' on resubmission, so this only
+            // catches authors still sitting on an open revision request.
+            'revision_requested_authors' => $query->whereHas(
+                'abstractSubmissions',
+                fn (Builder $q) => $q->where('status', 'revision_requested')
             ),
             'no_abstract' => $query->whereDoesntHave('abstractSubmissions'),
             'students_pending_verification' => $query
