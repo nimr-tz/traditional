@@ -5,7 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem } from '@/types';
 import { Head, Link, router } from '@inertiajs/react';
-import { ArrowRight, EyeOff, FileCheck2, FileClock, FilePenLine, FileStack, FileX2, History, ScrollText, Search } from 'lucide-react';
+import { ArrowRight, Download, EyeOff, FileCheck2, FileClock, FilePenLine, FileStack, FileX2, History, ScrollText, Search } from 'lucide-react';
 import { FormEventHandler, useState } from 'react';
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -111,9 +111,21 @@ export default function AdminAbstractsIndex({ submissions, subthemes, filters, c
                             <p className="text-muted-foreground mt-2 text-sm">Open an abstract to read it fully before recording a decision.</p>
                         </div>
                     </div>
-                    <p className="text-muted-foreground text-sm tabular-nums">
-                        {submissions.from ?? 0}–{submissions.to ?? 0} of {submissions.total}
-                    </p>
+                    <div className="flex items-center gap-4">
+                        <p className="text-muted-foreground text-sm tabular-nums">
+                            {submissions.from ?? 0}–{submissions.to ?? 0} of {submissions.total}
+                        </p>
+                        {!isBlinded && (
+                            <Button asChild variant="outline">
+                                {/* Carries whatever status/sub-theme/search filters are active, so
+                                    exporting "what I'm looking at right now" just works. */}
+                                <a href={route('admin.abstracts.export', filters)}>
+                                    <Download className="size-4" />
+                                    Export to Word
+                                </a>
+                            </Button>
+                        )}
+                    </div>
                 </header>
 
                 <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5" aria-label="Abstract status totals">

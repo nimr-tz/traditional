@@ -22,6 +22,8 @@ Route::middleware(['auth', 'role:reviewer,admin,super_admin'])->prefix('admin')-
     Route::get('/', [AdminDashboardController::class, 'index'])->name('dashboard');
 
     Route::get('abstracts', [AdminAbstractController::class, 'index'])->name('abstracts.index');
+    // Must precede abstracts/{abstract} — otherwise Laravel binds "export" as an {abstract} id.
+    Route::get('abstracts/export', [AdminAbstractController::class, 'exportWord'])->name('abstracts.export');
     Route::get('abstracts/{abstract}', [AdminAbstractController::class, 'show'])->name('abstracts.show');
     Route::post('abstracts/{abstract}/reviewer-decision', [AdminAbstractController::class, 'recordReviewerDecision'])->name('abstracts.reviewer-decision');
     // Presentations are not reviewed — organizers can read what was uploaded,

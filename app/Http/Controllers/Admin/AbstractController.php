@@ -20,10 +20,21 @@ use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
+use PhpOffice\PhpWord\Element\Section;
+use PhpOffice\PhpWord\IOFactory;
+use PhpOffice\PhpWord\PhpWord;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class AbstractController extends Controller
 {
+    /** Human labels for the `status` enum, shared between the list counts and this export. */
+    private const STATUS_LABELS = [
+        'submitted' => 'Awaiting review',
+        'revision_requested' => 'Revision requested',
+        'accepted' => 'Accepted',
+        'rejected' => 'Rejected',
+    ];
+
     public function index(Request $request): Response
     {
         $user = $request->user();
@@ -71,6 +82,112 @@ class AbstractController extends Controller
                 'rejected' => (clone $countsBase)->where('status', 'rejected')->count(),
             ],
         ]);
+    }
+
+    /**
+     * A proceedings-style Word document, grouped by subtheme, for the
+     * organizing committee to print or circulate. Carries the same
+     * status/subtheme/search filters as the abstracts list so exporting
+     * "what I'm currently looking at" just works.
+     *
+     * This exposes real author identity (never redacted), so — unlike index()
+     * and show(), which are shared with blind reviewers — it stays admin-only
+     * even though the route sits in the reviewer-shared middleware group (see
+     * downloadPresentation() above for the same pattern).
+     */
+    public function exportWord(Request $request): StreamedResponse
+    {
+        abort_unless($request->user()->isAdmin(), 403);
+
+        $data = $request->validate([
+            'status' => ['nullable', Rule::in(array_keys(self::STATUS_LABELS))],
+            'subtheme_id' => ['nullable', 'integer', 'exists:subthemes,id'],
+            'search' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $subthemes = Subtheme::query()
+            ->orderBy('sort_order')
+            ->when($data['subtheme_id'] ?? null, fn ($q, $id) => $q->where('id', $id))
+            ->with(['abstractSubmissions' => function ($q) use ($data) {
+                $q->when($data['status'] ?? null, fn ($q, $status) => $q->where('status', $status))
+                    ->when($data['search'] ?? null, fn ($q, $search) => $q->where(function ($q) use ($search) {
+                        $q->where('title', 'like', "%{$search}%")
+                            ->orWhereHas('user', fn ($userQuery) => $userQuery
+                                ->where('name', 'like', "%{$search}%")
+                                ->orWhere('email', 'like', "%{$search}%"));
+                    }))
+                    ->orderBy('title');
+            }])
+            ->get()
+            ->filter(fn (Subtheme $subtheme) => $subtheme->abstractSubmissions->isNotEmpty());
+
+        $phpWord = new PhpWord;
+        $phpWord->setDefaultFontName('Calibri');
+        $phpWord->setDefaultFontSize(11);
+
+        $section = $phpWord->addSection();
+        $section->addText('Traditional Medicine Scientific Conference — Abstract Submissions', ['bold' => true, 'size' => 18]);
+        $section->addText('Generated '.now()->format('j F Y, H:i'), ['italic' => true, 'size' => 9, 'color' => '666666']);
+
+        if ($data['status'] ?? null) {
+            $section->addText('Filtered to status: '.self::STATUS_LABELS[$data['status']], ['italic' => true, 'size' => 9, 'color' => '666666']);
+        }
+        if ($data['search'] ?? null) {
+            $section->addText('Filtered to search: "'.$data['search'].'"', ['italic' => true, 'size' => 9, 'color' => '666666']);
+        }
+
+        foreach ($subthemes as $subtheme) {
+            $section->addTextBreak();
+            $section->addText($subtheme->title, ['bold' => true, 'size' => 14, 'color' => '1F4E1F']);
+            $section->addTextBreak();
+
+            foreach ($subtheme->abstractSubmissions as $abstract) {
+                $this->addAbstractToSection($section, $abstract);
+            }
+        }
+
+        $writer = IOFactory::createWriter($phpWord, 'Word2007');
+        $filename = 'tmsc-abstracts-'.now()->format('Y-m-d').'.docx';
+
+        return response()->streamDownload(function () use ($writer) {
+            $writer->save('php://output');
+        }, $filename, ['Content-Type' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']);
+    }
+
+    private function addAbstractToSection(Section $section, AbstractSubmission $abstract): void
+    {
+        $section->addText($abstract->title, ['bold' => true, 'size' => 12]);
+
+        $authorLines = collect($abstract->authors)->map(function (array $author) {
+            $name = $author['name'] ?? 'Unnamed';
+            $institution = $author['institution'] ?? null;
+            $presenter = ! empty($author['is_presenter']);
+
+            return $name.($institution ? " ({$institution})" : '').($presenter ? ' — presenting author' : '');
+        })->implode('; ');
+
+        $section->addText('Authors: '.$authorLines);
+        $section->addText(
+            'Presentation type: '.ucfirst($abstract->presentation_type).'    |    Status: '.
+                (self::STATUS_LABELS[$abstract->status] ?? $abstract->status),
+            ['size' => 9, 'color' => '444444'],
+        );
+        $section->addTextBreak();
+
+        foreach (AbstractSubmission::SECTIONS as $sectionKey) {
+            $text = (string) $abstract->{$sectionKey};
+            if ($text === '') {
+                continue;
+            }
+
+            $section->addText(ucfirst($sectionKey), ['bold' => true]);
+            foreach (preg_split('/\r\n|\r|\n/', $text) as $line) {
+                $section->addText($line);
+            }
+            $section->addTextBreak();
+        }
+
+        $section->addTextBreak();
     }
 
     public function show(Request $request, AbstractSubmission $abstract): Response
