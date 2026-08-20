@@ -1,13 +1,14 @@
 import { DashboardCard } from '@/components/dashboard-card';
-import { PrintBadgeButton, StandingBadge, formatAmount, formatDateTime, formatTime } from '@/components/registrant-standing';
+import { StandingBadge, formatAmount, formatDateTime, formatTime } from '@/components/registrant-standing';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import AppLayout from '@/layouts/app-layout';
 import { cn } from '@/lib/utils';
 import { type BreadcrumbItem, type SharedData } from '@/types';
 import { Head, Link, router, useForm, usePage } from '@inertiajs/react';
-import { CheckCircle2, CreditCard, ScanLine, Search, UserPlus, X } from 'lucide-react';
+import { CheckCircle2, ChevronRight, CreditCard, Gift, ScanLine, Search, ShieldCheck, UserPlus, X } from 'lucide-react';
 import { FormEventHandler, useMemo, useState } from 'react';
 
 const breadcrumbs: BreadcrumbItem[] = [{ title: 'Check-in', href: '/staff' }];
@@ -39,8 +40,13 @@ interface FeeCategory {
     label: string;
     amount: string;
     currency: string;
-    /** Media, secretariat, invited guests — attend by role, owe nothing. */
+    /** Media, invited guests — attend by role, owe nothing. */
     is_complimentary: boolean;
+}
+
+interface Institution {
+    id: number;
+    name: string;
 }
 
 interface Arrival {
@@ -66,6 +72,7 @@ interface StaffDashboardProps {
         participant_types: Record<string, string>;
         countries: string[];
         east_africa_countries: string[];
+        institutions: Institution[];
     };
     arrivals: Arrival[];
 }
@@ -198,7 +205,7 @@ export default function StaffDashboard({
                             ) : (
                                 <div className="divide-y">
                                     {results.map((person) => (
-                                        <PersonRow key={person.id} person={person} canManageFinance={canManageFinance} />
+                                        <PersonRow key={person.id} person={person} />
                                     ))}
                                 </div>
                             )}
@@ -221,7 +228,9 @@ export default function StaffDashboard({
                             </Button>
                         </div>
 
-                        {registering && <WalkInForm deskOptions={deskOptions} onDone={() => setRegistering(false)} />}
+                        {registering && (
+                            <WalkInForm deskOptions={deskOptions} canManageFinance={canManageFinance} onDone={() => setRegistering(false)} />
+                        )}
                     </DashboardCard>
 
                     <p className="text-muted-foreground px-1 text-xs leading-5">
@@ -278,105 +287,55 @@ function ArrivalsPanel({ arrivals, today }: { arrivals: Arrival[]; today: number
     );
 }
 
-function PersonRow({ person, canManageFinance }: { person: Person; canManageFinance: boolean }) {
-    const [settling, setSettling] = useState(false);
-    const { data, setData, post, processing, errors, reset } = useForm({ notes: '' });
-
-    const act = (routeName: string) => {
-        post(route(routeName, person.id), {
-            preserveScroll: true,
-            onSuccess: () => {
-                reset();
-                setSettling(false);
-            },
-        });
-    };
-
+/**
+ * Deliberately just enough to pick the right person out of a list of matches
+ * — name, a hint of who they are, and their standing. Everything else (issuing
+ * a control number, settling a payment, printing a badge, their full history)
+ * lives on the page this opens, next to the details that justify each action.
+ */
+function PersonRow({ person }: { person: Person }) {
     return (
-        <article className="p-5">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0">
-                    <p className="text-base font-semibold">{person.name}</p>
-                    <p className="text-muted-foreground truncate text-sm">{person.email ?? person.phone ?? 'No contact on file'}</p>
-                    {person.institution && <p className="text-muted-foreground truncate text-xs">{person.institution}</p>}
-                    {person.control_number && (
-                        <p className="mt-1.5 font-mono text-xs">
-                            <span className="text-muted-foreground">Control number </span>
-                            {person.control_number}
-                        </p>
-                    )}
-                </div>
+        <Link
+            href={route('staff.registrant', person.id)}
+            className="flex items-center justify-between gap-4 p-5 transition hover:bg-slate-50 dark:hover:bg-slate-900/40"
+        >
+            <div className="min-w-0">
+                <p className="text-base font-semibold">{person.name}</p>
+                <p className="text-muted-foreground truncate text-sm">{person.institution ?? person.email ?? person.phone ?? 'No contact on file'}</p>
+            </div>
+            <div className="flex shrink-0 items-center gap-3">
                 <StandingBadge person={person} />
+                <ChevronRight className="text-muted-foreground size-4" />
             </div>
-
-            <div className="mt-4 flex flex-wrap gap-2">
-                {!person.is_paid && (
-                    <>
-                        <Button size="sm" variant="outline" onClick={() => act('staff.control-number')} disabled={processing}>
-                            <CreditCard className="size-4" />
-                            {person.control_number ? 'Re-issue control number' : 'Issue control number'}
-                        </Button>
-
-                        {canManageFinance && !settling && (
-                            <Button size="sm" onClick={() => setSettling(true)} className="bg-[#4c8a1f] font-bold hover:bg-[#3f751a]">
-                                <CheckCircle2 className="size-4" />
-                                Settle payment
-                            </Button>
-                        )}
-                    </>
-                )}
-
-                {person.can_print_badge && <PrintBadgeButton person={person} printRoute={route('staff.badge', person.id)} />}
-            </div>
-
-            {settling && (
-                <div className="mt-3 flex flex-col gap-2.5 rounded-xl border bg-slate-50 p-4 dark:bg-slate-900">
-                    <Textarea
-                        value={data.notes}
-                        onChange={(event) => setData('notes', event.target.value)}
-                        placeholder="Notes — required to waive (e.g. receipt number, or why the fee is waived)"
-                        rows={2}
-                        disabled={processing}
-                        className="bg-background text-sm"
-                    />
-                    {errors.notes && <p className="text-destructive text-xs">{errors.notes}</p>}
-                    <div className="flex flex-wrap gap-2">
-                        <Button
-                            size="sm"
-                            onClick={() => act('staff.confirm-payment')}
-                            disabled={processing}
-                            className="bg-[#4c8a1f] font-bold hover:bg-[#3f751a]"
-                        >
-                            Confirm payment received
-                        </Button>
-                        <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => act('staff.waive')}
-                            disabled={processing}
-                            className="border-amber-300 font-bold text-amber-800 hover:bg-amber-50"
-                        >
-                            Waive the fee
-                        </Button>
-                        <Button size="sm" variant="ghost" onClick={() => setSettling(false)} disabled={processing}>
-                            Cancel
-                        </Button>
-                    </div>
-                </div>
-            )}
-        </article>
+        </Link>
     );
 }
 
-function WalkInForm({ deskOptions, onDone }: { deskOptions: StaffDashboardProps['deskOptions']; onDone: () => void }) {
-    const { data, setData, post, processing, errors, reset } = useForm({
+function WalkInForm({
+    deskOptions,
+    canManageFinance,
+    onDone,
+}: {
+    deskOptions: StaffDashboardProps['deskOptions'];
+    canManageFinance: boolean;
+    onDone: () => void;
+}) {
+    // Free entry (media, invited guests) needs none of the tier-picking fields
+    // below — asking for them anyway is what made this form slow. The tab
+    // decides which section of the form is even relevant.
+    const [mode, setMode] = useState<'paying' | 'free'>('paying');
+    const { data, setData, post, transform, processing, errors, reset } = useForm({
         name: '',
         email: '',
         phone: '',
-        institution: '',
+        institution_id: '',
+        institution_other: '',
         participant_type: '',
         country: '',
         fee_category: '',
+        student_verified_in_person: false as boolean,
+        waive: false as boolean,
+        waive_notes: '',
     });
 
     // Paid tiers are narrowed to the one the country and participant type allow
@@ -400,84 +359,219 @@ function WalkInForm({ deskOptions, onDone }: { deskOptions: StaffDashboardProps[
     // they are always offered.
     const complimentaryCategories = useMemo(() => deskOptions.fee_categories.filter((category) => category.is_complimentary), [deskOptions]);
 
+    const switchMode = (next: 'paying' | 'free') => {
+        setMode(next);
+        setData((current) => ({
+            ...current,
+            fee_category: '',
+            country: '',
+            student_verified_in_person: false,
+            waive: false,
+            waive_notes: '',
+        }));
+    };
+
+    // Country only ever decides a fee tier — nothing to send when the category
+    // has none. Sent as null (not '') so the nullable rule on the server
+    // actually skips it, rather than validating an empty string as a country.
+    transform((form) => ({ ...form, country: mode === 'free' ? null : form.country }));
+
     const submit: FormEventHandler = (event) => {
         event.preventDefault();
         post(route('staff.walk-ins.store'), {
             preserveScroll: true,
             onSuccess: () => {
                 reset();
+                setMode('paying');
                 onDone();
             },
         });
     };
 
     return (
-        <form onSubmit={submit} className="mt-5 grid gap-4 border-t pt-5 md:grid-cols-2">
-            <Field label="Full name" required error={errors.name}>
-                <Input value={data.name} onChange={(event) => setData('name', event.target.value)} autoComplete="off" />
-            </Field>
-            <Field label="Phone" required error={errors.phone} hint="The control number is sent here by SMS.">
-                <Input value={data.phone} onChange={(event) => setData('phone', event.target.value)} inputMode="tel" />
-            </Field>
-            <Field label="Institution" required error={errors.institution}>
-                <Input value={data.institution} onChange={(event) => setData('institution', event.target.value)} />
-            </Field>
-            <Field label="Email" error={errors.email} hint="Optional — leave blank if they do not have one.">
-                <Input type="email" value={data.email} onChange={(event) => setData('email', event.target.value.toLowerCase())} />
-            </Field>
+        <form onSubmit={submit} className="mt-5 flex flex-col gap-4 border-t pt-5">
+            <div className="flex gap-2">
+                <ModeTab active={mode === 'paying'} onClick={() => switchMode('paying')} icon={CreditCard} label="Paying a fee" />
+                <ModeTab active={mode === 'free'} onClick={() => switchMode('free')} icon={Gift} label="Attending free" />
+            </div>
 
-            <Field label="Participant type" required error={errors.participant_type}>
-                <select
-                    value={data.participant_type}
-                    onChange={(event) => {
-                        setData('participant_type', event.target.value);
-                        setData('fee_category', '');
-                    }}
-                    className="border-input bg-background text-foreground h-10 w-full rounded-md border px-3 text-sm"
-                >
-                    <option value="">Choose…</option>
-                    {Object.entries(deskOptions.participant_types).map(([value, label]) => (
-                        <option key={value} value={value}>
-                            {label}
-                        </option>
-                    ))}
-                </select>
-            </Field>
+            <div className="grid gap-4 md:grid-cols-2">
+                <Field label="Full name" required error={errors.name}>
+                    <Input value={data.name} onChange={(event) => setData('name', event.target.value)} autoComplete="off" />
+                </Field>
+                <Field label="Phone" required error={errors.phone} hint="The control number is sent here by SMS.">
+                    <Input value={data.phone} onChange={(event) => setData('phone', event.target.value)} inputMode="tel" />
+                </Field>
+                <Field label="Institution" required error={errors.institution_id}>
+                    <Select
+                        value={data.institution_id}
+                        onValueChange={(value) => {
+                            setData('institution_id', value);
+                            if (value !== 'other') setData('institution_other', '');
+                        }}
+                    >
+                        <SelectTrigger aria-invalid={Boolean(errors.institution_id)}>
+                            <SelectValue placeholder="Select institution" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {deskOptions.institutions.map((institution) => (
+                                <SelectItem key={institution.id} value={String(institution.id)}>
+                                    {institution.name}
+                                </SelectItem>
+                            ))}
+                            <SelectItem value="other">Other (not listed)</SelectItem>
+                        </SelectContent>
+                    </Select>
+                    {data.institution_id === 'other' && (
+                        <Input
+                            className="mt-2"
+                            value={data.institution_other}
+                            onChange={(event) => setData('institution_other', event.target.value)}
+                            placeholder="Enter their institution or organization"
+                        />
+                    )}
+                    {errors.institution_other && <p className="text-destructive text-xs">{errors.institution_other}</p>}
+                </Field>
+                <Field label="Email" error={errors.email} hint="Optional — leave blank if they do not have one.">
+                    <Input type="email" value={data.email} onChange={(event) => setData('email', event.target.value.toLowerCase())} />
+                </Field>
 
-            {/* A plain select, not a type-ahead. The desk types a country, sees
-                no dropdown affordance, moves on — and the category list stays
-                locked with no way to tell why. */}
-            <Field label="Country" required error={errors.country}>
-                <select
-                    value={data.country}
-                    onChange={(event) => {
-                        setData('country', event.target.value);
-                        setData('fee_category', '');
-                    }}
-                    className="border-input bg-background text-foreground h-10 w-full rounded-md border px-3 text-sm"
-                >
-                    <option value="">Choose…</option>
-                    <optgroup label="East Africa">
-                        {deskOptions.east_africa_countries.map((country) => (
-                            <option key={country} value={country}>
-                                {country}
+                <Field label="Participant type" required error={errors.participant_type}>
+                    <select
+                        value={data.participant_type}
+                        onChange={(event) => {
+                            setData('participant_type', event.target.value);
+                            setData('fee_category', '');
+                        }}
+                        className="border-input bg-background text-foreground h-10 w-full rounded-md border px-3 text-sm"
+                    >
+                        <option value="">Choose…</option>
+                        {Object.entries(deskOptions.participant_types).map(([value, label]) => (
+                            <option key={value} value={value}>
+                                {label}
                             </option>
                         ))}
-                    </optgroup>
-                    <optgroup label="All countries">
-                        {deskOptions.countries.map((country) => (
-                            <option key={country} value={country}>
-                                {country}
-                            </option>
-                        ))}
-                    </optgroup>
-                </select>
-            </Field>
+                    </select>
+                </Field>
 
-            <div className="md:col-span-2">
-                <Field label="Registration category" required error={errors.fee_category}>
+                {/* A plain select, not a type-ahead. The desk types a country, sees
+                    no dropdown affordance, moves on — and the category list stays
+                    locked with no way to tell why. Only paying tiers need it: a
+                    complimentary category has no region to price by. */}
+                {mode === 'paying' && (
+                    <Field label="Country" required error={errors.country}>
+                        <select
+                            value={data.country}
+                            onChange={(event) => {
+                                setData('country', event.target.value);
+                                setData('fee_category', '');
+                            }}
+                            className="border-input bg-background text-foreground h-10 w-full rounded-md border px-3 text-sm"
+                        >
+                            <option value="">Choose…</option>
+                            <optgroup label="East Africa">
+                                {deskOptions.east_africa_countries.map((country) => (
+                                    <option key={country} value={country}>
+                                        {country}
+                                    </option>
+                                ))}
+                            </optgroup>
+                            <optgroup label="All countries">
+                                {deskOptions.countries.map((country) => (
+                                    <option key={country} value={country}>
+                                        {country}
+                                    </option>
+                                ))}
+                            </optgroup>
+                        </select>
+                    </Field>
+                )}
+            </div>
+
+            {mode === 'paying' ? (
+                <div className="grid gap-4">
+                    <Field label="Registration category" required error={errors.fee_category}>
+                        <div className="grid gap-2 sm:grid-cols-2">
+                            {paidCategories.map((category) => (
+                                <CategoryOption
+                                    key={category.key}
+                                    category={category}
+                                    selected={data.fee_category === category.key}
+                                    onSelect={() => setData('fee_category', category.key)}
+                                />
+                            ))}
+                        </div>
+
+                        {!data.country || !data.participant_type ? (
+                            <p className="text-muted-foreground text-sm">Pick a participant type and country to see the paying rates.</p>
+                        ) : paidCategories.length === 0 ? (
+                            <p className="text-muted-foreground text-sm">No paying category matches that combination.</p>
+                        ) : null}
+                    </Field>
+
+                    {data.participant_type === 'student' && (
+                        <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-amber-300/60 bg-amber-50 p-3.5 text-sm dark:bg-amber-950/30">
+                            <input
+                                type="checkbox"
+                                checked={data.student_verified_in_person}
+                                onChange={(event) => setData('student_verified_in_person', event.target.checked)}
+                                className="mt-0.5 size-4"
+                            />
+                            <span>
+                                <span className="flex items-center gap-1.5 font-semibold text-amber-900 dark:text-amber-300">
+                                    <ShieldCheck className="size-4" />I checked their student ID in person
+                                </span>
+                                <span className="text-amber-800/80 dark:text-amber-400/80">
+                                    Ticking this verifies them on the spot, same as an online document review — a control number can be issued right
+                                    away. Leave it unchecked if they don't have their ID with them; they can still register and verify online before
+                                    paying.
+                                </span>
+                            </span>
+                        </label>
+                    )}
+
+                    {canManageFinance && data.fee_category && (
+                        <div className="rounded-xl border p-3.5">
+                            <label className="flex cursor-pointer items-start gap-3 text-sm">
+                                <input
+                                    type="checkbox"
+                                    checked={data.waive}
+                                    onChange={(event) => setData('waive', event.target.checked)}
+                                    className="mt-0.5 size-4"
+                                />
+                                <span>
+                                    <span className="font-semibold">Waive this fee</span>
+                                    <span className="text-muted-foreground block">
+                                        Registers them on the rate above but skips billing — badge ready immediately, no control number. For an
+                                        invited guest or other one-off exception who isn't paying, without needing a free-entry category for it.
+                                    </span>
+                                </span>
+                            </label>
+                            {errors.waive && <p className="text-destructive mt-1 text-xs">{errors.waive}</p>}
+
+                            {data.waive && (
+                                <div className="mt-3">
+                                    <Textarea
+                                        value={data.waive_notes}
+                                        onChange={(event) => setData('waive_notes', event.target.value)}
+                                        placeholder="Notes — required (e.g. who authorised this and why)"
+                                        rows={2}
+                                        disabled={processing}
+                                        className="bg-background text-sm"
+                                    />
+                                    {errors.waive_notes && <p className="text-destructive mt-1 text-xs">{errors.waive_notes}</p>}
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+            ) : (
+                <Field label="Attending as" required error={errors.fee_category}>
+                    <p className="text-muted-foreground mb-2.5 text-xs leading-5">
+                        Media and invited guests owe nothing. No control number is issued and their badge is ready immediately.
+                    </p>
                     <div className="grid gap-2 sm:grid-cols-2">
-                        {paidCategories.map((category) => (
+                        {complimentaryCategories.map((category) => (
                             <CategoryOption
                                 key={category.key}
                                 category={category}
@@ -486,49 +580,31 @@ function WalkInForm({ deskOptions, onDone }: { deskOptions: StaffDashboardProps[
                             />
                         ))}
                     </div>
-
-                    {!data.country || !data.participant_type ? (
-                        <p className="text-muted-foreground text-sm">
-                            Pick a participant type and country to see the paying rates — or choose a no-fee category below.
-                        </p>
-                    ) : paidCategories.length === 0 ? (
-                        <p className="text-muted-foreground text-sm">No paying category matches that combination.</p>
-                    ) : null}
-
-                    {complimentaryCategories.length > 0 && (
-                        <div className="mt-3 rounded-xl border border-dashed p-3.5">
-                            <p className="text-xs font-bold tracking-wide uppercase">Attending free</p>
-                            <p className="text-muted-foreground mt-1 mb-2.5 text-xs leading-5">
-                                Media, secretariat and invited guests owe nothing. No control number is issued and their badge is ready immediately.
-                            </p>
-                            <div className="grid gap-2 sm:grid-cols-2">
-                                {complimentaryCategories.map((category) => (
-                                    <CategoryOption
-                                        key={category.key}
-                                        category={category}
-                                        selected={data.fee_category === category.key}
-                                        onSelect={() => setData('fee_category', category.key)}
-                                    />
-                                ))}
-                            </div>
-                        </div>
-                    )}
                 </Field>
-            </div>
-
-            {data.participant_type === 'student' && (
-                <p className="rounded-xl bg-amber-50 p-3 text-xs leading-5 text-amber-800 md:col-span-2 dark:bg-amber-950/30">
-                    Student rates need a verified student ID before a control number can be issued. You can still register them, but they must upload
-                    the document online before they can pay.
-                </p>
             )}
 
-            <div className="md:col-span-2">
+            <div>
                 <Button type="submit" disabled={processing} className="h-11 bg-[#4c8a1f] px-6 font-bold hover:bg-[#3f751a]">
-                    Register and issue control number
+                    {mode === 'free' ? 'Register — free entry' : data.waive ? 'Register — fee waived' : 'Register and issue control number'}
                 </Button>
             </div>
         </form>
+    );
+}
+
+function ModeTab({ active, onClick, icon: Icon, label }: { active: boolean; onClick: () => void; icon: typeof CreditCard; label: string }) {
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            className={cn(
+                'flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition',
+                active ? 'border-[#4c8a1f] bg-[#f3f9ee] text-[#33620f] dark:bg-[#4c8a1f]/10' : 'text-muted-foreground hover:border-[#4c8a1f]/40',
+            )}
+        >
+            <Icon className="size-4" />
+            {label}
+        </button>
     );
 }
 

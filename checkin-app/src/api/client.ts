@@ -70,7 +70,9 @@ export interface RegistrationInput {
     name: string;
     email: string;
     phone: string;
-    institution: string;
+    /** An Institution id, or the literal 'other' paired with institution_other. */
+    institution_id: string;
+    institution_other?: string;
     participant_type: string;
     country: string;
     fee_category: string;
@@ -89,11 +91,17 @@ export interface FeeCategory {
     currency: string;
 }
 
+export interface Institution {
+    id: number;
+    name: string;
+}
+
 export interface DeskOptions {
     fee_categories: FeeCategory[];
     participant_types: Record<string, string>;
     countries: string[];
     east_africa_countries: string[];
+    institutions: Institution[];
 }
 
 export interface AuthenticatedUser {

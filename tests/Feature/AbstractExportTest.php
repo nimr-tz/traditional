@@ -37,7 +37,7 @@ class AbstractExportTest extends TestCase
         ], array_diff_key($overrides, ['subtheme_title' => null])));
     }
 
-    public function test_admin_can_export_abstracts_to_word(): void
+    public function test_admin_can_export_abstracts_to_pdf(): void
     {
         $admin = User::factory()->admin()->create();
         $this->submission();
@@ -45,10 +45,7 @@ class AbstractExportTest extends TestCase
         $response = $this->actingAs($admin)->get(route('admin.abstracts.export'));
 
         $response->assertOk();
-        $response->assertHeader(
-            'content-type',
-            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        );
+        $response->assertHeader('content-type', 'application/pdf');
     }
 
     public function test_export_respects_status_and_subtheme_filters(): void
@@ -63,9 +60,9 @@ class AbstractExportTest extends TestCase
         ]));
 
         $response->assertOk();
-        $xml = $this->extractDocumentXml($response->streamedContent());
-        $this->assertStringNotContainsString('Rejected One', $xml);
-        $this->assertStringContainsString('Herbal Innovations', $xml);
+        $text = $this->extractPdfText($response->getContent());
+        $this->assertStringNotContainsString('Rejected One', $text);
+        $this->assertStringContainsString('Herbal Innovations', $text);
     }
 
     public function test_reviewer_cannot_export_abstracts(): void
@@ -78,18 +75,25 @@ class AbstractExportTest extends TestCase
         $response->assertForbidden();
     }
 
-    /** Pull the readable text out of the generated .docx (a zip of OOXML parts) so assertions can check content. */
-    private function extractDocumentXml(string $docxContents): string
+    /**
+     * Pull the literal text out of a generated PDF so assertions can check
+     * content. The view renders in Helvetica, a core PDF font, so text stays
+     * as plain WinAnsi bytes in the content stream rather than being remapped
+     * through an embedded font's glyph indices — only the stream itself is
+     * Flate-compressed, hence the inflate step.
+     */
+    private function extractPdfText(string $pdfContents): string
     {
-        $tmpFile = tempnam(sys_get_temp_dir(), 'docx');
-        file_put_contents($tmpFile, $docxContents);
+        preg_match_all('/stream\r?\n(.*?)\r?\nendstream/s', $pdfContents, $matches);
 
-        $zip = new \ZipArchive;
-        $zip->open($tmpFile);
-        $xml = $zip->getFromName('word/document.xml');
-        $zip->close();
-        unlink($tmpFile);
+        $text = '';
+        foreach ($matches[1] as $stream) {
+            $inflated = @gzuncompress($stream) ?: @gzinflate($stream);
+            if ($inflated !== false) {
+                $text .= $inflated;
+            }
+        }
 
-        return $xml ?: '';
+        return $text;
     }
 }

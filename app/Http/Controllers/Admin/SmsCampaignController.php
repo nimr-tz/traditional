@@ -8,6 +8,7 @@ use App\Models\SmsCampaign;
 use App\Models\User;
 use App\Services\Sms\SmsGateway;
 use App\Support\RegistrantAudience;
+use App\Support\SmsText;
 use App\Support\TanzanianPhone;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -42,9 +43,19 @@ class SmsCampaignController extends Controller
     {
         $data = $this->validateAudience($request);
 
+        $recipients = $this->reachableRecipients($data['audience'], $data['audience_value'] ?? null);
+
         return response()->json([
-            'count' => $this->reachableRecipients($data['audience'], $data['audience_value'] ?? null)->count(),
+            'count' => $recipients->count(),
             'label' => RegistrantAudience::label($data['audience'], $data['audience_value'] ?? null),
+            // The longest name any :name in the message will expand to, so the
+            // composer can price the worst case rather than the average one.
+            // A message that fits in one part for "Asha" can spill into two for
+            // "Christopher", and the admin pays for every recipient.
+            'longest_name' => $recipients
+                ->map(fn (array $recipient) => SmsText::displayName($recipient['name']))
+                ->sortByDesc(fn (string $name) => mb_strlen($name))
+                ->first() ?? '',
         ]);
     }
 
@@ -83,10 +94,21 @@ class SmsCampaignController extends Controller
                 : 'Your account doesn\'t have a usable Tanzanian mobile number on file.');
         }
 
+        // Personalised with the acting admin's own name so the test shows the
+        // shape of the real thing, placeholder and all.
+        $message = SmsText::personalise($data['message'], $admin->name);
+
         try {
-            $gateway->send($msisdn, $data['message'], ['source' => 'sms-campaign-test', 'user_id' => $admin->id]);
+            $gateway->send($msisdn, $message, ['source' => 'sms-campaign-test', 'user_id' => $admin->id]);
         } catch (Throwable $exception) {
             return back()->with('error', 'The SMS gateway rejected the test message: '.$exception->getMessage());
+        }
+
+        // Sandbox writes the message to the log instead of sending it. Saying
+        // "sent" here would have an admin staring at a silent handset, so the
+        // difference is stated plainly.
+        if (config('sms.sandbox')) {
+            return back()->with('success', "Sandbox is on, so nothing was sent — the message for {$msisdn} was written to the log.");
         }
 
         return back()->with('success', "Test SMS sent to {$msisdn}.");

@@ -16,7 +16,8 @@ const EMPTY_FORM = {
     name: '',
     email: '',
     phone: '',
-    institution: '',
+    institution_id: '',
+    institution_other: '',
     participant_type: '',
     country: '',
     fee_category: '',
@@ -31,6 +32,7 @@ export default function RegisterScreen() {
     const [form, setForm] = useState(EMPTY_FORM);
     const [options, setOptions] = useState<DeskOptions | null>(null);
     const [countryQuery, setCountryQuery] = useState('');
+    const [institutionQuery, setInstitutionQuery] = useState('');
     const [registered, setRegistered] = useState<RegistrationResult | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
@@ -68,9 +70,32 @@ export default function RegisterScreen() {
         return options.countries.filter((country) => country.toLowerCase().includes(query)).slice(0, 6);
     }, [options, countryQuery]);
 
+    // Same pattern as country: type to filter rather than scroll a long list,
+    // with an explicit "Other" row always reachable regardless of what's typed
+    // — the institution list is admin-curated and won't have everyone in it.
+    const institutionMatches = useMemo(() => {
+        if (!options) return [];
+        if (institutionQuery.trim().length < 2) return [];
+        const query = institutionQuery.trim().toLowerCase();
+        return options.institutions.filter((institution) => institution.name.toLowerCase().includes(query)).slice(0, 6);
+    }, [options, institutionQuery]);
+
+    const selectedInstitutionName =
+        form.institution_id === 'other' ? 'Other (not listed)' : (options?.institutions.find((i) => String(i.id) === form.institution_id)?.name ?? '');
+
     const submit = async () => {
         if (!form.name.trim() || !form.email.trim() || !form.phone.trim() || !form.participant_type) {
             setError('Name, email, phone and participant type are required.');
+            return;
+        }
+
+        if (!form.institution_id) {
+            setError('Select an institution.');
+            return;
+        }
+
+        if (form.institution_id === 'other' && !form.institution_other.trim()) {
+            setError('Enter their institution or organization.');
             return;
         }
 
@@ -93,7 +118,7 @@ export default function RegisterScreen() {
                     name: form.name.trim(),
                     email: form.email.trim().toLowerCase(),
                     phone: form.phone.trim(),
-                    institution: form.institution.trim(),
+                    institution_other: form.institution_id === 'other' ? form.institution_other.trim() : undefined,
                 }),
             );
         } catch (requestError) {
@@ -106,6 +131,7 @@ export default function RegisterScreen() {
     const reset = () => {
         setForm(EMPTY_FORM);
         setCountryQuery('');
+        setInstitutionQuery('');
         setRegistered(null);
         setError(null);
     };
@@ -196,15 +222,66 @@ export default function RegisterScreen() {
                         returnKeyType="next"
                     />
                 </Field>
-                <Field label="Institution">
-                    <TextInput
-                        style={registerStyles.input}
-                        value={form.institution}
-                        onChangeText={(value) => update('institution', value)}
-                        autoCapitalize="words"
-                        returnKeyType="done"
-                    />
-                </Field>
+                <Text style={registerStyles.label}>Institution *</Text>
+                {form.institution_id ? (
+                    <Pressable
+                        style={registerStyles.selectedCountry}
+                        onPress={() => {
+                            update('institution_id', '');
+                            update('institution_other', '');
+                            setInstitutionQuery('');
+                        }}
+                        accessibilityRole="button"
+                        accessibilityHint="Clears the selected institution"
+                    >
+                        <Text style={registerStyles.selectedCountryText}>{selectedInstitutionName}</Text>
+                        <Text style={registerStyles.selectedCountryChange}>Change</Text>
+                    </Pressable>
+                ) : (
+                    <View style={registerStyles.countryPicker}>
+                        <TextInput
+                            style={registerStyles.input}
+                            value={institutionQuery}
+                            onChangeText={setInstitutionQuery}
+                            placeholder="Start typing an institution"
+                            autoCapitalize="words"
+                        />
+                        {institutionMatches.map((institution) => (
+                            <Pressable
+                                key={institution.id}
+                                style={registerStyles.countryMatch}
+                                onPress={() => {
+                                    update('institution_id', String(institution.id));
+                                    setInstitutionQuery('');
+                                }}
+                                accessibilityRole="button"
+                            >
+                                <Text style={registerStyles.countryMatchText}>{institution.name}</Text>
+                            </Pressable>
+                        ))}
+                        <Pressable
+                            style={registerStyles.countryMatch}
+                            onPress={() => {
+                                update('institution_id', 'other');
+                                setInstitutionQuery('');
+                            }}
+                            accessibilityRole="button"
+                        >
+                            <Text style={registerStyles.countryMatchText}>Other (not listed)</Text>
+                        </Pressable>
+                    </View>
+                )}
+                {form.institution_id === 'other' && (
+                    <Field label="Their institution or organization *">
+                        <TextInput
+                            style={registerStyles.input}
+                            value={form.institution_other}
+                            onChangeText={(value) => update('institution_other', value)}
+                            autoCapitalize="words"
+                            returnKeyType="done"
+                        />
+                    </Field>
+                )}
 
                 <Text style={registerStyles.label}>Participant type *</Text>
                 <View style={registerStyles.typeOptions}>

@@ -130,6 +130,41 @@ class StaffDashboardTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page->where('results', [])->etc());
     }
 
+    /**
+     * What a search result opens onto: everything about the person and every
+     * action the desk can take, in one place, rather than crammed into the
+     * search row.
+     */
+    public function test_the_registrant_page_shows_full_detail_and_history(): void
+    {
+        $staff = User::factory()->staff()->create();
+        $registrant = $this->paidRegistrant(['name' => 'Full Detail Person', 'institution' => 'NIMR']);
+        Attendance::create(['user_id' => $registrant->id, 'checked_in_at' => now(), 'checked_in_by' => $staff->id]);
+
+        $this->actingAs($staff)
+            ->get(route('staff.registrant', $registrant))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('staff/registrant')
+                ->where('person.id', $registrant->id)
+                ->where('person.name', 'Full Detail Person')
+                ->where('person.institution', 'NIMR')
+                ->where('person.days_attended', 1)
+                ->has('attendance', 1)
+                ->etc());
+    }
+
+    /** Organisers are not registrants — nothing about them is a desk's business. */
+    public function test_the_registrant_page_404s_for_a_non_registrant(): void
+    {
+        $staff = User::factory()->staff()->create();
+        $admin = User::factory()->admin()->create();
+
+        $this->actingAs($staff)
+            ->get(route('staff.registrant', $admin))
+            ->assertNotFound();
+    }
+
     public function test_staff_can_register_a_walk_in_who_lands_unpaid_owing_the_real_fee(): void
     {
         $this->seedParticipantCategory();
@@ -140,7 +175,8 @@ class StaffDashboardTest extends TestCase
                 'name' => 'Walk In Person',
                 'email' => 'walkin@example.com',
                 'phone' => '+255 700 000 000',
-                'institution' => 'NIMR',
+                'institution_id' => 'other',
+                'institution_other' => 'NIMR',
                 'participant_type' => 'researcher',
                 'country' => 'Tanzania',
                 'fee_category' => 'participant_east_africa',
@@ -169,7 +205,8 @@ class StaffDashboardTest extends TestCase
             ->post(route('staff.walk-ins.store'), [
                 'name' => 'No Email Person',
                 'phone' => '+255 700 000 111',
-                'institution' => 'Village Clinic',
+                'institution_id' => 'other',
+                'institution_other' => 'Village Clinic',
                 'participant_type' => 'practitioner',
                 'country' => 'Tanzania',
                 'fee_category' => 'participant_east_africa',
@@ -194,7 +231,7 @@ class StaffDashboardTest extends TestCase
                 'country' => 'Tanzania',
                 'fee_category' => 'participant_east_africa',
             ])
-            ->assertSessionHasErrors(['name', 'phone', 'institution', 'participant_type']);
+            ->assertSessionHasErrors(['name', 'phone', 'institution_id', 'participant_type']);
     }
 
     /** A missing address must not throw and abandon a confirmed payment halfway. */
@@ -226,6 +263,162 @@ class StaffDashboardTest extends TestCase
         ]);
     }
 
+    private function seedStudentCategory(): FeeCategory
+    {
+        return FeeCategory::firstOrCreate(['key' => 'student_east_africa'], [
+            'label' => 'East African Students',
+            'amount' => 50000,
+            'currency' => 'TZS',
+            'active' => true,
+        ]);
+    }
+
+    /**
+     * There is no document upload at the desk, so a walk-in student can only
+     * ever be verified by staff eyeballing their ID in person and ticking the
+     * box — this is the one path a walk-in student can pay through at all.
+     */
+    public function test_a_student_walk_in_verified_in_person_can_be_billed_immediately(): void
+    {
+        Mail::fake();
+        $this->seedStudentCategory();
+        $staff = User::factory()->staff()->create();
+
+        $this->actingAs($staff)
+            ->post(route('staff.walk-ins.store'), [
+                'name' => 'Verified Student',
+                'phone' => '+255 700 000 444',
+                'institution_id' => 'other',
+                'institution_other' => 'University of Dar es Salaam',
+                'participant_type' => 'student',
+                'country' => 'Tanzania',
+                'fee_category' => 'student_east_africa',
+                'student_verified_in_person' => true,
+            ])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $student = User::where('name', 'Verified Student')->firstOrFail();
+
+        $this->assertSame('verified', $student->student_verification_status);
+        $this->assertSame($staff->id, $student->student_verified_by);
+        $this->assertNotNull($student->student_verified_at);
+        // Sync queue connection in testing runs the sandbox assignment job inline.
+        $this->assertNotNull($student->control_number);
+    }
+
+    /** Without the checkbox, a walk-in student registers but stays blocked until they verify online — unchanged from before. */
+    public function test_a_student_walk_in_not_verified_in_person_is_still_blocked_from_billing(): void
+    {
+        $this->seedStudentCategory();
+        $staff = User::factory()->staff()->create();
+
+        $this->actingAs($staff)
+            ->post(route('staff.walk-ins.store'), [
+                'name' => 'Unverified Student',
+                'phone' => '+255 700 000 555',
+                'institution_id' => 'other',
+                'institution_other' => 'University of Dar es Salaam',
+                'participant_type' => 'student',
+                'country' => 'Tanzania',
+                'fee_category' => 'student_east_africa',
+            ])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $student = User::where('name', 'Unverified Student')->firstOrFail();
+
+        $this->assertNull($student->student_verification_status);
+        $this->assertNull($student->control_number);
+    }
+
+    /**
+     * Country only ever picks a fee tier, and a complimentary category has no
+     * tier — so a free walk-in should not be blocked on a country nobody asked
+     * for a reason to collect.
+     */
+    public function test_country_is_not_required_for_a_complimentary_walk_in(): void
+    {
+        Mail::fake();
+        $this->seedComplimentaryCategory();
+        $staff = User::factory()->staff()->create();
+
+        $this->actingAs($staff)
+            ->post(route('staff.walk-ins.store'), [
+                'name' => 'No Country Guest',
+                'phone' => '+255 700 000 666',
+                'institution_id' => 'other',
+                'institution_other' => 'Wire Service',
+                'participant_type' => 'media',
+                'fee_category' => 'complimentary_media',
+            ])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $guest = User::where('name', 'No Country Guest')->firstOrFail();
+        $this->assertTrue($guest->isPaid());
+    }
+
+    /**
+     * The dedicated free-entry categories cover people who never pay. For
+     * everyone else — an invited guest who this time isn't paying — finance
+     * can waive the fee at registration instead of billing then forgiving it.
+     */
+    public function test_finance_can_waive_a_fee_at_registration(): void
+    {
+        Mail::fake();
+        $this->seedParticipantCategory();
+        $finance = User::factory()->finance()->create();
+
+        $this->actingAs($finance)
+            ->post(route('staff.walk-ins.store'), [
+                'name' => 'Invited Guest',
+                'email' => 'invited.guest@example.com',
+                'phone' => '+255 700 000 777',
+                'institution_id' => 'other',
+                'institution_other' => "Minister's Office",
+                'participant_type' => 'decision_maker',
+                'country' => 'Tanzania',
+                'fee_category' => 'participant_east_africa',
+                'waive' => true,
+                'waive_notes' => 'Invited guest — not paying.',
+            ])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $guest = User::where('name', 'Invited Guest')->firstOrFail();
+
+        $this->assertSame('waived', $guest->payment_status);
+        $this->assertSame($finance->id, $guest->payment_verified_by);
+        $this->assertSame('Invited guest — not paying.', $guest->payment_notes);
+        $this->assertNotNull($guest->registration_code);
+        $this->assertNull($guest->control_number);
+        Mail::assertQueued(FeeWaived::class);
+    }
+
+    /** Waiving is finance's decision alone, same as settling any other payment. */
+    public function test_staff_cannot_waive_a_fee_at_registration(): void
+    {
+        $this->seedParticipantCategory();
+        $staff = User::factory()->staff()->create();
+
+        $this->actingAs($staff)
+            ->post(route('staff.walk-ins.store'), [
+                'name' => 'Sneaky Waiver',
+                'phone' => '+255 700 000 888',
+                'institution_id' => 'other',
+                'institution_other' => 'NIMR',
+                'participant_type' => 'researcher',
+                'country' => 'Tanzania',
+                'fee_category' => 'participant_east_africa',
+                'waive' => true,
+                'waive_notes' => 'Trying my luck.',
+            ])
+            ->assertSessionHasErrors('waive');
+
+        $this->assertDatabaseMissing('users', ['name' => 'Sneaky Waiver']);
+    }
+
     /**
      * Media and secretariat attend by role. No bill, no control number, badge
      * straight away — a fee recorded then forgiven would misstate both the
@@ -241,7 +434,8 @@ class StaffDashboardTest extends TestCase
             ->post(route('staff.walk-ins.store'), [
                 'name' => 'Press Photographer',
                 'phone' => '+255 700 000 222',
-                'institution' => 'Daily News',
+                'institution_id' => 'other',
+                'institution_other' => 'Daily News',
                 'participant_type' => 'media',
                 'country' => 'Tanzania',
                 'fee_category' => 'complimentary_media',
@@ -275,7 +469,8 @@ class StaffDashboardTest extends TestCase
             ->post(route('staff.walk-ins.store'), [
                 'name' => 'Foreign Correspondent',
                 'phone' => '+44 7700 900999',
-                'institution' => 'Reuters',
+                'institution_id' => 'other',
+                'institution_other' => 'Reuters',
                 'participant_type' => 'media',
                 'country' => 'United Kingdom',
                 'fee_category' => 'complimentary_media',
@@ -368,6 +563,28 @@ class StaffDashboardTest extends TestCase
         $this->assertSame('waived', $unpaid->payment_status);
         $this->assertNotNull($unpaid->registration_code);
         Mail::assertQueued(FeeWaived::class);
+    }
+
+    /** The secretariat is conference staff, not an attendee category — it must not appear as something to register someone into. */
+    public function test_secretariat_is_not_offered_as_a_desk_category(): void
+    {
+        FeeCategory::firstOrCreate(['key' => 'complimentary_secretariat'], [
+            'label' => 'Secretariat',
+            'amount' => 0,
+            'currency' => 'TZS',
+            'active' => false,
+            'is_complimentary' => true,
+        ]);
+        $staff = User::factory()->staff()->create();
+
+        $this->actingAs($staff)
+            ->get(route('staff.dashboard'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('deskOptions.fee_categories', fn ($categories) => $categories->doesntContain(
+                    fn ($category) => $category['key'] === 'complimentary_secretariat',
+                ))
+                ->etc());
     }
 
     public function test_finance_can_reach_the_desk(): void

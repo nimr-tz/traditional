@@ -31,6 +31,97 @@ class SmsCampaignTest extends TestCase
         ], $overrides));
     }
 
+    public function test_the_name_placeholder_is_replaced_per_recipient_at_delivery(): void
+    {
+        $sent = [];
+        $this->mock(SmsGateway::class, function ($mock) use (&$sent) {
+            $mock->shouldReceive('send')->andReturnUsing(function ($phone, $message) use (&$sent) {
+                $sent[$phone] = $message;
+            });
+        });
+
+        $this->registrant(['name' => 'Asha Mushi', 'phone' => '0712345678']);
+        $this->registrant(['name' => 'Juma Nyerere', 'phone' => '0713333333']);
+
+        $campaign = SmsCampaign::create([
+            'message' => 'Hi :name, the programme is out.',
+            'audience' => 'all',
+            'audience_label' => 'All registrants',
+            'recipient_count' => 0,
+            'status' => 'queued',
+            'created_by_name' => 'Admin',
+            'created_by_email' => 'admin@example.com',
+        ]);
+        $campaign->recipients()->createMany([
+            ['name' => 'Asha Mushi', 'phone' => '255712345678'],
+            ['name' => 'Juma Nyerere', 'phone' => '255713333333'],
+        ]);
+
+        (new SendSmsCampaign($campaign->id))->handle(app(SmsGateway::class));
+
+        $this->assertSame('Hi Asha, the programme is out.', $sent['255712345678']);
+        $this->assertSame('Hi Juma, the programme is out.', $sent['255713333333']);
+    }
+
+    /**
+     * An accented name would switch the whole message to UCS-2 and drop the
+     * per-part budget from 160 characters to 70 — for that recipient only,
+     * which makes it the kind of cost that never shows up in testing.
+     */
+    public function test_a_recipient_name_cannot_push_a_message_out_of_the_plain_alphabet(): void
+    {
+        $sent = [];
+        $this->mock(SmsGateway::class, function ($mock) use (&$sent) {
+            $mock->shouldReceive('send')->andReturnUsing(function ($phone, $message) use (&$sent) {
+                $sent[$phone] = $message;
+            });
+        });
+
+        $campaign = SmsCampaign::create([
+            'message' => 'Hi :name, welcome.',
+            'audience' => 'all',
+            'audience_label' => 'All registrants',
+            'recipient_count' => 0,
+            'status' => 'queued',
+            'created_by_name' => 'Admin',
+            'created_by_email' => 'admin@example.com',
+        ]);
+        $campaign->recipients()->createMany([
+            ['name' => 'José Álvarez', 'phone' => '255712345678'],
+            ['name' => 'MWANAIDI HAMISI', 'phone' => '255713333333'],
+        ]);
+
+        (new SendSmsCampaign($campaign->id))->handle(app(SmsGateway::class));
+
+        $this->assertSame('Hi Jose, welcome.', $sent['255712345678']);
+        // Caps-lock registrations are common enough to be worth softening.
+        $this->assertSame('Hi Mwanaidi, welcome.', $sent['255713333333']);
+    }
+
+    public function test_the_recipient_count_reports_the_longest_name_for_worst_case_pricing(): void
+    {
+        $admin = User::factory()->admin()->create();
+        $this->registrant(['name' => 'Asha Mushi', 'phone' => '0712345678']);
+        $this->registrant(['name' => 'Christopher Mwakalinga', 'phone' => '0713333333']);
+
+        $response = $this->actingAs($admin)->getJson(route('admin.sms.count', ['audience' => 'all']));
+
+        $response->assertOk()
+            ->assertJsonPath('count', 2)
+            ->assertJsonPath('longest_name', 'Christopher');
+    }
+
+    public function test_a_sandboxed_test_send_does_not_claim_the_message_was_sent(): void
+    {
+        config(['sms.sandbox' => true]);
+        $admin = User::factory()->admin()->create(['phone' => '0712345678', 'country' => 'Tanzania']);
+
+        $response = $this->actingAs($admin)->post(route('admin.sms.test'), ['message' => 'Testing.']);
+
+        $this->assertStringContainsString('nothing was sent', session('success'));
+        $response->assertRedirect();
+    }
+
     public function test_a_campaign_queues_one_recipient_row_per_reachable_person_in_the_segment(): void
     {
         Queue::fake();

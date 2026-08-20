@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Models\SmsCampaign;
 use App\Models\SmsCampaignRecipient;
 use App\Services\Sms\SmsGateway;
+use App\Support\SmsText;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Log;
@@ -51,7 +52,7 @@ class SendSmsCampaign implements ShouldQueue
     private function deliver(SmsCampaign $campaign, SmsCampaignRecipient $recipient, SmsGateway $gateway): void
     {
         try {
-            $gateway->send($recipient->phone, $campaign->message, [
+            $gateway->send($recipient->phone, SmsText::personalise($campaign->message, $recipient->name), [
                 'sms_campaign_id' => $campaign->id,
                 'recipient_id' => $recipient->id,
             ]);

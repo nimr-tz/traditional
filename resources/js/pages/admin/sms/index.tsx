@@ -8,9 +8,10 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import AppLayout from '@/layouts/app-layout';
+import { fixTypography, hasFixableTypography, smsCost } from '@/lib/sms';
 import { type BreadcrumbItem } from '@/types';
 import { Head, Link, router, useForm } from '@inertiajs/react';
-import { Eye, LoaderCircle, MessageSquare, Send, Users } from 'lucide-react';
+import { Eye, LoaderCircle, MessageSquare, Send, UserRound, Users, WandSparkles } from 'lucide-react';
 import { FormEventHandler, useEffect, useState } from 'react';
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -19,7 +20,10 @@ const breadcrumbs: BreadcrumbItem[] = [
 ];
 
 const MESSAGE_MAX = 480;
-const SMS_PART_SIZE = 153;
+const NAME_PLACEHOLDER = ':name';
+
+/** Stand-in used for pricing and preview before an audience has been chosen. */
+const SAMPLE_NAME = 'Asha';
 
 type CampaignStatus = 'queued' | 'sending' | 'sent';
 
@@ -52,10 +56,6 @@ function formatDate(value: string): string {
     return new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
 }
 
-function smsParts(length: number): number {
-    return length === 0 ? 0 : Math.ceil(length / SMS_PART_SIZE);
-}
-
 export default function SmsIndex({ segments, parameterisedSegments, audienceOptions, campaigns }: SmsIndexProps) {
     const form = useForm({ audience: 'all', audience_value: '', message: '' });
     const [recipientCount, setRecipientCount] = useState<number | null>(null);
@@ -64,10 +64,20 @@ export default function SmsIndex({ segments, parameterisedSegments, audienceOpti
     const [testing, setTesting] = useState(false);
     const [testPhone, setTestPhone] = useState('');
     const [previewing, setPreviewing] = useState(false);
+    const [longestName, setLongestName] = useState('');
 
     const needsValue = parameterisedSegments.includes(form.data.audience);
     const valueOptions = form.data.audience === 'by_country' ? audienceOptions.countries : audienceOptions.institutions;
-    const parts = smsParts(form.data.message.length);
+
+    const usesName = form.data.message.includes(NAME_PLACEHOLDER);
+    // Priced against the longest name in the audience, not a typical one: every
+    // recipient is billed, so the message has to fit for the worst case.
+    const pricingName = longestName || SAMPLE_NAME;
+    const pricedMessage = form.data.message.replaceAll(NAME_PLACEHOLDER, pricingName);
+    const previewMessage = form.data.message.replaceAll(NAME_PLACEHOLDER, SAMPLE_NAME);
+    const cost = smsCost(pricedMessage);
+    const parts = cost.parts;
+    const canFixTypography = hasFixableTypography(form.data.message);
 
     // The count is the only thing standing between a mistyped segment and a
     // real send, so it refreshes on every audience change before sending.
@@ -83,7 +93,10 @@ export default function SmsIndex({ segments, parameterisedSegments, audienceOpti
 
         fetch(route('admin.sms.count', params), { headers: { Accept: 'application/json' } })
             .then((r) => (r.ok ? r.json() : Promise.reject()))
-            .then((d) => setRecipientCount(d.count))
+            .then((d) => {
+                setRecipientCount(d.count);
+                setLongestName(d.longest_name ?? '');
+            })
             .catch(() => setRecipientCount(null))
             .finally(() => setCountLoading(false));
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -195,22 +208,75 @@ export default function SmsIndex({ segments, parameterisedSegments, audienceOpti
                         </div>
 
                         <div className="grid gap-2">
-                            <Label htmlFor="message">Message</Label>
+                            <div className="flex items-center justify-between gap-3">
+                                <Label htmlFor="message">Message</Label>
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-7 text-xs"
+                                    onClick={() => form.setData('message', `${form.data.message}${NAME_PLACEHOLDER}`)}
+                                >
+                                    <UserRound className="size-3.5" />
+                                    Insert recipient name
+                                </Button>
+                            </div>
                             <Textarea
                                 id="message"
                                 rows={6}
                                 maxLength={MESSAGE_MAX}
                                 value={form.data.message}
                                 onChange={(e) => form.setData('message', e.target.value)}
-                                placeholder="Write your text message in plain text."
+                                placeholder="Write your text message in plain text. Type :name to insert each recipient's first name."
                             />
-                            <div className="text-muted-foreground flex justify-between text-xs">
-                                <span>Plain text only, sent exactly as written.</span>
+                            <div className="text-muted-foreground flex flex-wrap justify-between gap-x-4 gap-y-1 text-xs">
+                                <span>
+                                    {usesName ? (
+                                        <>
+                                            <code className="bg-muted rounded px-1 py-0.5">:name</code> becomes each recipient's first name.
+                                        </>
+                                    ) : (
+                                        'Plain text only, sent exactly as written.'
+                                    )}
+                                </span>
                                 <span>
                                     {form.data.message.length}/{MESSAGE_MAX} characters
                                     {parts > 0 && ` · ${parts} SMS part${parts === 1 ? '' : 's'}`}
+                                    {parts > 0 && cost.encoding === 'GSM-7' && ` · ${cost.remaining} left in this part`}
                                 </span>
                             </div>
+
+                            {usesName && longestName && (
+                                <p className="text-muted-foreground text-xs">
+                                    Priced with the longest name in this audience ({longestName}), so the count holds for everyone.
+                                </p>
+                            )}
+
+                            {cost.encoding === 'UCS-2' && (
+                                <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
+                                    <p className="font-semibold">
+                                        This message costs {parts} part{parts === 1 ? '' : 's'} instead of{' '}
+                                        {smsCost(fixTypography(pricedMessage)).parts}.
+                                    </p>
+                                    <p className="mt-1">
+                                        Text messages fit 160 plain characters per part, but only 70 once they contain a character outside the basic
+                                        set — here {cost.offenders.map((c) => `"${c}"`).join(', ')}. Every recipient is billed for the extra parts.
+                                    </p>
+                                    {canFixTypography && (
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
+                                            className="mt-2 h-7 border-amber-300 bg-white text-xs hover:bg-amber-100"
+                                            onClick={() => form.setData('message', fixTypography(form.data.message))}
+                                        >
+                                            <WandSparkles className="size-3.5" />
+                                            Replace with plain equivalents
+                                        </Button>
+                                    )}
+                                </div>
+                            )}
+
                             <InputError message={form.errors.message} />
                         </div>
 
@@ -223,7 +289,7 @@ export default function SmsIndex({ segments, parameterisedSegments, audienceOpti
                                 <Eye className="size-4" />
                                 Preview
                             </Button>
-                            <div className="flex items-end gap-2">
+                            <div className="flex flex-wrap items-end gap-2">
                                 <div className="grid gap-2">
                                     <Label htmlFor="test_phone" className="text-muted-foreground text-xs font-normal">
                                         Test recipient (optional)
@@ -234,7 +300,7 @@ export default function SmsIndex({ segments, parameterisedSegments, audienceOpti
                                         value={testPhone}
                                         onChange={(e) => setTestPhone(e.target.value)}
                                         placeholder="0712345678"
-                                        className="w-44"
+                                        className="w-full sm:w-44"
                                     />
                                 </div>
                                 <Button type="button" variant="outline" disabled={!form.data.message.trim() || testing} onClick={sendTest}>
@@ -333,12 +399,14 @@ export default function SmsIndex({ segments, parameterisedSegments, audienceOpti
                         <DialogHeader>
                             <DialogTitle>Preview</DialogTitle>
                             <DialogDescription>
-                                Sent exactly as written, with no greeting or signature added — {parts} SMS part{parts === 1 ? '' : 's'}.
+                                {usesName
+                                    ? `Shown for a recipient named ${SAMPLE_NAME} — ${parts} SMS part${parts === 1 ? '' : 's'}.`
+                                    : `Sent exactly as written, with no greeting or signature added — ${parts} SMS part${parts === 1 ? '' : 's'}.`}
                             </DialogDescription>
                         </DialogHeader>
                         <div className="bg-muted/40 rounded-2xl p-4">
                             <div className="ml-auto max-w-[80%] rounded-2xl rounded-tr-sm bg-[#135eeb] px-4 py-2.5 text-sm whitespace-pre-wrap text-white">
-                                {form.data.message}
+                                {previewMessage}
                             </div>
                         </div>
                     </DialogContent>

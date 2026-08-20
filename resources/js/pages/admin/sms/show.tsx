@@ -71,7 +71,7 @@ export default function SmsCampaignShow({ campaign, recipients }: { campaign: Ca
                     </div>
                 </header>
 
-                <section className="grid grid-cols-3 gap-3">
+                <section className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                     {[
                         { label: 'Recipients', value: campaign.recipient_count },
                         { label: 'Delivered', value: campaign.sent_count },

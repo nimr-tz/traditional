@@ -7,6 +7,7 @@ use App\Mail\FeeWaived;
 use App\Mail\PaymentConfirmed;
 use App\Models\Attendance;
 use App\Models\FeeCategory;
+use App\Models\Institution;
 use App\Models\User;
 use App\Services\Sms\SmsNotifier;
 use App\Services\WalkInRegistrar;
@@ -28,9 +29,9 @@ class CheckinController extends Controller
      */
     public function register(Request $request, WalkInRegistrar $registrar): JsonResponse
     {
-        $validated = $request->validate(WalkInRegistrar::rules());
+        $validated = $request->validate(WalkInRegistrar::rules($request->input('fee_category')));
 
-        ['user' => $user, 'billing' => $billing] = $registrar->register($validated);
+        ['user' => $user, 'billing' => $billing] = $registrar->register($validated, $request->user());
 
         return response()->json([
             'message' => 'Attendee registered. They can pay with the control number below.',
@@ -288,6 +289,7 @@ class CheckinController extends Controller
             'participant_types' => config('tmsc.participant_types'),
             'countries' => config('tmsc.countries'),
             'east_africa_countries' => config('tmsc.east_africa_countries'),
+            'institutions' => Institution::where('active', true)->orderBy('sort_order')->get(['id', 'name']),
         ]);
     }
 }

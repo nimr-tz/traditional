@@ -121,7 +121,7 @@ export default function AdminAbstractsIndex({ submissions, subthemes, filters, c
                                     exporting "what I'm looking at right now" just works. */}
                                 <a href={route('admin.abstracts.export', filters)}>
                                     <Download className="size-4" />
-                                    Export to Word
+                                    Export to PDF
                                 </a>
                             </Button>
                         )}

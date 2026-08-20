@@ -8,6 +8,7 @@ use App\Mail\PaymentConfirmed;
 use App\Models\Attendance;
 use App\Models\ConferenceSetting;
 use App\Models\FeeCategory;
+use App\Models\Institution;
 use App\Models\User;
 use App\Services\BadgePrinter;
 use App\Services\Sms\SmsNotifier;
@@ -79,6 +80,7 @@ class DashboardController extends Controller
                 'participant_types' => config('tmsc.participant_types'),
                 'countries' => config('tmsc.countries'),
                 'east_africa_countries' => config('tmsc.east_africa_countries'),
+                'institutions' => Institution::where('active', true)->orderBy('sort_order')->get(['id', 'name']),
             ],
             // The side panel: who is coming through right now, newest first.
             'arrivals' => Attendance::with(['user:id,name,institution', 'staff:id,name'])
@@ -98,6 +100,85 @@ class DashboardController extends Controller
     }
 
     /**
+     * Everything about one registrant, and every action the desk can take on
+     * them, in one place.
+     *
+     * What a search result opens onto. The desk used to see a handful of
+     * buttons crammed into the search row itself; this gives each action room
+     * next to the details that justify it — issuing a control number sits next
+     * to what is owed, settling a payment sits next to who is allowed to.
+     */
+    public function show(User $user): Response
+    {
+        abort_unless($user->hasRole(User::ROLE_USER), 404);
+
+        $user->load([
+            'attendance' => fn ($query) => $query->orderByDesc('attendance_date'),
+            'attendance.staff:id,name',
+            'badgePrints' => fn ($query) => $query->orderByDesc('printed_at'),
+            'badgePrints.printedBy:id,name',
+            'verifiedBy:id,name',
+        ]);
+
+        $category = FeeCategory::where('key', $user->fee_category)->first();
+        $studentVerifier = $user->student_verified_by
+            ? User::find($user->student_verified_by, ['id', 'name'])
+            : null;
+
+        return Inertia::render('staff/registrant', [
+            'canManageFinance' => Auth::user()->canManageFinance(),
+            'person' => [
+                'id' => $user->id,
+                'name' => $user->name,
+                'salutation' => $user->salutation,
+                'email' => $user->email,
+                'phone' => $user->phone,
+                'institution' => $user->institution,
+                'participant_type' => $user->participant_type,
+                'country' => $user->country,
+                'is_east_africa' => $user->is_east_africa,
+                'fee_category' => $user->fee_category,
+                'fee_category_label' => $category?->label,
+                'is_complimentary' => $category?->isComplimentary() ?? false,
+                'fee_amount' => $user->fee_amount,
+                'currency' => $user->currency,
+                'payment_status' => $user->payment_status,
+                'is_paid' => $user->isPaid(),
+                'control_number' => $user->control_number,
+                'paid_at' => $user->paid_at,
+                'payment_notes' => $user->payment_notes,
+                'payment_verified_by' => $user->verifiedBy?->name,
+                'registration_code' => $user->registration_code,
+                'registered_at' => $user->created_at,
+                'requires_student_verification' => $user->requiresStudentVerification(),
+                'student_verification_status' => $user->student_verification_status,
+                'student_verified_at' => $user->student_verified_at,
+                'student_verified_by' => $studentVerifier?->name,
+                'student_verification_notes' => $user->student_verification_notes,
+                'can_print_badge' => $user->canPrintBadge(),
+                // Same shape as the search payload, so this reuses StandingBadge
+                // and PrintBadgeButton without an adapter.
+                'checked_in_at' => $user->attendance->firstWhere(fn (Attendance $a) => $a->attendance_date?->isToday())?->checked_in_at,
+                'last_seen_at' => $user->attendance->first()?->checked_in_at,
+                'days_attended' => $user->attendance->count(),
+                'badges_printed' => $user->badgePrints->count(),
+            ],
+            'attendance' => $user->attendance->map(fn (Attendance $attendance) => [
+                'id' => $attendance->id,
+                'date' => $attendance->attendance_date?->toDateString(),
+                'checked_in_at' => $attendance->checked_in_at,
+                'recorded_by' => $attendance->staff?->name,
+            ]),
+            'badgePrints' => $user->badgePrints->map(fn ($print) => [
+                'id' => $print->id,
+                'print_number' => $print->print_number,
+                'printed_at' => $print->printed_at,
+                'printed_by' => $print->printedBy?->name,
+            ]),
+        ]);
+    }
+
+    /**
      * Register someone who turned up without an account, and start their
      * control number so they can pay from the queue.
      *
@@ -106,13 +187,15 @@ class DashboardController extends Controller
      */
     public function registerWalkIn(Request $request, WalkInRegistrar $registrar): RedirectResponse
     {
-        $validated = $request->validate(WalkInRegistrar::rules());
+        $validated = $request->validate(WalkInRegistrar::rules($request->input('fee_category')));
 
-        ['user' => $user, 'billing' => $billing] = $registrar->register($validated);
+        ['user' => $user, 'billing' => $billing] = $registrar->register($validated, $request->user());
 
-        return back()->with($billing['status'] === 'ready' ? 'success' : 'info', $billing['status'] === 'ready'
-            ? "{$user->name} is registered. Control number {$billing['control_number']} — they can pay it now."
-            : "{$user->name} is registered. {$billing['message']}");
+        return back()->with(in_array($billing['status'], ['ready', 'waived'], true) ? 'success' : 'info', match ($billing['status']) {
+            'ready' => "{$user->name} is registered. Control number {$billing['control_number']} — they can pay it now.",
+            'waived' => "{$user->name} is registered. Fee waived — their badge is ready.",
+            default => "{$user->name} is registered. {$billing['message']}",
+        });
     }
 
     /**

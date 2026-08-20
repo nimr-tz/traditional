@@ -115,7 +115,7 @@ export default function CertificatePage({
                     <Info className="mt-0.5 size-3.5 shrink-0" />
                     <span>
                         Attended but registered at the venue desk without an account? Certificates can also be claimed at{' '}
-                        <a href={route('certificate.claim')} className="font-semibold underline underline-offset-2">
+                        <a href={route('certificate.claim')} className="font-semibold break-all underline underline-offset-2">
                             {route('certificate.claim')}
                         </a>
                         .

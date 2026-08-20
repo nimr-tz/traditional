@@ -342,7 +342,7 @@ export default function Register({
 
                 {step === 0 && (
                     <div className="flex flex-col gap-5">
-                        <div className="grid grid-cols-[8rem_1fr] gap-4">
+                        <div className="grid grid-cols-2 gap-4 sm:grid-cols-[8rem_1fr]">
                             <div className="flex flex-col gap-2">
                                 <Label htmlFor="salutation">Title *</Label>
                                 <Select value={data.salutation} onValueChange={(value) => updateField('salutation', value)}>
@@ -374,7 +374,7 @@ export default function Register({
                                 <InputError message={errors.first_name} />
                             </div>
                         </div>
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                             <div className="flex flex-col gap-2">
                                 <Label htmlFor="middle_name">Middle name (optional)</Label>
                                 <Input
@@ -464,7 +464,7 @@ export default function Register({
                             )}
                             <InputError message={errors.institution_other} />
                         </div>
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                             <div className="flex flex-col gap-2">
                                 <Label htmlFor="phone">Mobile number *</Label>
                                 <Input
@@ -517,7 +517,7 @@ export default function Register({
                     <div className="flex flex-col gap-6">
                         <fieldset className="flex flex-col gap-2.5">
                             <legend className="mb-2.5 text-sm font-medium">Type of participant *</legend>
-                            <div className="grid grid-cols-2 gap-2">
+                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                                 {Object.entries(participantTypes).map(([key, label]) => {
                                     const selected = data.participant_type === key;
                                     return (
@@ -585,7 +585,7 @@ export default function Register({
                             ) : (
                                 <div className="flex flex-col gap-2.5">
                                     <div className="text-sm font-medium">Registration category *</div>
-                                    <div className="grid grid-cols-2 gap-3">
+                                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                                         {availableFeeCategories.map((category) => {
                                             const selected = data.fee_category === category.key;
                                             const accent = isStudentCategory ? '#67b52f' : '#135eeb';
@@ -660,7 +660,7 @@ export default function Register({
 
                 {step === 3 && (
                     <div className="flex flex-col gap-5">
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                             <div className="flex flex-col gap-2">
                                 <Label htmlFor="password">Password *</Label>
                                 <Input

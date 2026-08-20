@@ -49,8 +49,10 @@ class TmscSeeder extends Seeder
         $categories = [
             // Attend by role rather than by fee. Never offered on the public
             // form — the venue desk registers them. See FeeCategory.
+            //
+            // No secretariat entry: the secretariat is conference staff, not an
+            // attendee category (see the migration that deactivated it).
             'complimentary_media' => ['label' => 'Media', 'amount' => 0, 'currency' => 'TZS', 'sort_order' => 90, 'is_complimentary' => true],
-            'complimentary_secretariat' => ['label' => 'Secretariat', 'amount' => 0, 'currency' => 'TZS', 'sort_order' => 91, 'is_complimentary' => true],
             'complimentary_invited_guest' => ['label' => 'Invited Guest', 'amount' => 0, 'currency' => 'TZS', 'sort_order' => 92, 'is_complimentary' => true],
             'complimentary_exhibitor' => ['label' => 'Exhibitor', 'amount' => 0, 'currency' => 'TZS', 'sort_order' => 93, 'is_complimentary' => true],
             'participant_east_africa' => ['label' => 'East African Participants', 'amount' => 150000, 'currency' => 'TZS', 'sort_order' => 1],
@@ -67,6 +69,10 @@ class TmscSeeder extends Seeder
 
         // No practitioner-specific tier in the current fee table.
         FeeCategory::where('key', 'practitioner')->delete();
+
+        // Retired: see the migration that deactivated it. Re-seeding an
+        // existing database must not silently reactivate it.
+        FeeCategory::where('key', 'complimentary_secretariat')->update(['active' => false]);
     }
 
     /**

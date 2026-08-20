@@ -250,7 +250,7 @@ export default function EmailsIndex({ segments, parameterisedSegments, audienceO
                                 {previewLoading ? <LoaderCircle className="size-4 animate-spin" /> : <Eye className="size-4" />}
                                 Preview
                             </Button>
-                            <div className="flex items-end gap-2">
+                            <div className="flex flex-wrap items-end gap-2">
                                 <div className="grid gap-2">
                                     <Label htmlFor="test_email" className="text-muted-foreground text-xs font-normal">
                                         Test recipient (optional)
@@ -261,7 +261,7 @@ export default function EmailsIndex({ segments, parameterisedSegments, audienceO
                                         value={testEmail}
                                         onChange={(e) => setTestEmail(e.target.value)}
                                         placeholder="you@example.org"
-                                        className="w-56"
+                                        className="w-full sm:w-56"
                                     />
                                 </div>
                                 <Button

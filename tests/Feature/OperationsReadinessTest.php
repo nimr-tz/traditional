@@ -22,10 +22,12 @@ class OperationsReadinessTest extends TestCase
         $this->seed(ProductionReferenceDataSeeder::class);
 
         // Four paying tiers, plus the complimentary roles that attend free —
-        // media, secretariat, invited guests and exhibitors. Asserted as a split
-        // rather than a total so a miscount says which half went wrong.
+        // media, invited guests and exhibitors. (The secretariat is conference
+        // staff, not an attendee category — see the migration that deactivated
+        // it.) Asserted as a split rather than a total so a miscount says which
+        // half went wrong.
         $this->assertSame(4, FeeCategory::where('is_complimentary', false)->count());
-        $this->assertSame(4, FeeCategory::where('is_complimentary', true)->count());
+        $this->assertSame(3, FeeCategory::where('is_complimentary', true)->count());
 
         // Complimentary rates are granted at the venue desk, so they must never
         // reach the public registration form.

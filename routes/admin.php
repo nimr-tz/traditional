@@ -23,7 +23,7 @@ Route::middleware(['auth', 'role:reviewer,admin,super_admin'])->prefix('admin')-
 
     Route::get('abstracts', [AdminAbstractController::class, 'index'])->name('abstracts.index');
     // Must precede abstracts/{abstract} — otherwise Laravel binds "export" as an {abstract} id.
-    Route::get('abstracts/export', [AdminAbstractController::class, 'exportWord'])->name('abstracts.export');
+    Route::get('abstracts/export', [AdminAbstractController::class, 'exportPdf'])->name('abstracts.export');
     Route::get('abstracts/{abstract}', [AdminAbstractController::class, 'show'])->name('abstracts.show');
     Route::post('abstracts/{abstract}/reviewer-decision', [AdminAbstractController::class, 'recordReviewerDecision'])->name('abstracts.reviewer-decision');
     // Presentations are not reviewed — organizers can read what was uploaded,
@@ -110,6 +110,10 @@ Route::middleware(['auth', 'role:staff,finance,admin,super_admin'])->prefix('sta
     Route::get('/', [StaffDashboardController::class, 'index'])->name('dashboard');
     // The whole register, for browsing. The desk itself opens on a search.
     Route::get('registrants', [StaffRegistrantController::class, 'index'])->name('registrants');
+    // Everything about one person, in one place — what a search result opens
+    // onto, so every action lives with the details that justify it instead of
+    // being crammed into the search row itself.
+    Route::get('registrants/{user}', [StaffDashboardController::class, 'show'])->name('registrant');
     Route::post('walk-ins', [StaffDashboardController::class, 'registerWalkIn'])->name('walk-ins.store');
     Route::post('registrants/{user}/control-number', [StaffDashboardController::class, 'issueControlNumber'])->name('control-number');
     // Reprints are allowed and logged — the desk warns first, then prints.
