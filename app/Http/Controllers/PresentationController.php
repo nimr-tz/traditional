@@ -17,6 +17,34 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class PresentationController extends Controller
 {
+    /**
+     * Every one of the user's abstracts in one place, so a presenter with
+     * several submissions doesn't have to remember which ones are accepted
+     * and hop through the abstracts list to find each upload page.
+     */
+    public function index(): Response
+    {
+        $submissions = Auth::user()->abstractSubmissions()
+            ->with('subtheme')
+            ->latest()
+            ->get()
+            ->map(fn (AbstractSubmission $abstract) => [
+                'id' => $abstract->id,
+                'title' => $abstract->title,
+                'status' => $abstract->status,
+                'subtheme' => $abstract->subtheme,
+                'presentation_type' => $abstract->presentation_type,
+                'presentation_status' => $abstract->presentation_status,
+                'presentation_original_name' => $abstract->presentation_original_name,
+                'can_upload' => $abstract->canUploadPresentation(),
+            ]);
+
+        return Inertia::render('presentations/index', [
+            'submissions' => $submissions,
+            'window' => PresentationWindow::toArray(),
+        ]);
+    }
+
     public function show(AbstractSubmission $abstract): Response
     {
         $this->authorizeOwner($abstract);

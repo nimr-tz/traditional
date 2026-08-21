@@ -9,7 +9,7 @@ import AppLayout from '@/layouts/app-layout';
 import { cn } from '@/lib/utils';
 import { type BreadcrumbItem } from '@/types';
 import { Head, Link, useForm, usePage } from '@inertiajs/react';
-import { BadgeCheck, Clock3, Download, FileUp, LoaderCircle, ShieldAlert, Trash2, XCircle } from 'lucide-react';
+import { BadgeCheck, CircleCheck, Clock3, Download, FileUp, Languages, LoaderCircle, ShieldAlert, Trash2, XCircle } from 'lucide-react';
 import { FormEventHandler, useState } from 'react';
 
 /** Presentations aren't reviewed — a file is either on record or it isn't. */
@@ -73,6 +73,34 @@ const FILE_STATE = {
         chip: 'bg-slate-500 text-white',
     },
 };
+
+/** From the conference's official "Presentation Instructions" document. */
+const LETTERING_GUIDE = [
+    {
+        type: 'Title',
+        size: '48 point maximum',
+        style: 'Title Case / Bold',
+        advice: 'Include the presentation title, author names, and the corresponding author’s contact details at the top.',
+    },
+    {
+        type: 'Headings',
+        size: '34pt suggested, 36pt maximum',
+        style: 'Title Case',
+        advice: 'Headings such as Introduction, Methods, Results, Discussion, and Conclusion are useful.',
+    },
+    {
+        type: 'Content',
+        size: '24–26 point, single-spaced',
+        style: 'Upper and lower case',
+        advice: 'Keep text brief throughout. Any description of methods should be simple and concise.',
+    },
+    {
+        type: 'Pictures',
+        size: '640×360 min, 1920×1080 max',
+        style: 'High resolution',
+        advice: 'Use pictures in an organized manner and don’t overcrowd the slide.',
+    },
+];
 
 export default function Presentation({ submission, requirements, window: presentationWindow }: PresentationProps) {
     const { props } = usePage<{ flash: { success?: string; error?: string } }>();
@@ -147,6 +175,101 @@ export default function Presentation({ submission, requirements, window: present
                     <h1 className="mt-2 font-serif text-2xl font-semibold md:text-3xl">{submission.title}</h1>
                     <p className="text-muted-foreground mt-2 text-sm capitalize">{submission.presentation_type} presentation</p>
                 </div>
+
+                <DashboardCard className="bg-slate-50/70 dark:bg-slate-900/40">
+                    <h2 className="text-sm font-bold tracking-wide uppercase">How this works</h2>
+                    <ul className="mt-3 space-y-2.5 text-sm leading-6">
+                        <li className="flex items-start gap-2.5">
+                            <CircleCheck className="mt-0.5 size-4 shrink-0 text-[#4c8a1f]" />
+                            <span>
+                                Presentations are not reviewed. Whatever file is on record when the deadline passes is what you'll present — there's
+                                no approval step.
+                            </span>
+                        </li>
+                        <li className="flex items-start gap-2.5">
+                            <CircleCheck className="mt-0.5 size-4 shrink-0 text-[#4c8a1f]" />
+                            <span>
+                                Accepted formats: {requirements.extensions.join(', ').toUpperCase()} — max {maxMb} MB.
+                            </span>
+                        </li>
+                        <li className="flex items-start gap-2.5">
+                            <CircleCheck className="mt-0.5 size-4 shrink-0 text-[#4c8a1f]" />
+                            <span>You can replace your file as many times as you need to, right up until the deadline below.</span>
+                        </li>
+                        <li className="flex items-start gap-2.5">
+                            <CircleCheck className="mt-0.5 size-4 shrink-0 text-[#4c8a1f]" />
+                            <span>Your assigned reviewers and the conference organizers can view whatever file you've uploaded.</span>
+                        </li>
+                    </ul>
+                </DashboardCard>
+
+                <DashboardCard>
+                    <h2 className="font-serif text-lg font-semibold">Preparing your {submission.presentation_type}</h2>
+                    <p className="text-muted-foreground mt-1.5 text-sm leading-6">
+                        Your {submission.presentation_type} should represent your submitted abstract, and its title should match your abstract's
+                        title. On the title slide, after the title, include:
+                    </p>
+                    <p className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3.5 text-sm leading-6 font-semibold italic dark:border-slate-800 dark:bg-slate-900/50">
+                        “Presented at the 5th Traditional Medicine Scientific Conference, 28th August 2026”
+                    </p>
+
+                    <h3 className="mt-6 text-sm font-bold tracking-wide uppercase">Lettering</h3>
+                    <p className="text-muted-foreground mt-1.5 text-sm leading-6">
+                        Use lower case for general content — all-capital text is hard to read. The recommended font is{' '}
+                        <span className="font-semibold">Arial</span>.
+                    </p>
+                    <div className="mt-3 overflow-x-auto">
+                        <table className="w-full min-w-[560px] text-sm">
+                            <thead className="text-muted-foreground text-left text-xs tracking-wide uppercase">
+                                <tr>
+                                    <th className="pr-3 pb-2">Type</th>
+                                    <th className="pr-3 pb-2">Font size</th>
+                                    <th className="pr-3 pb-2">Case / style</th>
+                                    <th className="pb-2">General advice</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                                {LETTERING_GUIDE.map((row) => (
+                                    <tr key={row.type}>
+                                        <td className="py-2.5 pr-3 align-top font-semibold whitespace-nowrap">{row.type}</td>
+                                        <td className="text-muted-foreground py-2.5 pr-3 align-top whitespace-nowrap">{row.size}</td>
+                                        <td className="text-muted-foreground py-2.5 pr-3 align-top whitespace-nowrap">{row.style}</td>
+                                        <td className="text-muted-foreground py-2.5 align-top leading-6">{row.advice}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    {submission.presentation_type === 'oral' && (
+                        <>
+                            <h3 className="mt-6 text-sm font-bold tracking-wide uppercase">PowerPoint hints</h3>
+                            <ul className="mt-2 space-y-2 text-sm leading-6">
+                                <li className="flex items-start gap-2.5">
+                                    <CircleCheck className="mt-0.5 size-4 shrink-0 text-[#4c8a1f]" />
+                                    <span>Maximum 20 slides.</span>
+                                </li>
+                                <li className="flex items-start gap-2.5">
+                                    <CircleCheck className="mt-0.5 size-4 shrink-0 text-[#4c8a1f]" />
+                                    <span>You'll be given 10 minutes to present.</span>
+                                </li>
+                                <li className="flex items-start gap-2.5">
+                                    <CircleCheck className="mt-0.5 size-4 shrink-0 text-[#4c8a1f]" />
+                                    <span>Use your institution's PowerPoint template and/or logo (e.g. NIMR, MUHAS).</span>
+                                </li>
+                            </ul>
+                        </>
+                    )}
+
+                    <h3 className="mt-6 flex items-center gap-2 text-sm font-bold tracking-wide uppercase">
+                        <Languages className="size-4" />
+                        Language
+                    </h3>
+                    <p className="text-muted-foreground mt-1.5 text-sm leading-6">
+                        Prepare your {submission.presentation_type} in proper English or proper Swahili. Swahili is the recommended language for
+                        presentations, except where English terminology is unavoidable.
+                    </p>
+                </DashboardCard>
 
                 {props.flash?.success && <StatusBanner tone="success" icon={BadgeCheck} title="Done" description={props.flash.success} />}
                 {props.flash?.error && (

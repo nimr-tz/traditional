@@ -70,6 +70,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('abstracts/{abstract}/comments/{comment}/toggle-addressed', [AbstractController::class, 'toggleCommentAddressed'])
         ->name('abstracts.comments.toggle-addressed');
 
+    Route::get('presentations', [PresentationController::class, 'index'])->name('presentations.index');
+
     Route::get('abstracts/{abstract}/presentation', [PresentationController::class, 'show'])->name('abstracts.presentation.show');
     Route::post('abstracts/{abstract}/presentation', [PresentationController::class, 'store'])->name('abstracts.presentation.store');
     Route::delete('abstracts/{abstract}/presentation', [PresentationController::class, 'destroy'])->name('abstracts.presentation.destroy');

@@ -13,6 +13,7 @@ import {
     LayoutGrid,
     Mail,
     MessageSquare,
+    Presentation,
     ScanLine,
     ScrollText,
     Settings,
@@ -24,8 +25,9 @@ import AppLogo from './app-logo';
 
 const registrantNavItems: NavItem[] = [
     { title: 'Dashboard', url: '/dashboard', icon: LayoutGrid },
-    { title: 'Payment', url: '/payment', icon: Wallet },
     { title: 'My Abstracts', url: '/abstracts', icon: ScrollText },
+    { title: 'Presentations', url: '/presentations', icon: Presentation },
+    { title: 'Payment', url: '/payment', icon: Wallet },
 ];
 
 // Scanning happens in the check-in app; the web side gives staff the live
