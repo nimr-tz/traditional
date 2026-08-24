@@ -42,6 +42,10 @@ Route::middleware(['auth', 'role:admin,super_admin'])->prefix('admin')->name('ad
     // second implementation of the rules.
     Route::get('assignments', [AdminReviewerAssignmentController::class, 'index'])->name('assignments.index');
 
+    // Every accepted abstract's presentation status in one place. Admin-only —
+    // reviewers never see presentation files (see AbstractController::presentations()).
+    Route::get('presentations', [AdminAbstractController::class, 'presentations'])->name('presentations.index');
+
     // Reporting view for the organizing committee: totals and breakdowns,
     // as opposed to admin.dashboard which is the day-to-day work queue.
     Route::get('management', [AdminManagementDashboardController::class, 'index'])->name('management.index');

@@ -59,6 +59,7 @@ const adminNavItems: NavItem[] = [
     { title: 'Student Verification', url: '/admin/students', icon: GraduationCap },
     { title: 'Abstracts Review', url: '/admin/abstracts', icon: ScrollText },
     { title: 'Reviewer Assignments', url: '/admin/assignments', icon: Users },
+    { title: 'Presentations', url: '/admin/presentations', icon: Presentation },
 ];
 
 // Super admins are implicitly allowed everywhere (see EnsureUserHasRole), so
@@ -73,6 +74,7 @@ const superAdminNavItems: NavItem[] = [
     { title: 'SMS Manager', url: '/admin/sms', icon: MessageSquare },
     { title: 'Abstracts Review', url: '/admin/abstracts', icon: ScrollText },
     { title: 'Reviewer Assignments', url: '/admin/assignments', icon: Users },
+    { title: 'Presentations', url: '/admin/presentations', icon: Presentation },
     { title: 'Users & Roles', url: '/admin/users', icon: UsersRound },
     { title: 'Conference Settings', url: '/admin/settings', icon: Settings },
 ];

@@ -10,6 +10,7 @@ use App\Models\Subtheme;
 use App\Models\User;
 use App\Services\Sms\SmsNotifier;
 use App\Support\BlindReview;
+use App\Support\PresentationWindow;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -132,6 +133,57 @@ class AbstractController extends Controller
         ])->setPaper('a4');
 
         return $pdf->download('tmsc-abstracts-'.now()->format('Y-m-d').'.pdf');
+    }
+
+    /**
+     * Every accepted abstract's presentation, in one place, so the organizing
+     * committee can see who has uploaded and who hasn't without opening each
+     * abstract individually.
+     *
+     * Presentations are not reviewed — there is no approve/reject step here,
+     * only visibility into what's on file and a download. Admin-only for the
+     * same reason as downloadPresentation() below: files are routinely named
+     * after their author, so this stays out of the blind-review-shared routes.
+     */
+    public function presentations(Request $request): Response
+    {
+        abort_unless($request->user()->isAdmin(), 403);
+
+        $data = $request->validate([
+            'status' => ['nullable', Rule::in(['uploaded', 'pending'])],
+            'subtheme_id' => ['nullable', 'integer', 'exists:subthemes,id'],
+            'search' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $submissions = AbstractSubmission::query()
+            ->where('status', 'accepted')
+            ->with(['user:id,name,salutation,email,institution', 'subtheme:id,title'])
+            ->when($data['subtheme_id'] ?? null, fn ($q, $id) => $q->where('subtheme_id', $id))
+            ->when($data['status'] ?? null, fn ($q, $status) => $q->where('presentation_status', $status))
+            ->when($data['search'] ?? null, fn ($q, $search) => $q->where(function ($q) use ($search) {
+                $q->where('title', 'like', "%{$search}%")
+                    ->orWhereHas('user', fn ($userQuery) => $userQuery
+                        ->where('name', 'like', "%{$search}%")
+                        ->orWhere('email', 'like', "%{$search}%"));
+            }))
+            ->orderByRaw("presentation_status = 'uploaded'")
+            ->orderBy('title')
+            ->paginate(20)
+            ->withQueryString();
+
+        $accepted = AbstractSubmission::where('status', 'accepted');
+
+        return Inertia::render('admin/presentations/index', [
+            'submissions' => $submissions,
+            'subthemes' => Subtheme::orderBy('sort_order')->get(['id', 'title']),
+            'filters' => $request->only(['status', 'subtheme_id', 'search']),
+            'counts' => [
+                'total' => (clone $accepted)->count(),
+                'uploaded' => (clone $accepted)->where('presentation_status', 'uploaded')->count(),
+                'pending' => (clone $accepted)->where('presentation_status', 'pending')->count(),
+            ],
+            'window' => PresentationWindow::toArray(),
+        ]);
     }
 
     public function show(Request $request, AbstractSubmission $abstract): Response
