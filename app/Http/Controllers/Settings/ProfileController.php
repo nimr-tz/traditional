@@ -24,6 +24,7 @@ class ProfileController extends Controller
         return Inertia::render('settings/profile', [
             'mustVerifyEmail' => $user instanceof MustVerifyEmail,
             'status' => $request->session()->get('status'),
+            'salutations' => config('tmsc.salutations'),
             'participantTypes' => config('tmsc.participant_types'),
             'feeCategories' => FeeCategory::query()->selectableByPublic()->orderBy('sort_order')->get(['key', 'label', 'amount', 'currency']),
             'registration' => [

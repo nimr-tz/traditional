@@ -43,12 +43,13 @@ interface History {
     to_status: string;
     notes: string | null;
     created_at: string;
-    actor: { name: string } | null;
+    actor: { full_name: string } | null;
 }
 
 interface ReviewerRef {
     id: number;
     name: string;
+    full_name: string;
     email: string;
 }
 
@@ -121,6 +122,7 @@ interface Submission {
     user?: {
         id: number;
         name: string;
+        full_name: string;
         email: string;
         phone: string | null;
         institution: string | null;
@@ -128,7 +130,7 @@ interface Submission {
     } | null;
     is_blinded?: boolean;
     subtheme: { title: string } | null;
-    reviewer: { name: string } | null;
+    reviewer: { full_name: string } | null;
     reviewer_one: ReviewerRef | null;
     reviewer_two: ReviewerRef | null;
     reviewer_decisions: ReviewerDecision[];
@@ -238,7 +240,7 @@ function outcomeFor(submission: Submission, viewer: { isAdmin: boolean; bothAssi
         headline: submission.is_re_review ? `Under re-review · round ${submission.review_round}` : 'Under review',
         detail:
             viewer.isAdmin && pending.length
-                ? `Waiting on ${pending.map((reviewer) => reviewer.name).join(' and ')}.`
+                ? `Waiting on ${pending.map((reviewer) => reviewer.full_name).join(' and ')}.`
                 : 'Waiting for reviewer recommendations.',
         next: null,
     };
@@ -620,7 +622,7 @@ export default function AbstractReviewShow({ submission, eligibleReviewers }: Ab
                                                 <p className="font-semibold">{actionLabel[item.action] ?? item.action.replaceAll('_', ' ')}</p>
                                                 <time className="text-muted-foreground text-xs">{formatDate(item.created_at)}</time>
                                             </div>
-                                            <p className="text-muted-foreground mt-1 text-sm">{item.actor?.name ?? 'System'}</p>
+                                            <p className="text-muted-foreground mt-1 text-sm">{item.actor?.full_name ?? 'System'}</p>
                                             {item.notes && (
                                                 <p className="mt-3 rounded-xl bg-slate-50 p-4 text-sm leading-6 dark:bg-slate-900">{item.notes}</p>
                                             )}
@@ -648,7 +650,7 @@ export default function AbstractReviewShow({ submission, eligibleReviewers }: Ab
                                 <dl className="mt-5 space-y-4 text-sm">
                                     <div>
                                         <dt className="text-muted-foreground text-xs">Name</dt>
-                                        <dd className="mt-1 font-semibold">{submission.user.name}</dd>
+                                        <dd className="mt-1 font-semibold">{submission.user.full_name}</dd>
                                     </div>
                                     <div>
                                         <dt className="text-muted-foreground text-xs">Email</dt>
@@ -702,7 +704,7 @@ export default function AbstractReviewShow({ submission, eligibleReviewers }: Ab
                                             <SelectContent>
                                                 {eligibleReviewers.map((reviewer) => (
                                                     <SelectItem key={reviewer.id} value={String(reviewer.id)}>
-                                                        {reviewer.name}
+                                                        {reviewer.full_name}
                                                     </SelectItem>
                                                 ))}
                                             </SelectContent>
@@ -717,7 +719,7 @@ export default function AbstractReviewShow({ submission, eligibleReviewers }: Ab
                                             <SelectContent>
                                                 {eligibleReviewers.map((reviewer) => (
                                                     <SelectItem key={reviewer.id} value={String(reviewer.id)}>
-                                                        {reviewer.name}
+                                                        {reviewer.full_name}
                                                     </SelectItem>
                                                 ))}
                                             </SelectContent>
@@ -763,7 +765,7 @@ export default function AbstractReviewShow({ submission, eligibleReviewers }: Ab
                                             >
                                                 <div className="flex items-center justify-between gap-2">
                                                     <p className="text-sm font-semibold">
-                                                        Reviewer {index === 0 ? 'A' : 'B'} · {reviewer.name}
+                                                        Reviewer {index === 0 ? 'A' : 'B'} · {reviewer.full_name}
                                                     </p>
                                                     {decision?.recommendation ? (
                                                         <span

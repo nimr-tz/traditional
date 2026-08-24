@@ -23,6 +23,7 @@ type PaymentStatus = 'pending' | 'submitted' | 'verified' | 'rejected' | 'waived
 interface Registration {
     id: number;
     name: string;
+    full_name: string;
     email: string;
     email_verified_at: string | null;
     institution: string | null;
@@ -236,7 +237,7 @@ export default function RegistrationsIndex({ registrations, filters, counts, ema
                                                             {initials(registration.name)}
                                                         </div>
                                                         <div className="min-w-0">
-                                                            <div className="font-semibold">{registration.name}</div>
+                                                            <div className="font-semibold">{registration.full_name}</div>
                                                             <div className="mt-0.5 flex items-center gap-1.5">
                                                                 <span className="text-muted-foreground truncate text-xs">{registration.email}</span>
                                                                 {!registration.email_verified_at && (
@@ -320,8 +321,8 @@ export default function RegistrationsIndex({ registrations, filters, counts, ema
                             <DialogHeader>
                                 <DialogTitle>Correct email address</DialogTitle>
                                 <DialogDescription>
-                                    {editing?.name} currently receives everything at {editing?.email}. Changing it marks the account unverified and
-                                    sends a fresh verification link to the new address.
+                                    {editing?.full_name} currently receives everything at {editing?.email}. Changing it marks the account unverified
+                                    and sends a fresh verification link to the new address.
                                 </DialogDescription>
                             </DialogHeader>
 

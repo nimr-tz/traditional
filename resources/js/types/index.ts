@@ -42,6 +42,10 @@ export type UserRole = 'user' | 'reviewer' | 'staff' | 'finance' | 'admin' | 'su
 export interface User {
     id: number;
     name: string;
+    /** e.g. "Dr.", "Prof." — null for walk-ins registered without one. */
+    salutation: string | null;
+    /** Server-composed "{salutation} {name}", always safe to render as-is. */
+    full_name: string;
     email: string;
     avatar?: string;
     email_verified_at: string | null;

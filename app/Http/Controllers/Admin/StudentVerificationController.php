@@ -116,7 +116,7 @@ class StudentVerificationController extends Controller
         abort_if(
             $user->isPaid() && ! $user->requiresStudentVerification(),
             422,
-            "{$user->name} has already paid the participant rate. Ask finance how to handle the difference before granting the student rate.",
+            "{$user->full_name} has already paid the participant rate. Ask finance how to handle the difference before granting the student rate.",
         );
 
         $movedTo = null;
@@ -158,10 +158,10 @@ class StudentVerificationController extends Controller
         Mail::to($user->email)->send(new StudentVerificationApproved($user));
 
         if (! $movedTo) {
-            return back()->with('success', "Student status for {$user->name} has been verified.");
+            return back()->with('success', "Student status for {$user->full_name} has been verified.");
         }
 
-        $message = "{$user->name} has been verified and moved to the student rate.";
+        $message = "{$user->full_name} has been verified and moved to the student rate.";
 
         return back()->with('success', $voidedControlNumber
             ? $message." Control number {$voidedControlNumber} was voided — they must request a new one."
@@ -214,7 +214,7 @@ class StudentVerificationController extends Controller
         abort_if(
             $user->isPaid() && ! $alreadyOnParticipantRate,
             422,
-            "{$user->name} has already paid at the student rate. Ask finance to reset the billing before refusing the rate, so the fee change does not understate what they owe.",
+            "{$user->full_name} has already paid at the student rate. Ask finance to reset the billing before refusing the rate, so the fee change does not understate what they owe.",
         );
 
         $keptControlNumber = null;
@@ -266,10 +266,10 @@ class StudentVerificationController extends Controller
         Mail::to($user->email)->send(new StudentVerificationRejected($user));
 
         if ($alreadyOnParticipantRate) {
-            return back()->with('success', "The student rate has been refused again for {$user->name}. They stay on the participant rate and have been notified.");
+            return back()->with('success', "The student rate has been refused again for {$user->full_name}. They stay on the participant rate and have been notified.");
         }
 
-        $message = "{$user->name} has been moved to the standard participant rate and notified.";
+        $message = "{$user->full_name} has been moved to the standard participant rate and notified.";
 
         return back()->with('success', $keptControlNumber
             ? $message." Control number {$keptControlNumber} remains valid."
@@ -313,7 +313,7 @@ class StudentVerificationController extends Controller
             'student_verified_at' => null,
             'student_verified_by' => null,
             'student_verification_notes' => $request->notes
-                ?: "Reopened by {$admin->name} (previously {$previousStatus}).",
+                ?: "Reopened by {$admin->full_name} (previously {$previousStatus}).",
         ])->save();
 
         // Two different situations. Undoing an approval leaves them on a student
@@ -322,11 +322,11 @@ class StudentVerificationController extends Controller
         // leaves the correct participant rate in place, so there is nothing to
         // warn about.
         if ($wasOnStudentRate && $user->control_number) {
-            return back()->with('info', "{$user->name} is back in the review queue. Control number {$user->control_number} was already issued at the student rate — ask finance to reset billing if it should be voided.");
+            return back()->with('info', "{$user->full_name} is back in the review queue. Control number {$user->control_number} was already issued at the student rate — ask finance to reset billing if it should be voided.");
         }
 
         return back()->with('success', $wasOnStudentRate
-            ? "{$user->name} is back in the review queue and cannot be billed until the review is decided."
-            : "{$user->name} is back in the review queue. They stay on the participant rate and can still pay it.");
+            ? "{$user->full_name} is back in the review queue and cannot be billed until the review is decided."
+            : "{$user->full_name} is back in the review queue. They stay on the participant rate and can still pay it.");
     }
 }

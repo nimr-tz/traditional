@@ -141,7 +141,7 @@ class CheckinController extends Controller
 
         if ($user->isPaid()) {
             return response()->json([
-                'message' => "{$user->name} is already marked as paid.",
+                'message' => "{$user->full_name} is already marked as paid.",
                 'user' => $this->registrantPayload($user),
             ]);
         }
@@ -160,7 +160,7 @@ class CheckinController extends Controller
         app(SmsNotifier::class)->paymentConfirmed($user);
 
         return response()->json([
-            'message' => "Payment confirmed for {$user->name}.",
+            'message' => "Payment confirmed for {$user->full_name}.",
             'user' => $this->registrantPayload($user),
         ]);
     }
@@ -177,7 +177,7 @@ class CheckinController extends Controller
 
         if ($user->isPaid()) {
             return response()->json([
-                'message' => "{$user->name} is already marked as paid.",
+                'message' => "{$user->full_name} is already marked as paid.",
                 'user' => $this->registrantPayload($user),
             ]);
         }
@@ -195,7 +195,7 @@ class CheckinController extends Controller
         ConferenceEmail::sendTo($user, new FeeWaived($user, $validated['notes']));
 
         return response()->json([
-            'message' => "Fee waived for {$user->name}.",
+            'message' => "Fee waived for {$user->full_name}.",
             'user' => $this->registrantPayload($user),
         ]);
     }
@@ -205,7 +205,7 @@ class CheckinController extends Controller
     {
         return [
             ...$user->only([
-                'id', 'name', 'email', 'phone', 'institution', 'participant_type',
+                'id', 'name', 'full_name', 'email', 'phone', 'institution', 'participant_type',
                 'registration_code', 'fee_category', 'fee_amount', 'currency',
                 'payment_status', 'control_number', 'student_verification_status',
             ]),
@@ -242,7 +242,7 @@ class CheckinController extends Controller
             // way out — a control number for staff, settle for finance —
             // instead of dead-ending on an error string.
             return response()->json([
-                'message' => "{$user->name} has not paid yet — cannot check in.",
+                'message' => "{$user->full_name} has not paid yet — cannot check in.",
                 'user' => $this->registrantPayload($user),
             ], 422);
         }

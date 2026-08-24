@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import AppLayout from '@/layouts/app-layout';
-import { cn } from '@/lib/utils';
+import { cn, formatPersonName } from '@/lib/utils';
 import { type BreadcrumbItem, type SharedData } from '@/types';
 import { Head, Link, router, useForm, usePage } from '@inertiajs/react';
 import { CheckCircle2, ChevronRight, CreditCard, Gift, ScanLine, Search, ShieldCheck, UserPlus, X } from 'lucide-react';
@@ -16,6 +16,7 @@ const breadcrumbs: BreadcrumbItem[] = [{ title: 'Check-in', href: '/staff' }];
 interface Person {
     id: number;
     name: string;
+    salutation: string | null;
     /** Null for walk-ins registered at the desk without one. */
     email: string | null;
     phone: string | null;
@@ -73,6 +74,7 @@ interface StaffDashboardProps {
         countries: string[];
         east_africa_countries: string[];
         institutions: Institution[];
+        salutations: string[];
     };
     arrivals: Arrival[];
 }
@@ -300,7 +302,7 @@ function PersonRow({ person }: { person: Person }) {
             className="flex items-center justify-between gap-4 p-5 transition hover:bg-slate-50 dark:hover:bg-slate-900/40"
         >
             <div className="min-w-0">
-                <p className="text-base font-semibold">{person.name}</p>
+                <p className="text-base font-semibold">{formatPersonName(person)}</p>
                 <p className="text-muted-foreground truncate text-sm">{person.institution ?? person.email ?? person.phone ?? 'No contact on file'}</p>
             </div>
             <div className="flex shrink-0 items-center gap-3">
@@ -325,6 +327,7 @@ function WalkInForm({
     // decides which section of the form is even relevant.
     const [mode, setMode] = useState<'paying' | 'free'>('paying');
     const { data, setData, post, transform, processing, errors, reset } = useForm({
+        salutation: '',
         name: '',
         email: '',
         phone: '',
@@ -396,6 +399,20 @@ function WalkInForm({
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
+                <Field label="Title" error={errors.salutation}>
+                    <Select value={data.salutation} onValueChange={(value) => setData('salutation', value)}>
+                        <SelectTrigger aria-invalid={Boolean(errors.salutation)}>
+                            <SelectValue placeholder="Optional" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {deskOptions.salutations.map((s) => (
+                                <SelectItem key={s} value={s}>
+                                    {s}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </Field>
                 <Field label="Full name" required error={errors.name}>
                     <Input value={data.name} onChange={(event) => setData('name', event.target.value)} autoComplete="off" />
                 </Field>

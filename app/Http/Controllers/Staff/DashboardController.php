@@ -57,7 +57,7 @@ class DashboardController extends Controller
         $attendedEver = (clone $expected)->whereHas('attendance')->count();
 
         return Inertia::render('staff/dashboard', [
-            'staffName' => $staff->name,
+            'staffName' => $staff->full_name,
             'canManageFinance' => $staff->canManageFinance(),
             'conferenceName' => ConferenceSetting::get('conference_name'),
             'venue' => ConferenceSetting::get('venue'),
@@ -81,9 +81,10 @@ class DashboardController extends Controller
                 'countries' => config('tmsc.countries'),
                 'east_africa_countries' => config('tmsc.east_africa_countries'),
                 'institutions' => Institution::where('active', true)->orderBy('sort_order')->get(['id', 'name']),
+                'salutations' => config('tmsc.salutations'),
             ],
             // The side panel: who is coming through right now, newest first.
-            'arrivals' => Attendance::with(['user:id,name,institution', 'staff:id,name'])
+            'arrivals' => Attendance::with(['user:id,name,salutation,institution', 'staff:id,name,salutation'])
                 ->latest('checked_in_at')
                 ->limit(30)
                 ->get()
@@ -92,9 +93,9 @@ class DashboardController extends Controller
                     'checked_in_at' => $attendance->checked_in_at,
                     'attendance_date' => $attendance->attendance_date?->toDateString(),
                     'is_today' => $attendance->attendance_date?->isToday() ?? false,
-                    'name' => $attendance->user?->name,
+                    'name' => $attendance->user?->full_name,
                     'institution' => $attendance->user?->institution,
-                    'recorded_by' => $attendance->staff?->name,
+                    'recorded_by' => $attendance->staff?->full_name,
                 ]),
         ]);
     }
@@ -114,15 +115,15 @@ class DashboardController extends Controller
 
         $user->load([
             'attendance' => fn ($query) => $query->orderByDesc('attendance_date'),
-            'attendance.staff:id,name',
+            'attendance.staff:id,name,salutation',
             'badgePrints' => fn ($query) => $query->orderByDesc('printed_at'),
-            'badgePrints.printedBy:id,name',
-            'verifiedBy:id,name',
+            'badgePrints.printedBy:id,name,salutation',
+            'verifiedBy:id,name,salutation',
         ]);
 
         $category = FeeCategory::where('key', $user->fee_category)->first();
         $studentVerifier = $user->student_verified_by
-            ? User::find($user->student_verified_by, ['id', 'name'])
+            ? User::find($user->student_verified_by, ['id', 'name', 'salutation'])
             : null;
 
         return Inertia::render('staff/registrant', [
@@ -147,13 +148,13 @@ class DashboardController extends Controller
                 'control_number' => $user->control_number,
                 'paid_at' => $user->paid_at,
                 'payment_notes' => $user->payment_notes,
-                'payment_verified_by' => $user->verifiedBy?->name,
+                'payment_verified_by' => $user->verifiedBy?->full_name,
                 'registration_code' => $user->registration_code,
                 'registered_at' => $user->created_at,
                 'requires_student_verification' => $user->requiresStudentVerification(),
                 'student_verification_status' => $user->student_verification_status,
                 'student_verified_at' => $user->student_verified_at,
-                'student_verified_by' => $studentVerifier?->name,
+                'student_verified_by' => $studentVerifier?->full_name,
                 'student_verification_notes' => $user->student_verification_notes,
                 'can_print_badge' => $user->canPrintBadge(),
                 // Same shape as the search payload, so this reuses StandingBadge
@@ -167,13 +168,13 @@ class DashboardController extends Controller
                 'id' => $attendance->id,
                 'date' => $attendance->attendance_date?->toDateString(),
                 'checked_in_at' => $attendance->checked_in_at,
-                'recorded_by' => $attendance->staff?->name,
+                'recorded_by' => $attendance->staff?->full_name,
             ]),
             'badgePrints' => $user->badgePrints->map(fn ($print) => [
                 'id' => $print->id,
                 'print_number' => $print->print_number,
                 'printed_at' => $print->printed_at,
-                'printed_by' => $print->printedBy?->name,
+                'printed_by' => $print->printedBy?->full_name,
             ]),
         ]);
     }
@@ -192,9 +193,9 @@ class DashboardController extends Controller
         ['user' => $user, 'billing' => $billing] = $registrar->register($validated, $request->user());
 
         return back()->with(in_array($billing['status'], ['ready', 'waived'], true) ? 'success' : 'info', match ($billing['status']) {
-            'ready' => "{$user->name} is registered. Control number {$billing['control_number']} — they can pay it now.",
-            'waived' => "{$user->name} is registered. Fee waived — their badge is ready.",
-            default => "{$user->name} is registered. {$billing['message']}",
+            'ready' => "{$user->full_name} is registered. Control number {$billing['control_number']} — they can pay it now.",
+            'waived' => "{$user->full_name} is registered. Fee waived — their badge is ready.",
+            default => "{$user->full_name} is registered. {$billing['message']}",
         });
     }
 
@@ -211,7 +212,7 @@ class DashboardController extends Controller
         abort_unless($user->hasRole(User::ROLE_USER), 404);
 
         if (! $user->canPrintBadge()) {
-            return back()->with('error', "{$user->name} has not paid, so there is no badge to print.");
+            return back()->with('error', "{$user->full_name} has not paid, so there is no badge to print.");
         }
 
         return $printer->render($user, Auth::user())->stream($printer->filenameFor($user));
@@ -225,7 +226,7 @@ class DashboardController extends Controller
         $billing = $registrar->startBilling($user);
 
         return back()->with($billing['status'] === 'ready' ? 'success' : 'info', $billing['control_number']
-            ? "Control number for {$user->name}: {$billing['control_number']}"
+            ? "Control number for {$user->full_name}: {$billing['control_number']}"
             : $billing['message']);
     }
 
@@ -241,7 +242,7 @@ class DashboardController extends Controller
         $validated = $request->validate(['notes' => ['nullable', 'string', 'max:1000']]);
 
         if ($user->isPaid()) {
-            return back()->with('info', "{$user->name} is already marked as paid.");
+            return back()->with('info', "{$user->full_name} is already marked as paid.");
         }
 
         $user->forceFill([
@@ -257,7 +258,7 @@ class DashboardController extends Controller
         ConferenceEmail::sendTo($user, new PaymentConfirmed($user));
         app(SmsNotifier::class)->paymentConfirmed($user);
 
-        return back()->with('success', "Payment confirmed for {$user->name}. Badge code {$user->registration_code}.");
+        return back()->with('success', "Payment confirmed for {$user->full_name}. Badge code {$user->registration_code}.");
     }
 
     /** Finance waives a fee. Notes are required — a waiver is the one way in without money. */
@@ -268,7 +269,7 @@ class DashboardController extends Controller
         $validated = $request->validate(['notes' => ['required', 'string', 'max:1000']]);
 
         if ($user->isPaid()) {
-            return back()->with('info', "{$user->name} is already marked as paid.");
+            return back()->with('info', "{$user->full_name} is already marked as paid.");
         }
 
         $user->forceFill([
@@ -283,7 +284,7 @@ class DashboardController extends Controller
 
         ConferenceEmail::sendTo($user, new FeeWaived($user, $validated['notes']));
 
-        return back()->with('success', "Fee waived for {$user->name}. Badge code {$user->registration_code}.");
+        return back()->with('success', "Fee waived for {$user->full_name}. Badge code {$user->registration_code}.");
     }
 
     /**
@@ -312,6 +313,7 @@ class DashboardController extends Controller
             ->map(fn (User $user) => [
                 'id' => $user->id,
                 'name' => $user->name,
+                'salutation' => $user->salutation,
                 'email' => $user->email,
                 'phone' => $user->phone,
                 'institution' => $user->institution,

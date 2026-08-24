@@ -44,7 +44,7 @@ class ReviewerAssignmentController extends Controller
         ]);
 
         $query = AbstractSubmission::query()
-            ->with(['user:id,name,email', 'subtheme:id,title', 'reviewerOne:id,name', 'reviewerTwo:id,name'])
+            ->with(['user:id,name,salutation,email', 'subtheme:id,title', 'reviewerOne:id,name,salutation', 'reviewerTwo:id,name,salutation'])
             ->withCount('reviewerDecisions')
             ->with(['reviewerDecisions:id,abstract_submission_id,reviewer_id,decided_at'])
             ->when($data['stage'] ?? null, fn (Builder $q, string $stage) => $this->scopeToStage($q, $stage))
@@ -71,10 +71,10 @@ class ReviewerAssignmentController extends Controller
                 'title' => $abstract->title,
                 'status' => $abstract->status,
                 'created_at' => $abstract->created_at,
-                'author' => $abstract->user?->only(['id', 'name', 'email']),
+                'author' => $abstract->user?->only(['id', 'name', 'full_name', 'email']),
                 'subtheme' => $abstract->subtheme?->only(['id', 'title']),
-                'reviewer_one' => $abstract->reviewerOne?->only(['id', 'name']),
-                'reviewer_two' => $abstract->reviewerTwo?->only(['id', 'name']),
+                'reviewer_one' => $abstract->reviewerOne?->only(['id', 'name', 'full_name']),
+                'reviewer_two' => $abstract->reviewerTwo?->only(['id', 'name', 'full_name']),
                 'decided_reviewer_ids' => $abstract->reviewerDecisions->pluck('reviewer_id'),
                 'decisions_count' => $abstract->reviewer_decisions_count,
                 'stage' => $this->stageOf($abstract),
@@ -160,7 +160,7 @@ class ReviewerAssignmentController extends Controller
         );
 
         return User::withRole(User::ABSTRACT_REVIEWER_ROLES)
-            ->select(['id', 'name', 'email', 'role'])
+            ->select(['id', 'name', 'salutation', 'email', 'role'])
             ->selectSub(
                 $assignedToReviewer(AbstractSubmission::query())->selectRaw('count(*)'),
                 'assigned_count'
@@ -187,6 +187,7 @@ class ReviewerAssignmentController extends Controller
             ->map(fn (User $reviewer) => [
                 'id' => $reviewer->id,
                 'name' => $reviewer->name,
+                'full_name' => $reviewer->full_name,
                 'email' => $reviewer->email,
                 'assigned_count' => (int) $reviewer->assigned_count,
                 'awaiting_count' => (int) $reviewer->awaiting_count,

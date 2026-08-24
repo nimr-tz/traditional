@@ -41,7 +41,7 @@ class AbstractController extends Controller
             $q->where('reviewer_one_id', $user->id)->orWhere('reviewer_two_id', $user->id);
         });
 
-        $query = AbstractSubmission::with(['subtheme', 'reviewerOne:id,name', 'reviewerTwo:id,name'])
+        $query = AbstractSubmission::with(['subtheme', 'reviewerOne:id,name,salutation', 'reviewerTwo:id,name,salutation'])
             // Blind review: the author relation is only loaded for admins, so a
             // reviewer's payload can never carry it (see App\Support\BlindReview).
             ->when(! $reviewerOnly, fn ($q) => $q->with('user'))
@@ -145,12 +145,12 @@ class AbstractController extends Controller
             // Only admins get the author relation at all.
             $isAdmin ? 'user' : null,
             'subtheme',
-            'reviewer:id,name,email',
-            'reviewerOne:id,name,email',
-            'reviewerTwo:id,name,email',
-            'reviewerDecisions.reviewer:id,name,email',
+            'reviewer:id,name,salutation,email',
+            'reviewerOne:id,name,salutation,email',
+            'reviewerTwo:id,name,salutation,email',
+            'reviewerDecisions.reviewer:id,name,salutation,email',
             'reviewerDecisions.comments',
-            'reviewHistory.actor:id,name,email',
+            'reviewHistory.actor:id,name,salutation,email',
         ]));
 
         $currentRound = $abstract->review_round ?? 1;
@@ -187,7 +187,7 @@ class AbstractController extends Controller
                 'id' => $decision->id,
                 'round' => $decision->round,
                 'reviewer_id' => $decision->reviewer_id,
-                'reviewer_name' => $isAdmin ? $decision->reviewer?->name : 'You',
+                'reviewer_name' => $isAdmin ? $decision->reviewer?->full_name : 'You',
                 'recommendation' => $decision->recommendation,
                 'decided_at' => $decision->decided_at,
                 'comments' => $decision->comments,
@@ -213,7 +213,7 @@ class AbstractController extends Controller
                 ? User::withRole(User::ABSTRACT_REVIEWER_ROLES)
                     ->where('id', '!=', $abstract->user_id)
                     ->orderBy('name')
-                    ->get(['id', 'name', 'email'])
+                    ->get(['id', 'name', 'salutation', 'email'])
                 : [],
         ]);
     }

@@ -46,7 +46,7 @@ class DashboardController extends Controller
                 'students_pending' => (clone $students)->where('student_verification_status', 'pending')->count(),
             ],
             'reviewQueue' => AbstractSubmission::query()
-                ->with(['user:id,name,email,institution', 'subtheme:id,title'])
+                ->with(['user:id,name,salutation,email,institution', 'subtheme:id,title'])
                 ->where('status', 'submitted')
                 ->oldest('resubmitted_at')
                 ->oldest('created_at')
@@ -56,7 +56,7 @@ class DashboardController extends Controller
                 ->where('student_verification_status', 'pending')
                 ->oldest()
                 ->limit(5)
-                ->get(['id', 'name', 'email', 'institution', 'fee_category', 'created_at']),
+                ->get(['id', 'name', 'salutation', 'email', 'institution', 'fee_category', 'created_at']),
         ]);
     }
 

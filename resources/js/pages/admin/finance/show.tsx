@@ -13,6 +13,7 @@ type PaymentStatus = 'pending' | 'submitted' | 'verified' | 'rejected' | 'waived
 interface Registration {
     id: number;
     name: string;
+    full_name: string;
     email: string;
     fee_category: string | null;
     fee_amount: string | null;
@@ -56,7 +57,7 @@ function initials(name: string): string {
 
 export default function FinanceShow({ registration }: FinanceShowProps) {
     const { props } = usePage<{ flash: { success?: string; error?: string } }>();
-    const breadcrumbsWithName: BreadcrumbItem[] = [...breadcrumbs, { title: registration.name, href: '#' }];
+    const breadcrumbsWithName: BreadcrumbItem[] = [...breadcrumbs, { title: registration.full_name, href: '#' }];
 
     const verifyForm = useForm({ notes: '' });
     const rejectForm = useForm({ notes: '' });
@@ -88,7 +89,7 @@ export default function FinanceShow({ registration }: FinanceShowProps) {
 
     return (
         <AppLayout breadcrumbs={breadcrumbsWithName}>
-            <Head title={`Payment: ${registration.name}`} />
+            <Head title={`Payment: ${registration.full_name}`} />
 
             <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 p-4 pb-10 md:p-6">
                 <header className="flex flex-col gap-4 border-b pb-5 md:flex-row md:items-end md:justify-between">
@@ -98,7 +99,7 @@ export default function FinanceShow({ registration }: FinanceShowProps) {
                         </IconTile>
                         <div>
                             <p className="text-xs font-bold tracking-[0.18em] text-[#4c8a1f] uppercase">Finance</p>
-                            <h1 className="mt-2 font-serif text-3xl font-semibold">{registration.name}</h1>
+                            <h1 className="mt-2 font-serif text-3xl font-semibold">{registration.full_name}</h1>
                             <p className="text-muted-foreground mt-1 text-sm">{registration.email}</p>
                         </div>
                     </div>

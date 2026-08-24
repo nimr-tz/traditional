@@ -21,6 +21,7 @@ type PaymentStatus = 'pending' | 'submitted' | 'verified' | 'rejected' | 'waived
 interface Registration {
     id: number;
     name: string;
+    full_name: string;
     email: string;
     fee_category: string | null;
     fee_amount: string | null;
@@ -198,7 +199,7 @@ export default function FinancePayments({ registrations, filters, stats }: Finan
                                                             {initials(registration.name)}
                                                         </div>
                                                         <div className="min-w-0">
-                                                            <div className="font-semibold">{registration.name}</div>
+                                                            <div className="font-semibold">{registration.full_name}</div>
                                                             <div className="text-muted-foreground mt-0.5 truncate text-xs">{registration.email}</div>
                                                         </div>
                                                     </div>

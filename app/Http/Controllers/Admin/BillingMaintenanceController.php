@@ -100,7 +100,7 @@ class BillingMaintenanceController extends Controller
     {
         return $plan->map(fn (array $row) => [
             'id' => $row['user']->id,
-            'name' => $row['user']->name,
+            'name' => $row['user']->full_name,
             'email' => $row['user']->email,
             'payment_status' => $row['user']->payment_status,
             'control_number' => $row['user']->control_number,

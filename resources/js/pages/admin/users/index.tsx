@@ -39,6 +39,7 @@ const ALL_ROLES = Object.keys(ROLE_LABELS) as UserRole[];
 interface UserRow {
     id: number;
     name: string;
+    full_name: string;
     email: string;
     role: UserRole;
     roles: UserRole[];
@@ -218,7 +219,7 @@ export default function UsersIndex({ roleAccessChanges }: UsersIndexProps) {
                 preserveScroll: true,
                 preserveState: true,
                 onSuccess: () => {
-                    setActionSuccess(`${user.name}'s roles were updated.`);
+                    setActionSuccess(`${user.full_name}'s roles were updated.`);
                     fetchUsers();
                 },
                 onError: (errors) => setActionError(String(errors.roles ?? errors.primary_role ?? 'Roles could not be updated.')),
@@ -300,7 +301,7 @@ export default function UsersIndex({ roleAccessChanges }: UsersIndexProps) {
                                         >
                                             <div className="min-w-0">
                                                 <div className="flex items-center gap-2">
-                                                    <p className="truncate text-sm font-medium">{user.name}</p>
+                                                    <p className="truncate text-sm font-medium">{user.full_name}</p>
                                                     {isCurrentUser && (
                                                         <span className="bg-primary/10 text-primary rounded-full px-2 py-0.5 text-[11px] font-semibold">
                                                             You

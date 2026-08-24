@@ -68,6 +68,7 @@ class WalkInRegistrar
             : false;
 
         return [
+            'salutation' => ['nullable', 'string', Rule::in(config('tmsc.salutations'))],
             'name' => ['required', 'string', 'max:255'],
             'email' => ['nullable', 'string', 'lowercase', 'email', 'max:255', 'unique:users,email'],
             'phone' => ['required', 'string', 'max:50'],
@@ -167,7 +168,7 @@ class WalkInRegistrar
                 'student_verification_status' => 'verified',
                 'student_verified_at' => now(),
                 'student_verified_by' => $staff->id,
-                'student_verification_notes' => "Student ID checked in person at the venue desk by {$staff->name}.",
+                'student_verification_notes' => "Student ID checked in person at the venue desk by {$staff->full_name}.",
             ])->save();
         }
 

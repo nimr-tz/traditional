@@ -142,7 +142,7 @@ class SmsCampaignController extends Controller
                 'recipient_count' => $recipients->count(),
                 'status' => 'queued',
                 'created_by' => $request->user()->id,
-                'created_by_name' => $request->user()->name,
+                'created_by_name' => $request->user()->full_name,
                 'created_by_email' => $request->user()->email,
             ]);
 

@@ -20,6 +20,7 @@ interface RevenueBucket {
 interface PendingPayment {
     id: number;
     name: string;
+    full_name: string;
     email: string;
     fee_category: string | null;
     updated_at: string;
@@ -252,7 +253,7 @@ export default function FinanceDashboard({
                                         >
                                             <div className="flex items-start justify-between gap-3">
                                                 <div className="min-w-0">
-                                                    <p className="truncate text-sm font-bold">{registration.name}</p>
+                                                    <p className="truncate text-sm font-bold">{registration.full_name}</p>
                                                     <p className="text-muted-foreground mt-0.5 truncate text-xs">{registration.email}</p>
                                                     <p className="text-muted-foreground mt-1 text-[11px] font-bold uppercase">
                                                         {registration.fee_category?.replaceAll('_', ' ') || 'Category not set'}

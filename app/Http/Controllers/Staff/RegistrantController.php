@@ -54,6 +54,7 @@ class RegistrantController extends Controller
             ->through(fn (User $user) => [
                 'id' => $user->id,
                 'name' => $user->name,
+                'salutation' => $user->salutation,
                 'email' => $user->email,
                 'phone' => $user->phone,
                 'institution' => $user->institution,

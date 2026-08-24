@@ -13,13 +13,14 @@ interface QueueAbstract {
     presentation_type: 'oral' | 'poster';
     created_at: string;
     resubmitted_at: string | null;
-    user: { name: string; email: string; institution: string | null };
+    user: { name: string; full_name: string; email: string; institution: string | null };
     subtheme: { title: string } | null;
 }
 
 interface QueueStudent {
     id: number;
     name: string;
+    full_name: string;
     email: string;
     institution: string | null;
     fee_category: string;
@@ -167,7 +168,7 @@ export default function AdminDashboard({ stats, reviewQueue, studentQueue }: Adm
                                             </div>
                                             <h3 className="mt-2 leading-6 font-semibold text-balance">{submission.title}</h3>
                                             <p className="text-muted-foreground mt-1 text-xs">
-                                                {submission.user.name} · {submission.subtheme?.title || submission.user.institution}
+                                                {submission.user.full_name} · {submission.subtheme?.title || submission.user.institution}
                                             </p>
                                             <p className="text-muted-foreground mt-2 text-xs">
                                                 {submission.resubmitted_at ? 'Resubmitted' : 'Submitted'}{' '}
@@ -214,7 +215,7 @@ export default function AdminDashboard({ stats, reviewQueue, studentQueue }: Adm
                                         className="group hover:bg-muted/40 flex items-center justify-between gap-4 p-5"
                                     >
                                         <div className="min-w-0">
-                                            <p className="truncate font-semibold">{student.name}</p>
+                                            <p className="truncate font-semibold">{student.full_name}</p>
                                             <p className="text-muted-foreground mt-1 truncate text-xs">{student.institution || student.email}</p>
                                         </div>
                                         <ArrowRight className="text-muted-foreground size-4 transition-transform group-hover:translate-x-0.5" />

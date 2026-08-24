@@ -1,5 +1,5 @@
 import { StatusPill, type PillTone } from '@/components/status-pill';
-import { cn } from '@/lib/utils';
+import { cn, formatPersonName } from '@/lib/utils';
 import { Printer } from 'lucide-react';
 
 /**
@@ -8,6 +8,8 @@ import { Printer } from 'lucide-react';
  */
 export interface RegistrantStanding {
     name: string;
+    /** Absent for callers that never select it — falls back to the bare name. */
+    salutation?: string | null;
     is_paid: boolean;
     fee_amount: string | null;
     currency: string | null;
@@ -99,7 +101,7 @@ export function PrintBadgeButton({ person, printRoute }: { person: { id: number;
 
         if (
             !window.confirm(
-                `${already} already been printed for ${person.name}. Printing another means more than one badge is in circulation for them. Print a replacement anyway?`,
+                `${already} already been printed for ${formatPersonName(person)}. Printing another means more than one badge is in circulation for them. Print a replacement anyway?`,
             )
         ) {
             event.preventDefault();

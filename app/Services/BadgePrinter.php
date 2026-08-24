@@ -29,7 +29,7 @@ class BadgePrinter
     {
         if (! $user->canPrintBadge()) {
             throw new RuntimeException(
-                "No badge for {$user->name}: a badge requires a verified or waived payment."
+                "No badge for {$user->full_name}: a badge requires a verified or waived payment."
             );
         }
 
@@ -44,7 +44,7 @@ class BadgePrinter
 
         $category = $this->categoryLabel($user);
 
-        BadgePrintLog::record($user, $printedBy, $user->name, $user->institution, $category);
+        BadgePrintLog::record($user, $printedBy, $user->full_name, $user->institution, $category);
 
         $template = config('badge.template');
 

@@ -20,6 +20,7 @@ type Stage = 'unassigned' | 'awaiting_reviews' | 'ready_for_decision' | 'decided
 interface Ref {
     id: number;
     name: string;
+    full_name: string;
 }
 
 interface Submission {
@@ -27,7 +28,7 @@ interface Submission {
     title: string;
     status: string;
     created_at: string;
-    author: { id: number; name: string; email: string } | null;
+    author: { id: number; name: string; full_name: string; email: string } | null;
     subtheme: { id: number; title: string } | null;
     reviewer_one: Ref | null;
     reviewer_two: Ref | null;
@@ -39,6 +40,7 @@ interface Submission {
 interface Reviewer {
     id: number;
     name: string;
+    full_name: string;
     email: string;
     assigned_count: number;
     awaiting_count: number;
@@ -112,7 +114,7 @@ function AssignRow({ submission, reviewers, onDone }: { submission: Submission; 
 
     const reviewerOption = (reviewer: Reviewer) => (
         <SelectItem key={reviewer.id} value={String(reviewer.id)}>
-            {reviewer.name} · {reviewer.awaiting_count} pending
+            {reviewer.full_name} · {reviewer.awaiting_count} pending
         </SelectItem>
     );
 
@@ -244,7 +246,7 @@ export default function AssignmentsIndex({ submissions, filters, stats, reviewer
                                                         filters.reviewer_id === reviewer.id && 'text-[#4c8a1f]',
                                                     )}
                                                 >
-                                                    {reviewer.name}
+                                                    {reviewer.full_name}
                                                 </button>
                                                 <div className="text-muted-foreground truncate text-xs">{reviewer.email}</div>
                                             </td>
@@ -318,7 +320,7 @@ export default function AssignmentsIndex({ submissions, filters, stats, reviewer
                                 <SelectItem value="all">All reviewers</SelectItem>
                                 {reviewers.map((reviewer) => (
                                     <SelectItem key={reviewer.id} value={String(reviewer.id)}>
-                                        {reviewer.name}
+                                        {reviewer.full_name}
                                     </SelectItem>
                                 ))}
                             </SelectContent>
@@ -360,7 +362,7 @@ export default function AssignmentsIndex({ submissions, filters, stats, reviewer
                                         title={decided ? 'Recommendation submitted' : 'Recommendation outstanding'}
                                     >
                                         {decided ? <CheckCircle2 className="size-3" /> : <Clock3 className="size-3" />}
-                                        {reviewer.name}
+                                        {reviewer.full_name}
                                     </span>
                                 );
                             };
@@ -373,7 +375,7 @@ export default function AssignmentsIndex({ submissions, filters, stats, reviewer
                                                 {submission.title}
                                             </Link>
                                             <p className="text-muted-foreground mt-0.5 text-xs">
-                                                {submission.author?.name ?? 'Unknown author'} · {submission.subtheme?.title ?? 'No sub-theme'} ·
+                                                {submission.author?.full_name ?? 'Unknown author'} · {submission.subtheme?.title ?? 'No sub-theme'} ·
                                                 submitted {formatDate(submission.created_at)}
                                             </p>
                                             <div className="mt-2 flex flex-wrap items-center gap-1.5">

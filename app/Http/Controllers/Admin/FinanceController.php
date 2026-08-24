@@ -71,7 +71,7 @@ class FinanceController extends Controller
             'todayVerifiedCount' => $todayUsers->count(),
             'todayRevenue' => $todayRevenue,
             'pendingPayments' => (clone $registrants)->where('payment_status', 'submitted')
-                ->latest('updated_at')->limit(5)->get(['id', 'name', 'email', 'fee_category', 'updated_at']),
+                ->latest('updated_at')->limit(5)->get(['id', 'name', 'salutation', 'email', 'fee_category', 'updated_at']),
             'categoryStats' => (clone $registrants)->whereNotNull('fee_category')
                 ->select('fee_category', DB::raw('count(*) as total'))
                 ->groupBy('fee_category')
@@ -111,7 +111,7 @@ class FinanceController extends Controller
 
         return Inertia::render('admin/finance/show', [
             'registration' => $user->only([
-                'id', 'name', 'email', 'fee_category', 'fee_amount', 'currency',
+                'id', 'name', 'full_name', 'email', 'fee_category', 'fee_amount', 'currency',
                 'control_number', 'billing_request_id', 'payment_method', 'payment_proof_path',
                 'payment_status', 'payment_notes', 'paid_at', 'created_at', 'updated_at',
             ]),
@@ -139,7 +139,7 @@ class FinanceController extends Controller
         ConferenceEmail::sendTo($user, new PaymentConfirmed($user));
         app(SmsNotifier::class)->paymentConfirmed($user);
 
-        return back()->with('success', "Payment for {$user->name} has been verified.");
+        return back()->with('success', "Payment for {$user->full_name} has been verified.");
     }
 
     public function reject(Request $request, User $user): RedirectResponse
@@ -162,7 +162,7 @@ class FinanceController extends Controller
 
         ConferenceEmail::sendTo($user, new PaymentRejected($user, $request->notes));
 
-        return back()->with('success', "Payment for {$user->name} has been rejected.");
+        return back()->with('success', "Payment for {$user->full_name} has been rejected.");
     }
 
     public function waive(Request $request, User $user): RedirectResponse
@@ -185,7 +185,7 @@ class FinanceController extends Controller
 
         ConferenceEmail::sendTo($user, new FeeWaived($user, $request->notes));
 
-        return back()->with('success', "Registration fee for {$user->name} has been waived.");
+        return back()->with('success', "Registration fee for {$user->full_name} has been waived.");
     }
 
     public function returnWaiverToPayment(User $user): RedirectResponse
@@ -201,7 +201,7 @@ class FinanceController extends Controller
             'payment_notes' => 'Waiver removed by finance. Participant returned to the payment flow.',
         ])->save();
 
-        return back()->with('success', "{$user->name} has been returned to the payment flow.");
+        return back()->with('success', "{$user->full_name} has been returned to the payment flow.");
     }
 
     public function resetBilling(User $user): RedirectResponse
@@ -221,7 +221,7 @@ class FinanceController extends Controller
             'payment_notes' => "Billing reset by finance (old bill ID: {$oldBillId}). Participant may re-request a control number.",
         ])->save();
 
-        return back()->with('success', "Billing request reset for {$user->name}.");
+        return back()->with('success', "Billing request reset for {$user->full_name}.");
     }
 
     public function downloadInvoice(User $user, GepgService $gepg)
@@ -285,7 +285,7 @@ class FinanceController extends Controller
 
         $query = User::withRole(User::ROLE_USER)
             ->when($status !== 'all', fn ($q) => $q->where('payment_status', $status))
-            ->with('verifiedBy:id,name');
+            ->with('verifiedBy:id,name,salutation');
 
         return response()->streamDownload(function () use ($query) {
             $file = fopen('php://output', 'w');
@@ -293,7 +293,7 @@ class FinanceController extends Controller
 
             $query->orderBy('updated_at', 'desc')->each(function (User $user) use ($file) {
                 fputcsv($file, [
-                    $user->name,
+                    $user->full_name,
                     $user->email,
                     $user->fee_category ?? 'Not set',
                     $user->currency,
@@ -301,7 +301,7 @@ class FinanceController extends Controller
                     $user->control_number ?? '-',
                     $user->payment_status,
                     $user->paid_at?->format('Y-m-d H:i') ?? '-',
-                    $user->verifiedBy?->name ?? '-',
+                    $user->verifiedBy?->full_name ?? '-',
                     $user->payment_notes ?? '',
                 ]);
             });

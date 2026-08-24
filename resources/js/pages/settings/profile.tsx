@@ -54,15 +54,17 @@ interface RegistrationInfo {
 interface ProfileProps {
     mustVerifyEmail: boolean;
     status?: string;
+    salutations: string[];
     participantTypes: Record<string, string>;
     feeCategories: FeeCategory[];
     registration: RegistrationInfo;
 }
 
-export default function Profile({ mustVerifyEmail, status, participantTypes, feeCategories, registration }: ProfileProps) {
+export default function Profile({ mustVerifyEmail, status, salutations, participantTypes, feeCategories, registration }: ProfileProps) {
     const { auth } = usePage<SharedData>().props;
 
     const { data, setData, patch, errors, processing, recentlySuccessful } = useForm({
+        salutation: auth.user.salutation ?? '',
         name: auth.user.name,
     });
 
@@ -127,6 +129,25 @@ export default function Profile({ mustVerifyEmail, status, participantTypes, fee
                     />
 
                     <form onSubmit={submit} className="mt-6 space-y-5">
+                        <div className="grid gap-2">
+                            <Label htmlFor="salutation">Title</Label>
+
+                            <Select value={data.salutation} onValueChange={(value) => setData('salutation', value)}>
+                                <SelectTrigger id="salutation" className="w-40" aria-invalid={Boolean(errors.salutation)}>
+                                    <SelectValue placeholder="None" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {salutations.map((s) => (
+                                        <SelectItem key={s} value={s}>
+                                            {s}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+
+                            <InputError message={errors.salutation} />
+                        </div>
+
                         <div className="grid gap-2">
                             <Label htmlFor="name">Name</Label>
 

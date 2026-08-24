@@ -20,6 +20,7 @@ type VerificationStatus = 'pending' | 'verified' | 'rejected';
 interface Student {
     id: number;
     name: string;
+    full_name: string;
     email: string;
     institution: string | null;
     fee_category: string;
@@ -85,7 +86,7 @@ function StudentRow({ student, participantTypes }: { student: Student; participa
 
         if (
             !window.confirm(
-                `Refuse the student rate for ${student.name} and move them to the standard participant category?${kept} They will be emailed.`,
+                `Refuse the student rate for ${student.full_name} and move them to the standard participant category?${kept} They will be emailed.`,
             )
         ) {
             return;
@@ -96,8 +97,8 @@ function StudentRow({ student, participantTypes }: { student: Student; participa
 
     const reopen = () => {
         const warning = student.control_number
-            ? `${student.name} already has control number ${student.control_number} at the student rate. Reopening the review does not void it — finance must reset the billing. Continue?`
-            : `Undo this decision and put ${student.name} back in the review queue?`;
+            ? `${student.full_name} already has control number ${student.control_number} at the student rate. Reopening the review does not void it — finance must reset the billing. Continue?`
+            : `Undo this decision and put ${student.full_name} back in the review queue?`;
 
         if (!window.confirm(warning)) {
             return;
@@ -116,7 +117,7 @@ function StudentRow({ student, participantTypes }: { student: Student; participa
                     {initials(student.name)}
                 </div>
                 <div className="min-w-0">
-                    <p className="font-semibold">{student.name}</p>
+                    <p className="font-semibold">{student.full_name}</p>
                     <p className="text-muted-foreground mt-0.5 truncate text-sm">{student.email}</p>
                     <p className="text-muted-foreground mt-1 truncate text-xs">{student.institution}</p>
                     <div className="mt-2.5 flex flex-wrap items-center gap-2">

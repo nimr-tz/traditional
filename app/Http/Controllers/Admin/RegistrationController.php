@@ -84,7 +84,7 @@ class RegistrationController extends Controller
             'previous_email' => $previousEmail,
             'new_email' => $user->email,
             'changed_by' => $request->user()->id,
-            'changed_by_name' => $request->user()->name,
+            'changed_by_name' => $request->user()->full_name,
             'changed_by_email' => $request->user()->email,
             'reason' => $data['reason'] ?? null,
         ]);
@@ -106,7 +106,7 @@ class RegistrationController extends Controller
         $sheet->fromArray($headers, null, 'A1');
 
         $rows = User::withRole(User::ROLE_USER)->with('attendance')->get()->map(fn (User $user) => [
-            $user->name,
+            $user->full_name,
             $user->email,
             $user->institution,
             $user->phone,

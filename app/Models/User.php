@@ -6,6 +6,7 @@ use Database\Factories\UserFactory;
 use Illuminate\Auth\MustVerifyEmail;
 use Illuminate\Contracts\Auth\MustVerifyEmail as MustVerifyEmailContract;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -95,6 +96,22 @@ class User extends Authenticatable implements MustVerifyEmailContract
         'password',
         'remember_token',
     ];
+
+    /**
+     * Always available wherever a User serializes to an array/JSON — e.g. every
+     * Inertia prop and Blade view — without every controller having to select
+     * `salutation` and compose it by hand. A `select()`/`only()` that omits
+     * `salutation` still works, it just falls back to the bare name.
+     */
+    protected $appends = ['full_name'];
+
+    /** "Dr. Jane Doe" — the name a person should be addressed or listed by everywhere. */
+    protected function fullName(): Attribute
+    {
+        return Attribute::make(
+            get: fn () => trim(($this->salutation ? $this->salutation.' ' : '').$this->name),
+        );
+    }
 
     protected function casts(): array
     {

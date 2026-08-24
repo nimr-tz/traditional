@@ -65,6 +65,7 @@ class AdministratorController extends Controller
             ->through(fn (User $user) => [
                 'id' => $user->id,
                 'name' => $user->name,
+                'full_name' => $user->full_name,
                 'email' => $user->email,
                 'role' => $user->role,
                 'roles' => $user->roles(),
@@ -164,10 +165,10 @@ class AdministratorController extends Controller
             foreach ($addedRoles as $role) {
                 AdministratorAccessChange::create([
                     'target_user_id' => $target->id,
-                    'target_name' => $target->name,
+                    'target_name' => $target->full_name,
                     'target_email' => $target->email,
                     'changed_by' => $request->user()->id,
-                    'changed_by_name' => $request->user()->name,
+                    'changed_by_name' => $request->user()->full_name,
                     'changed_by_email' => $request->user()->email,
                     'action' => 'granted',
                     'role' => $role,
@@ -177,10 +178,10 @@ class AdministratorController extends Controller
             foreach ($removedRoles as $role) {
                 AdministratorAccessChange::create([
                     'target_user_id' => $target->id,
-                    'target_name' => $target->name,
+                    'target_name' => $target->full_name,
                     'target_email' => $target->email,
                     'changed_by' => $request->user()->id,
-                    'changed_by_name' => $request->user()->name,
+                    'changed_by_name' => $request->user()->full_name,
                     'changed_by_email' => $request->user()->email,
                     'action' => 'revoked',
                     'role' => $role,
@@ -188,6 +189,6 @@ class AdministratorController extends Controller
             }
         });
 
-        return back()->with('success', "{$target->name}'s roles were updated.");
+        return back()->with('success', "{$target->full_name}'s roles were updated.");
     }
 }

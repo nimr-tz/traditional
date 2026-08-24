@@ -2,7 +2,7 @@ import { PrintBadgeButton, StandingBadge, formatAmount } from '@/components/regi
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import AppLayout from '@/layouts/app-layout';
-import { cn } from '@/lib/utils';
+import { cn, formatPersonName } from '@/lib/utils';
 import { type BreadcrumbItem } from '@/types';
 import { Head, Link, router } from '@inertiajs/react';
 import { Search, Users } from 'lucide-react';
@@ -18,6 +18,7 @@ type StatusFilter = 'all' | 'here_today' | 'not_arrived' | 'unpaid' | 'complimen
 interface Person {
     id: number;
     name: string;
+    salutation: string | null;
     email: string | null;
     phone: string | null;
     institution: string | null;
@@ -178,7 +179,7 @@ export default function StaffRegistrants({ people, filters, counts, categories }
                             people.data.map((person) => (
                                 <article key={person.id} className="grid gap-3 p-4 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_auto] md:items-center">
                                     <div className="min-w-0">
-                                        <p className="font-semibold">{person.name}</p>
+                                        <p className="font-semibold">{formatPersonName(person)}</p>
                                         <p className="text-muted-foreground truncate text-sm">
                                             {person.email ?? person.phone ?? 'No contact on file'}
                                         </p>

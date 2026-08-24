@@ -24,10 +24,10 @@ interface Submission {
     resubmitted_at: string | null;
     review_round: number;
     // Omitted for blind reviewers — the server never sends it.
-    user?: { name: string; email: string; institution: string | null } | null;
+    user?: { full_name: string; email: string; institution: string | null } | null;
     subtheme: { title: string } | null;
-    reviewer_one: { name: string } | null;
-    reviewer_two: { name: string } | null;
+    reviewer_one: { full_name: string } | null;
+    reviewer_two: { full_name: string } | null;
 }
 
 interface Paginated<T> {
@@ -230,7 +230,7 @@ export default function AdminAbstractsIndex({ submissions, subthemes, filters, c
                                             <p className="text-muted-foreground mt-1 text-sm">
                                                 {submission.user ? (
                                                     <>
-                                                        {submission.user.name} · {submission.user.institution || submission.user.email}
+                                                        {submission.user.full_name} · {submission.user.institution || submission.user.email}
                                                     </>
                                                 ) : (
                                                     <span className="inline-flex items-center gap-1.5 italic">
@@ -247,7 +247,7 @@ export default function AdminAbstractsIndex({ submissions, subthemes, filters, c
                                             </div>
                                             <p className="text-muted-foreground mt-2 text-xs">
                                                 {submission.reviewer_one && submission.reviewer_two
-                                                    ? `Reviewers: ${submission.reviewer_one.name}, ${submission.reviewer_two.name}`
+                                                    ? `Reviewers: ${submission.reviewer_one.full_name}, ${submission.reviewer_two.full_name}`
                                                     : 'No reviewers assigned yet'}
                                             </p>
                                         </div>

@@ -61,7 +61,7 @@ class EmailCampaignController extends Controller
         $campaign = new EmailCampaign($data);
 
         return response()->json([
-            'html' => (new CampaignMessage($campaign, $request->user()->name))->render(),
+            'html' => (new CampaignMessage($campaign, $request->user()->full_name))->render(),
         ]);
     }
 
@@ -91,7 +91,7 @@ class EmailCampaignController extends Controller
             'body' => $data['body'],
         ]);
 
-        Mail::to($to)->send(new CampaignMessage($campaign, $admin->name));
+        Mail::to($to)->send(new CampaignMessage($campaign, $admin->full_name));
 
         return back()->with('success', "Test email sent to {$to}.");
     }
@@ -106,7 +106,7 @@ class EmailCampaignController extends Controller
         $audience = $data['audience'];
         $value = $data['audience_value'] ?? null;
 
-        $recipients = RegistrantAudience::query($audience, $value)->get(['id', 'name', 'email']);
+        $recipients = RegistrantAudience::query($audience, $value)->get(['id', 'name', 'salutation', 'email']);
 
         if ($recipients->isEmpty()) {
             return back()->with('error', 'That audience currently has no recipients, so nothing was sent.');
@@ -122,7 +122,7 @@ class EmailCampaignController extends Controller
                 'recipient_count' => $recipients->count(),
                 'status' => 'queued',
                 'created_by' => $request->user()->id,
-                'created_by_name' => $request->user()->name,
+                'created_by_name' => $request->user()->full_name,
                 'created_by_email' => $request->user()->email,
             ]);
 
@@ -130,7 +130,7 @@ class EmailCampaignController extends Controller
             $campaign->recipients()->createMany(
                 $recipients->map(fn (User $user) => [
                     'user_id' => $user->id,
-                    'name' => $user->name,
+                    'name' => $user->full_name,
                     'email' => $user->email,
                 ])->all()
             );
