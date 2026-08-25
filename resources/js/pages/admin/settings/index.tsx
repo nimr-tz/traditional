@@ -450,7 +450,6 @@ export default function SettingsIndex({ feeCategories, subthemes, institutions, 
         ...conferenceSettings,
         start_date: normalizeDateInput(conferenceSettings.start_date),
         end_date: normalizeDateInput(conferenceSettings.end_date),
-        registration_deadline: normalizeDateInput(conferenceSettings.registration_deadline),
         registration_closed: conferenceSettings.registration_closed === '1' ? '1' : '0',
         abstract_notification_date: normalizeDateInput(conferenceSettings.abstract_notification_date),
         presentation_deadline: normalizeDateInput(conferenceSettings.presentation_deadline),
@@ -549,17 +548,6 @@ export default function SettingsIndex({ feeCategories, subthemes, institutions, 
                             <div className="rounded-xl border p-4">
                                 <div className="grid gap-4 sm:grid-cols-2">
                                     <div className="grid gap-1">
-                                        <Label>Registration deadline</Label>
-                                        <Input
-                                            type="date"
-                                            value={conf.registration_deadline ?? ''}
-                                            onChange={(e) => setConf({ ...conf, registration_deadline: e.target.value })}
-                                        />
-                                        <p className="text-muted-foreground text-xs leading-5">
-                                            New accounts stop being accepted at the end of this day. Leave blank for no date cutoff.
-                                        </p>
-                                    </div>
-                                    <div className="grid gap-1">
                                         <Label>Registration status</Label>
                                         <Select
                                             value={conf.registration_closed === '1' ? '1' : '0'}
@@ -569,13 +557,13 @@ export default function SettingsIndex({ feeCategories, subthemes, institutions, 
                                                 <SelectValue />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                <SelectItem value="0">Open (follow the deadline)</SelectItem>
+                                                <SelectItem value="0">Open</SelectItem>
                                                 <SelectItem value="1">Closed now</SelectItem>
                                             </SelectContent>
                                         </Select>
                                         <p className="text-muted-foreground text-xs leading-5">
-                                            Closing here takes effect immediately, whatever the deadline says. Existing registrants can still log in
-                                            and pay.
+                                            Registration stays open until you close it here; there is no date cutoff. Closing takes effect
+                                            immediately. Existing registrants can still log in and pay.
                                         </p>
                                     </div>
                                 </div>

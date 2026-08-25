@@ -50,56 +50,26 @@ class RegistrationWindowTest extends TestCase
         $this->get('/register')->assertStatus(200);
     }
 
-    public function test_registration_closes_after_the_deadline(): void
+    /**
+     * Production installs still hold a `registration_deadline` row until the
+     * migration clears it, and organizers can re-add the key by hand. Neither
+     * may shut the door: the date cutoff is gone, not merely unset.
+     */
+    public function test_a_leftover_deadline_setting_no_longer_closes_registration(): void
     {
         Mail::fake();
         $this->seedFeeCategory();
-        ConferenceSetting::set('registration_deadline', now()->subDay()->toDateString());
-
-        $this->get('/register')
-            ->assertStatus(403)
-            ->assertInertia(fn ($page) => $page->component('auth/registration-closed'));
-
-        $this->post('/register', $this->payload())->assertRedirect(route('register'));
-        $this->assertDatabaseMissing('users', ['email' => 'late@example.com']);
-    }
-
-    public function test_registration_stays_open_on_the_deadline_day(): void
-    {
-        Mail::fake();
-        $this->seedFeeCategory();
-        ConferenceSetting::set('registration_deadline', now()->toDateString());
+        ConferenceSetting::set('registration_deadline', now()->subYear()->toDateString());
 
         $this->get('/register')->assertStatus(200);
         $this->post('/register', $this->payload())->assertRedirect(route('verification.notice'));
         $this->assertDatabaseHas('users', ['email' => 'late@example.com']);
     }
 
-    /** Conference settings are free-text rows; existing installs hold dates like "6 August 2026". */
-    public function test_a_human_entered_deadline_is_still_honoured(): void
+    public function test_organizers_can_close_registration_immediately(): void
     {
         Mail::fake();
         $this->seedFeeCategory();
-        ConferenceSetting::set('registration_deadline', now()->subWeek()->format('j F Y'));
-
-        $this->get('/register')->assertStatus(403);
-        $this->post('/register', $this->payload())->assertRedirect(route('register'));
-    }
-
-    /** A garbled setting must not take the public register page down. */
-    public function test_an_unparseable_deadline_leaves_registration_open(): void
-    {
-        $this->seedFeeCategory();
-        ConferenceSetting::set('registration_deadline', 'not a date at all');
-
-        $this->get('/register')->assertStatus(200);
-    }
-
-    public function test_organizers_can_close_registration_immediately_regardless_of_the_deadline(): void
-    {
-        Mail::fake();
-        $this->seedFeeCategory();
-        ConferenceSetting::set('registration_deadline', now()->addYear()->toDateString());
         ConferenceSetting::set('registration_closed', '1');
 
         $this->get('/register')->assertStatus(403);
@@ -127,12 +97,10 @@ class RegistrationWindowTest extends TestCase
 
         $this->actingAs($superAdmin)
             ->patch(route('admin.settings.conference.update'), [
-                'registration_deadline' => '2026-08-21',
                 'registration_closed' => '1',
             ])
             ->assertRedirect();
 
-        $this->assertSame('2026-08-21', ConferenceSetting::get('registration_deadline'));
         $this->assertSame('1', ConferenceSetting::get('registration_closed'));
     }
 }

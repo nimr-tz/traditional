@@ -22,7 +22,6 @@ interface FeeCategory {
 
 interface RegistrationWindow {
     is_open: boolean;
-    deadline: string | null;
     closed_message: string | null;
 }
 
@@ -119,13 +118,6 @@ export default function Welcome({ conference, subthemes, feeCategories, registra
     const factStrip = [
         { label: 'Conference date', value: formatConferenceDate(conference.start_date), dateTime: startDateIso },
         { label: 'Location', value: conference.venue, dateTime: null },
-        registrationWindow.is_open && registrationWindow.deadline
-            ? {
-                  label: 'Registration deadline',
-                  value: formatConferenceDate(registrationWindow.deadline),
-                  dateTime: registrationWindow.deadline,
-              }
-            : { label: '', value: '', dateTime: null },
     ].filter((fact) => fact.value);
 
     const factGridClass =

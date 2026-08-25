@@ -173,10 +173,8 @@ class TmscSeeder extends Seeder
             'venue' => 'Mbeya, Tanzania',
             'start_date' => '2026-08-28',
             'end_date' => '2026-08-28',
-            // Registration closes a week before the conference so the venue has
-            // a final headcount for badges and catering; `registration_closed`
-            // is the manual override organizers can flip at any time.
-            'registration_deadline' => '2026-08-21',
+            // Registration has no date cutoff; `registration_closed` is the
+            // switch organizers flip when they want to stop taking sign-ups.
             'registration_closed' => '0',
             'abstract_notification_date' => '2026-08-13',
             // Presentations aren't reviewed — presenters may keep replacing

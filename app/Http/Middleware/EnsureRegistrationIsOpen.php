@@ -13,7 +13,7 @@ use Symfony\Component\HttpFoundation\Response;
  * Blocks new registrations once the registration window has closed.
  *
  * Applied to both the register form and its POST target, so a form that was
- * already open in a browser when the deadline passed can't still create an
+ * already open in a browser when registration closed can't still create an
  * account. A closed GET renders the "registration closed" page rather than
  * 403-ing, since this is a public marketing-facing URL and the visitor needs
  * to be told what happened and who to contact.

@@ -106,10 +106,8 @@ class SettingsController extends Controller
             'venue' => 'nullable|string|max:255',
             'start_date' => 'nullable|date_format:Y-m-d',
             'end_date' => 'nullable|date_format:Y-m-d',
-            // Registration closes at the end of `registration_deadline`;
-            // `registration_closed` is the manual override that shuts (or holds
-            // open) the door regardless of the date. See App\Support\RegistrationWindow.
-            'registration_deadline' => 'nullable|date_format:Y-m-d',
+            // The only registration control: there is no date cutoff, so the
+            // door stays open until somebody closes it. See App\Support\RegistrationWindow.
             'registration_closed' => 'nullable|in:0,1',
             'abstract_notification_date' => 'nullable|date_format:Y-m-d',
             // Last day a presenter may upload or replace their presentation.

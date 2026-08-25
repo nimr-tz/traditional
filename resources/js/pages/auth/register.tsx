@@ -42,12 +42,6 @@ interface FeeCategory {
     currency: string;
 }
 
-interface RegistrationWindow {
-    is_open: boolean;
-    deadline: string | null;
-    closed_message: string | null;
-}
-
 interface RegisterProps {
     salutations: string[];
     participantTypes: Record<string, string>;
@@ -55,7 +49,6 @@ interface RegisterProps {
     countries: string[];
     eastAfricaCountries: string[];
     institutions: Institution[];
-    registrationWindow: RegistrationWindow;
 }
 
 const STEPS = ['Personal', 'Contact', 'Category & fees', 'Password'] as const;
@@ -88,15 +81,7 @@ const FIELD_STEP: Partial<Record<RegisterField, number>> = Object.fromEntries(
     Object.entries(STEP_FIELDS).flatMap(([step, fields]) => fields.map((field) => [field, Number(step)])),
 );
 
-export default function Register({
-    salutations,
-    participantTypes,
-    feeCategories,
-    countries,
-    eastAfricaCountries,
-    institutions,
-    registrationWindow,
-}: RegisterProps) {
+export default function Register({ salutations, participantTypes, feeCategories, countries, eastAfricaCountries, institutions }: RegisterProps) {
     const [step, setStep] = useState(0);
     const { data, setData, post, processing, errors, setError, clearErrors } = useForm<RegisterForm>({
         salutation: '',
@@ -276,20 +261,6 @@ export default function Register({
                     Create your account to register, submit an abstract and receive your payment control number.
                 </p>
             </div>
-
-            {registrationWindow.deadline && (
-                <div className="rounded-xl border border-[#b5651d]/25 bg-[#b5651d]/5 px-4 py-3 text-sm leading-relaxed text-[#8a4d16]">
-                    Registration closes on{' '}
-                    <strong>
-                        {new Date(`${registrationWindow.deadline}T00:00:00`).toLocaleDateString(undefined, {
-                            day: 'numeric',
-                            month: 'long',
-                            year: 'numeric',
-                        })}
-                    </strong>
-                    .
-                </div>
-            )}
 
             <div className="flex items-start">
                 {STEPS.map((label, i) => {

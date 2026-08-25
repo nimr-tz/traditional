@@ -10,7 +10,6 @@ use App\Models\Institution;
 use App\Models\User;
 use App\Services\Sms\SmsNotifier;
 use App\Support\FeeTier;
-use App\Support\RegistrationWindow;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -41,7 +40,6 @@ class RegisteredUserController extends Controller
             'countries' => config('tmsc.countries'),
             'eastAfricaCountries' => config('tmsc.east_africa_countries'),
             'institutions' => Institution::where('active', true)->orderBy('sort_order')->get(['id', 'name']),
-            'registrationWindow' => RegistrationWindow::toArray(),
         ]);
     }
 
