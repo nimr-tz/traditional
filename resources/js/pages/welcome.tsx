@@ -99,7 +99,7 @@ const INSTRUCTIONS = [
 ];
 
 export default function Welcome({ conference, subthemes, feeCategories, registrationWindow, seo }: WelcomeProps) {
-    const { auth, submissionWindow } = usePage<SharedData>().props;
+    const { auth } = usePage<SharedData>().props;
     const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
     const conferenceName = conference.conference_name || 'Traditional Medicine Scientific Conference';
@@ -119,11 +119,6 @@ export default function Welcome({ conference, subthemes, feeCategories, registra
     const factStrip = [
         { label: 'Conference date', value: formatConferenceDate(conference.start_date), dateTime: startDateIso },
         { label: 'Location', value: conference.venue, dateTime: null },
-        {
-            label: submissionWindow.is_open ? 'Abstract deadline' : 'Abstracts closed',
-            value: formatConferenceDate(conference.submission_deadline),
-            dateTime: toIsoDate(conference.submission_deadline),
-        },
         registrationWindow.is_open && registrationWindow.deadline
             ? {
                   label: 'Registration deadline',
@@ -342,15 +337,13 @@ export default function Welcome({ conference, subthemes, feeCategories, registra
                                     <p className="text-xs font-semibold tracking-widest text-[#135eeb] uppercase">Programme</p>
                                     <h2 className="mt-2 font-serif text-3xl font-semibold">Five conversations shaping traditional medicine</h2>
                                 </div>
-                                {submissionWindow.is_open && (
-                                    <Button
-                                        asChild
-                                        size="lg"
-                                        className="h-auto max-w-xs bg-[#135eeb] px-6 py-3 text-right leading-snug whitespace-normal text-white hover:bg-[#135eeb]/90"
-                                    >
-                                        <Link href={route('register')}>Submit your abstract under any of the five conference sub-themes.</Link>
-                                    </Button>
-                                )}
+                                <Button
+                                    asChild
+                                    size="lg"
+                                    className="h-auto max-w-xs bg-[#135eeb] px-6 py-3 text-right leading-snug whitespace-normal text-white hover:bg-[#135eeb]/90"
+                                >
+                                    <Link href={route('register')}>Submit your abstract under any of the five conference sub-themes.</Link>
+                                </Button>
                             </div>
 
                             <div className="flex flex-wrap justify-center gap-4">
@@ -440,22 +433,9 @@ export default function Welcome({ conference, subthemes, feeCategories, registra
                                 ))}
                             </div>
 
-                            {(conference.submission_deadline || conference.abstract_notification_date || conference.start_date) && (
+                            {(conference.abstract_notification_date || conference.start_date) && (
                                 <div className="mt-7 flex flex-col items-center justify-between gap-6 rounded-2xl bg-[#67b52f] p-8 text-white sm:flex-row">
                                     <div className="flex flex-wrap gap-10">
-                                        {conference.submission_deadline && (
-                                            <div>
-                                                <div className="text-[11px] font-semibold tracking-wide text-[#135eeb] uppercase">
-                                                    {submissionWindow.is_open ? 'Abstract deadline' : 'Abstracts closed'}
-                                                </div>
-                                                <time
-                                                    dateTime={toIsoDate(conference.submission_deadline) ?? undefined}
-                                                    className="mt-1.5 block font-serif text-xl font-semibold"
-                                                >
-                                                    {formatConferenceDate(conference.submission_deadline)}
-                                                </time>
-                                            </div>
-                                        )}
                                         {conference.abstract_notification_date && (
                                             <div>
                                                 <div className="text-[11px] font-semibold tracking-wide text-[#135eeb] uppercase">Notification</div>
@@ -476,16 +456,9 @@ export default function Welcome({ conference, subthemes, feeCategories, registra
                                             </div>
                                         )}
                                     </div>
-                                    {submissionWindow.is_open ? (
-                                        <Button variant="secondary" asChild>
-                                            <Link href={route('register')}>Create an account to submit</Link>
-                                        </Button>
-                                    ) : (
-                                        <p className="max-w-xs rounded-xl bg-white/15 px-4 py-3 text-sm leading-6 font-semibold">
-                                            {submissionWindow.closed_message} Authors already under review can still sign in to answer reviewer
-                                            comments.
-                                        </p>
-                                    )}
+                                    <Button variant="secondary" asChild>
+                                        <Link href={route('register')}>Create an account to submit</Link>
+                                    </Button>
                                 </div>
                             )}
                         </div>

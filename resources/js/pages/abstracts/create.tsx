@@ -75,7 +75,6 @@ export default function CreateAbstract({ subthemes, presentationTypes }: CreateA
     });
 
     const wordCount = ABSTRACT_SECTIONS.reduce((total, { key }) => total + countWords(data[key as SectionKey]), 0);
-    const deadline = formatDate(conference.submission_deadline);
     const notificationDate = formatDate(conference.abstract_notification_date);
 
     const submit: FormEventHandler = (e) => {
@@ -219,13 +218,10 @@ export default function CreateAbstract({ subthemes, presentationTypes }: CreateA
                                 The presenting author's name must be bolded and underlined in the programme.
                             </p>
                         </div>
-                        {deadline && (
+                        {notificationDate && (
                             <div className="rounded-xl bg-[#67b52f] p-4.5 text-white">
-                                <div className="text-[11px] font-semibold tracking-wide text-white/80 uppercase">Abstract deadline</div>
-                                <p className="mt-2 font-serif text-lg font-semibold">{deadline}</p>
-                                {notificationDate && (
-                                    <p className="mt-1.5 text-xs leading-5 text-white/85">Notification of acceptance by {notificationDate}.</p>
-                                )}
+                                <div className="text-[11px] font-semibold tracking-wide text-white/80 uppercase">Notification of acceptance</div>
+                                <p className="mt-2 font-serif text-lg font-semibold">{notificationDate}</p>
                             </div>
                         )}
                     </aside>

@@ -450,7 +450,6 @@ export default function SettingsIndex({ feeCategories, subthemes, institutions, 
         ...conferenceSettings,
         start_date: normalizeDateInput(conferenceSettings.start_date),
         end_date: normalizeDateInput(conferenceSettings.end_date),
-        submission_deadline: normalizeDateInput(conferenceSettings.submission_deadline),
         registration_deadline: normalizeDateInput(conferenceSettings.registration_deadline),
         registration_closed: conferenceSettings.registration_closed === '1' ? '1' : '0',
         abstract_notification_date: normalizeDateInput(conferenceSettings.abstract_notification_date),
@@ -525,14 +524,6 @@ export default function SettingsIndex({ feeCategories, subthemes, institutions, 
                         <div className="grid gap-1">
                             <Label>End date</Label>
                             <Input type="date" value={conf.end_date ?? ''} onChange={(e) => setConf({ ...conf, end_date: e.target.value })} />
-                        </div>
-                        <div className="grid gap-1">
-                            <Label>Abstract submission deadline</Label>
-                            <Input
-                                type="date"
-                                value={conf.submission_deadline ?? ''}
-                                onChange={(e) => setConf({ ...conf, submission_deadline: e.target.value })}
-                            />
                         </div>
                         <div className="grid gap-1">
                             <Label>Abstract notification date</Label>

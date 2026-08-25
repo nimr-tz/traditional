@@ -2,8 +2,8 @@ import { DashboardCard, IconTile } from '@/components/dashboard-card';
 import { StatusPill, type PillTone } from '@/components/status-pill';
 import AppLayout from '@/layouts/app-layout';
 import { cn } from '@/lib/utils';
-import { type BreadcrumbItem, type SharedData } from '@/types';
-import { Head, Link, usePage } from '@inertiajs/react';
+import { type BreadcrumbItem } from '@/types';
+import { Head, Link } from '@inertiajs/react';
 import { ArrowRight, Award, BadgeCheck, CalendarDays, FileText, MapPin, Sparkles, Wallet } from 'lucide-react';
 
 const breadcrumbs: BreadcrumbItem[] = [{ title: 'Dashboard', href: '/dashboard' }];
@@ -37,7 +37,6 @@ interface DashboardProps {
     conferenceYear: string | null;
     venue: string | null;
     conferenceStartDate: string | null;
-    submissionDeadline: string | null;
 }
 
 const paymentStatusLabel: Record<PaymentStatus, string> = {
@@ -157,13 +156,10 @@ export default function Dashboard({
     conferenceYear,
     venue,
     conferenceStartDate,
-    submissionDeadline,
 }: DashboardProps) {
-    const { submissionWindow } = usePage<SharedData>().props;
     const firstName = userName?.split(' ')[0] ?? '';
     const hasAbstract = abstractsCount > 0;
     const formattedConferenceDate = formatDate(conferenceStartDate);
-    const formattedSubmissionDeadline = formatDate(submissionDeadline);
     const formattedFee =
         registration.payment_status === 'waived'
             ? 'Waived'
@@ -306,9 +302,7 @@ export default function Dashboard({
                             <h3 className="mt-5 text-xl font-semibold">Research abstracts</h3>
                             {!hasAbstract && (
                                 <p className="text-muted-foreground mt-2 text-sm leading-6">
-                                    {formattedSubmissionDeadline
-                                        ? `Share your research for consideration by ${formattedSubmissionDeadline}. You can submit regardless of payment status.`
-                                        : 'Share your research for conference consideration at any payment stage. Abstract submission is optional.'}
+                                    Share your research for conference consideration at any payment stage. Abstract submission is optional.
                                 </p>
                             )}
 
@@ -347,15 +341,13 @@ export default function Dashboard({
                                 <div className="dark:border-border mt-6 border-y border-slate-100 py-5">
                                     <p className="text-sm font-semibold">No abstract submitted yet</p>
                                     <p className="text-muted-foreground mt-1 text-xs leading-5">
-                                        {submissionWindow.is_open
-                                            ? 'You can submit before or after payment, or continue without submitting one.'
-                                            : submissionWindow.closed_message}
+                                        You can submit before or after payment, or continue without submitting one.
                                     </p>
                                 </div>
                             )}
 
                             <div className="mt-auto pt-5">
-                                {hasAbstract || !submissionWindow.is_open ? (
+                                {hasAbstract ? (
                                     <ActionRow
                                         href={route('abstracts.index')}
                                         compact
