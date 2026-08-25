@@ -36,7 +36,6 @@ class DashboardController extends Controller
             'conferenceYear' => ConferenceSetting::get('conference_year'),
             'venue' => ConferenceSetting::get('venue'),
             'conferenceStartDate' => ConferenceSetting::get('start_date'),
-            'submissionDeadline' => ConferenceSetting::get('submission_deadline'),
         ]);
     }
 }

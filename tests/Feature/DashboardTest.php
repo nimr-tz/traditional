@@ -24,7 +24,6 @@ class DashboardTest extends TestCase
         ConferenceSetting::set('conference_name', 'Traditional Medicine Conference');
         ConferenceSetting::set('venue', 'Mbeya, Tanzania');
         ConferenceSetting::set('start_date', '2026-08-26');
-        ConferenceSetting::set('submission_deadline', '2026-08-06');
 
         $this->get('/dashboard')
             ->assertOk()
@@ -33,7 +32,6 @@ class DashboardTest extends TestCase
                 ->where('conferenceName', 'Traditional Medicine Conference')
                 ->where('venue', 'Mbeya, Tanzania')
                 ->where('conferenceStartDate', '2026-08-26')
-                ->where('submissionDeadline', '2026-08-06')
             );
     }
 }

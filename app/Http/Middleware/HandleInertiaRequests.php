@@ -3,7 +3,6 @@
 namespace App\Http\Middleware;
 
 use App\Models\ConferenceSetting;
-use App\Support\SubmissionWindow;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
@@ -47,10 +46,6 @@ class HandleInertiaRequests extends Middleware
             'name' => config('app.name'),
             'quote' => ['message' => trim($message), 'author' => trim($author)],
             'conference' => ConferenceSetting::allSettings(),
-            // Shared rather than passed per page: `conference.submission_deadline`
-            // is rendered in half a dozen places, and every one of them has to
-            // stop inviting submissions at the same moment the route guard does.
-            'submissionWindow' => SubmissionWindow::toArray(),
             'auth' => [
                 'user' => $user ? array_merge($user->toArray(), [
                     'roles' => $user->roles(),

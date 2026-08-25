@@ -27,12 +27,11 @@ function highlightTitle(name: string) {
 }
 
 export function AuthPanel() {
-    const { conference, submissionWindow } = usePage<SharedData>().props;
+    const { conference } = usePage<SharedData>().props;
 
     const editionLabel = [conference.edition_number, conference.conference_year].filter(Boolean).join(' ');
     const conferenceName = conference.conference_name ?? 'Traditional Medicine Scientific Conference and Exhibitions';
     const startDate = formatDate(conference.start_date);
-    const abstractDeadline = formatDate(conference.submission_deadline);
 
     return (
         <div className="flex h-full min-h-full w-full flex-col gap-7 bg-[#135eeb] px-11 py-9 text-white">
@@ -67,16 +66,6 @@ export function AuthPanel() {
                         <div className="border-t border-white/15 py-3.5">
                             <div className="text-[11px] font-semibold tracking-wide text-white/60 uppercase">Location</div>
                             <div className="mt-1 font-serif text-[17px] font-semibold">{conference.venue}</div>
-                        </div>
-                    )}
-                    {abstractDeadline && (
-                        <div className="border-y border-white/15 py-3.5">
-                            <div className="text-[11px] font-semibold tracking-wide text-white/60 uppercase">
-                                {submissionWindow.is_open ? 'Abstract deadline' : 'Abstracts closed'}
-                            </div>
-                            <div className="mt-1 font-serif text-[17px] font-semibold">
-                                <time dateTime={conference.submission_deadline ?? undefined}>{abstractDeadline}</time>
-                            </div>
                         </div>
                     )}
                 </div>

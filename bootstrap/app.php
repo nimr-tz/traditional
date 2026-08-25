@@ -1,6 +1,5 @@
 <?php
 
-use App\Http\Middleware\EnsureAbstractSubmissionIsOpen;
 use App\Http\Middleware\EnsureRegistrationIsOpen;
 use App\Http\Middleware\EnsureUserHasRole;
 use App\Http\Middleware\HandleInertiaRequests;
@@ -30,7 +29,6 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'role' => EnsureUserHasRole::class,
             'registration.open' => EnsureRegistrationIsOpen::class,
-            'abstracts.open' => EnsureAbstractSubmissionIsOpen::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {

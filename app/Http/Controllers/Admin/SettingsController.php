@@ -106,7 +106,6 @@ class SettingsController extends Controller
             'venue' => 'nullable|string|max:255',
             'start_date' => 'nullable|date_format:Y-m-d',
             'end_date' => 'nullable|date_format:Y-m-d',
-            'submission_deadline' => 'nullable|date_format:Y-m-d',
             // Registration closes at the end of `registration_deadline`;
             // `registration_closed` is the manual override that shuts (or holds
             // open) the door regardless of the date. See App\Support\RegistrationWindow.

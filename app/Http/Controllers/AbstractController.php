@@ -30,9 +30,6 @@ class AbstractController extends Controller
             ->latest()
             ->get();
 
-        // The submission window reaches the page as a shared prop
-        // (HandleInertiaRequests), so every page that renders the deadline
-        // stops inviting submissions at the same moment the route guard does.
         return Inertia::render('abstracts/index', [
             'submissions' => $submissions,
         ]);
