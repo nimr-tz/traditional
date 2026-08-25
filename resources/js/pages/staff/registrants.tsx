@@ -5,8 +5,8 @@ import AppLayout from '@/layouts/app-layout';
 import { cn, formatPersonName } from '@/lib/utils';
 import { type BreadcrumbItem } from '@/types';
 import { Head, Link, router } from '@inertiajs/react';
-import { Search, Users } from 'lucide-react';
-import { FormEventHandler, useState } from 'react';
+import { ChevronRight, Search, Users, X } from 'lucide-react';
+import { FormEventHandler, KeyboardEvent, useRef, useState } from 'react';
 
 const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Check-in', href: '/staff' },
@@ -68,6 +68,7 @@ const tabs: { key: StatusFilter; label: string }[] = [
 
 export default function StaffRegistrants({ people, filters, counts, categories }: RegistrantsProps) {
     const [search, setSearch] = useState(filters.search ?? '');
+    const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
     const go = (params: Record<string, string | undefined>) => {
         router.get(
@@ -85,6 +86,39 @@ export default function StaffRegistrants({ people, filters, counts, categories }
     const submit: FormEventHandler = (event) => {
         event.preventDefault();
         go({});
+    };
+
+    const hasFilters = filters.status !== 'all' || filters.category !== 'all' || Boolean(filters.search);
+
+    // Back to the unfiltered register in one click. The search box is cleared
+    // alongside the query string, or the input would go on showing a term that
+    // is no longer narrowing anything.
+    const clearFilters = () => {
+        setSearch('');
+        router.get(route('staff.registrants'), {}, { preserveState: true, preserveScroll: true });
+    };
+
+    // Arrow keys move focus along the filters without selecting one: every
+    // selection is a round trip, so arrowing across six of them should not fire
+    // six requests. The focused filter is applied with Enter or Space, as any
+    // button would be.
+    const onTabKeyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
+        const offsets: Record<string, number> = { ArrowRight: 1, ArrowLeft: -1 };
+
+        let next: number | null = null;
+
+        if (event.key in offsets) {
+            next = (index + offsets[event.key] + tabs.length) % tabs.length;
+        } else if (event.key === 'Home') {
+            next = 0;
+        } else if (event.key === 'End') {
+            next = tabs.length - 1;
+        }
+
+        if (next !== null) {
+            event.preventDefault();
+            tabRefs.current[next]?.focus();
+        }
     };
 
     return (
@@ -113,15 +147,22 @@ export default function StaffRegistrants({ people, filters, counts, categories }
 
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                     <div className="flex flex-wrap gap-2" role="tablist" aria-label="Filter registrants">
-                        {tabs.map(({ key, label }) => {
+                        {tabs.map(({ key, label }, index) => {
                             const selected = filters.status === key;
 
                             return (
                                 <button
                                     key={key}
+                                    id={`registrant-filter-${key}`}
+                                    ref={(element) => {
+                                        tabRefs.current[index] = element;
+                                    }}
                                     type="button"
                                     role="tab"
                                     aria-selected={selected}
+                                    aria-controls="registrant-list"
+                                    tabIndex={selected ? 0 : -1}
+                                    onKeyDown={(event) => onTabKeyDown(event, index)}
                                     onClick={() => go({ status: key === 'all' ? undefined : key })}
                                     className={cn(
                                         'rounded-full border px-3.5 py-1.5 text-sm font-semibold transition',
@@ -136,8 +177,15 @@ export default function StaffRegistrants({ people, filters, counts, categories }
                     </div>
 
                     <div className="flex flex-col gap-2 sm:flex-row lg:shrink-0">
+                        {hasFilters && (
+                            <Button type="button" variant="ghost" className="h-9" onClick={clearFilters}>
+                                Clear filters
+                            </Button>
+                        )}
+
                         <select
                             value={filters.category}
+                            aria-label="Filter by fee category"
                             onChange={(event) => go({ category: event.target.value === 'all' ? undefined : event.target.value })}
                             className="border-input bg-background text-foreground h-9 rounded-md border px-3 text-sm"
                         >
@@ -154,11 +202,26 @@ export default function StaffRegistrants({ people, filters, counts, categories }
                             <div className="relative">
                                 <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
                                 <Input
+                                    type="search"
+                                    aria-label="Search registrants"
                                     value={search}
                                     onChange={(event) => setSearch(event.target.value)}
                                     placeholder="Name, email, phone, badge, control number"
-                                    className="h-9 w-full pl-9 sm:w-72"
+                                    className="h-9 w-full pr-9 pl-9 sm:w-72"
                                 />
+                                {search && (
+                                    <button
+                                        type="button"
+                                        aria-label="Clear search"
+                                        onClick={() => {
+                                            setSearch('');
+                                            go({ search: undefined });
+                                        }}
+                                        className="text-muted-foreground hover:text-foreground absolute top-1/2 right-2 -translate-y-1/2 rounded p-1"
+                                    >
+                                        <X className="size-3.5" />
+                                    </button>
+                                )}
                             </div>
                             <Button type="submit" variant="secondary" className="h-9">
                                 Search
@@ -168,18 +231,34 @@ export default function StaffRegistrants({ people, filters, counts, categories }
                 </div>
 
                 <section className="bg-card overflow-hidden rounded-2xl border">
-                    <div className="divide-y">
+                    <div className="divide-y" id="registrant-list" role="tabpanel" aria-labelledby={`registrant-filter-${filters.status}`}>
                         {people.data.length === 0 ? (
                             <div className="p-12 text-center">
                                 <Users className="text-muted-foreground mx-auto size-7" />
                                 <p className="mt-3 font-semibold">Nobody matches this view</p>
                                 <p className="text-muted-foreground mt-1 text-sm">Clear the search or pick a different filter.</p>
+                                {hasFilters && (
+                                    <Button type="button" variant="secondary" className="mt-4" onClick={clearFilters}>
+                                        Clear filters
+                                    </Button>
+                                )}
                             </div>
                         ) : (
                             people.data.map((person) => (
-                                <article key={person.id} className="grid gap-3 p-4 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_auto] md:items-center">
+                                // The name carries the link, but its ::before is stretched over the
+                                // whole row so anywhere on the row opens the person — while the print
+                                // button stays a sibling rather than a button nested inside an anchor.
+                                <article
+                                    key={person.id}
+                                    className="relative grid gap-3 p-4 transition hover:bg-slate-50 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_auto] md:items-center dark:hover:bg-slate-900/40"
+                                >
                                     <div className="min-w-0">
-                                        <p className="font-semibold">{formatPersonName(person)}</p>
+                                        <Link
+                                            href={route('staff.registrant', person.id)}
+                                            className="font-semibold before:absolute before:inset-0 before:content-['']"
+                                        >
+                                            {formatPersonName(person)}
+                                        </Link>
                                         <p className="text-muted-foreground truncate text-sm">
                                             {person.email ?? person.phone ?? 'No contact on file'}
                                         </p>
@@ -194,9 +273,10 @@ export default function StaffRegistrants({ people, filters, counts, categories }
                                         {person.control_number && <p className="mt-0.5 font-mono">CN {person.control_number}</p>}
                                     </div>
 
-                                    <div className="flex flex-wrap items-center justify-end gap-3">
+                                    <div className="relative z-10 flex flex-wrap items-center justify-end gap-3">
                                         <StandingBadge person={person} />
                                         {person.can_print_badge && <PrintBadgeButton person={person} printRoute={route('staff.badge', person.id)} />}
+                                        <ChevronRight className="text-muted-foreground size-4 shrink-0" />
                                     </div>
                                 </article>
                             ))

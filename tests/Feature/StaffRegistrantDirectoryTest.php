@@ -106,6 +106,50 @@ class StaffRegistrantDirectoryTest extends TestCase
                 ->etc());
     }
 
+    /**
+     * The tab counts sit directly above "showing 1-N of N", so they have to be
+     * counting the same people the list is showing. Before this they ignored
+     * both the category select and the search box.
+     */
+    public function test_the_tab_counts_follow_the_category_filter(): void
+    {
+        $staff = User::factory()->staff()->create();
+        $this->aCastOfEveryone($staff);
+
+        $this->actingAs($staff)
+            ->get(route('staff.registrants', ['category' => 'complimentary_media']))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('staff/registrants')
+                ->where('people.total', 1)
+                // Only the one press pass is in this category, and it is comped
+                // and has never been scanned in.
+                ->where('counts.all', 1)
+                ->where('counts.complimentary', 1)
+                ->where('counts.never_attended', 1)
+                ->where('counts.here_today', 0)
+                ->where('counts.unpaid', 0)
+                ->etc());
+    }
+
+    public function test_the_tab_counts_follow_the_search_box(): void
+    {
+        $staff = User::factory()->staff()->create();
+        $this->aCastOfEveryone($staff);
+
+        $this->actingAs($staff)
+            ->get(route('staff.registrants', ['search' => 'Unpaid']))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('staff/registrants')
+                ->where('people.total', 1)
+                ->where('counts.all', 1)
+                ->where('counts.unpaid', 1)
+                ->where('counts.here_today', 0)
+                ->where('counts.never_attended', 0)
+                ->etc());
+    }
+
     public function test_each_filter_narrows_to_the_right_people(): void
     {
         $staff = User::factory()->staff()->create();

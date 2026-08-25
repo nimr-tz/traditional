@@ -36,17 +36,9 @@ class RegistrantController extends Controller
         $status = in_array($request->status, self::FILTERS, true) ? $request->status : 'all';
         $category = $request->category && $request->category !== 'all' ? $request->category : null;
 
-        $people = $this->registrants()
+        $people = $this->scoped($request->search, $category)
             ->with('attendance:id,user_id,attendance_date,checked_in_at')
             ->withCount('badgePrints')
-            ->when($request->search, fn (Builder $query, string $search) => $query->where(fn (Builder $inner) => $inner
-                ->where('name', 'like', "%{$search}%")
-                ->orWhere('email', 'like', "%{$search}%")
-                ->orWhere('phone', 'like', "%{$search}%")
-                ->orWhere('institution', 'like', "%{$search}%")
-                ->orWhere('registration_code', 'like', "%{$search}%")
-                ->orWhere('control_number', 'like', "%{$search}%")))
-            ->when($category, fn (Builder $query) => $query->where('fee_category', $category))
             ->tap(fn (Builder $query) => $this->applyStatus($query, $status))
             ->orderBy('name')
             ->paginate(50)
@@ -79,7 +71,7 @@ class RegistrantController extends Controller
                 'status' => $status,
                 'category' => $category ?? 'all',
             ],
-            'counts' => $this->counts(),
+            'counts' => $this->counts($request->search, $category),
             'categories' => FeeCategory::query()
                 ->active()
                 ->orderBy('is_complimentary')
@@ -107,21 +99,42 @@ class RegistrantController extends Controller
         };
     }
 
-    /** @return array<string, int> */
-    private function counts(): array
+    /**
+     * The register narrowed by everything except the status tabs.
+     *
+     * Shared with counts() so the number on a tab counts the same people the
+     * tab would show. A count that ignored the search or the category would
+     * contradict the "showing 1-12 of 12" line directly beneath it.
+     */
+    private function scoped(?string $search, ?string $category): Builder
     {
-        $paid = fn () => $this->registrants()->whereIn('payment_status', ['verified', 'waived']);
+        return $this->registrants()
+            ->when($search, fn (Builder $query, string $term) => $query->where(fn (Builder $inner) => $inner
+                ->where('name', 'like', "%{$term}%")
+                ->orWhere('email', 'like', "%{$term}%")
+                ->orWhere('phone', 'like', "%{$term}%")
+                ->orWhere('institution', 'like', "%{$term}%")
+                ->orWhere('registration_code', 'like', "%{$term}%")
+                ->orWhere('control_number', 'like', "%{$term}%")))
+            ->when($category, fn (Builder $query) => $query->where('fee_category', $category));
+    }
+
+    /** @return array<string, int> */
+    private function counts(?string $search, ?string $category): array
+    {
+        $base = fn () => $this->scoped($search, $category);
+        $paid = fn () => $base()->whereIn('payment_status', ['verified', 'waived']);
 
         return [
-            'all' => $this->registrants()->count(),
-            'here_today' => (clone $paid())->whereHas('attendance', fn (Builder $a) => $a->today())->count(),
-            'not_arrived' => (clone $paid())->whereDoesntHave('attendance', fn (Builder $a) => $a->today())->count(),
-            'unpaid' => $this->registrants()->whereNotIn('payment_status', ['verified', 'waived'])->count(),
-            'complimentary' => $this->registrants()->whereIn(
+            'all' => $base()->count(),
+            'here_today' => $paid()->whereHas('attendance', fn (Builder $a) => $a->today())->count(),
+            'not_arrived' => $paid()->whereDoesntHave('attendance', fn (Builder $a) => $a->today())->count(),
+            'unpaid' => $base()->whereNotIn('payment_status', ['verified', 'waived'])->count(),
+            'complimentary' => $base()->whereIn(
                 'fee_category',
                 FeeCategory::where('is_complimentary', true)->pluck('key')
             )->count(),
-            'never_attended' => (clone $paid())->whereDoesntHave('attendance')->count(),
+            'never_attended' => $paid()->whereDoesntHave('attendance')->count(),
         ];
     }
 }
