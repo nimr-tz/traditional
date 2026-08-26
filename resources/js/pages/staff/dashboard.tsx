@@ -1,5 +1,6 @@
 import { DashboardCard } from '@/components/dashboard-card';
-import { StandingBadge, formatAmount, formatDateTime, formatTime } from '@/components/registrant-standing';
+import { RegistrantBadge, type BadgeContent } from '@/components/registrant-badge';
+import { PrintBadgeButton, StandingBadge, formatAmount, formatDateTime, formatTime } from '@/components/registrant-standing';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -34,6 +35,18 @@ interface Person {
     can_print_badge: boolean;
     /** Badges already produced. Anything above zero makes the next one a reprint. */
     badges_printed: number;
+}
+
+/** What the desk just produced for a walk-in: a badge to show, or a number to read out. */
+interface WalkInOutcome {
+    name: string;
+    registrant_id: number;
+    /** Null until they have paid — waived and complimentary count as paid. */
+    badge: BadgeContent | null;
+    badges_printed: number;
+    /** Never issued for a waived or complimentary registrant: they owe nothing. */
+    control_number: string | null;
+    billing_message: string;
 }
 
 interface FeeCategory {
@@ -90,7 +103,7 @@ export default function StaffDashboard({
     deskOptions,
     arrivals,
 }: StaffDashboardProps) {
-    const { flash } = usePage<SharedData & { flash: { success?: string; error?: string; info?: string } }>().props;
+    const { flash } = usePage<SharedData & { flash: { success?: string; error?: string; info?: string; walkIn?: WalkInOutcome | null } }>().props;
     const [search, setSearch] = useState(filters.search ?? '');
     const [registering, setRegistering] = useState(false);
 
@@ -230,6 +243,8 @@ export default function StaffDashboard({
                             </Button>
                         </div>
 
+                        {flash?.walkIn && !registering && <WalkInResult walkIn={flash.walkIn} onRegisterAnother={() => setRegistering(true)} />}
+
                         {registering && (
                             <WalkInForm deskOptions={deskOptions} canManageFinance={canManageFinance} onDone={() => setRegistering(false)} />
                         )}
@@ -310,6 +325,72 @@ function PersonRow({ person }: { person: Person }) {
                 <ChevronRight className="text-muted-foreground size-4" />
             </div>
         </Link>
+    );
+}
+
+/**
+ * What the desk needs in front of it the moment a walk-in is registered.
+ *
+ * A sentence of flash text was not enough: the badge is the thing the person is
+ * waiting for, so it is shown rather than described, and it is scannable off the
+ * screen because the QR encodes the same verification URL the printed one does.
+ *
+ * Whether a badge exists follows from payment, not from how billing went. Waived
+ * and complimentary registrants are paid and never receive a control number, so
+ * they see their badge and no billing panel at all; everyone still owing sees the
+ * control number instead, and no badge, because there is not one to give them.
+ */
+function WalkInResult({ walkIn, onRegisterAnother }: { walkIn: WalkInOutcome; onRegisterAnother: () => void }) {
+    return (
+        <div className="mt-5 flex flex-col gap-4 border-t pt-5">
+            {walkIn.badge ? (
+                <>
+                    <div>
+                        <h3 className="flex items-center gap-2 text-sm font-bold">
+                            <CheckCircle2 className="size-4 text-[#4c8a1f]" />
+                            {walkIn.name} is registered — this is their badge
+                        </h3>
+                        <p className="text-muted-foreground mt-1 text-xs">Print it, or let them scan the code straight off the screen.</p>
+                    </div>
+
+                    <div className="flex justify-center overflow-x-auto rounded-xl border bg-white p-4">
+                        <RegistrantBadge badge={walkIn.badge} className="shrink-0 shadow-sm" />
+                    </div>
+                </>
+            ) : (
+                <div>
+                    <h3 className="text-sm font-bold">{walkIn.name} is registered</h3>
+                    {walkIn.control_number ? (
+                        <div className="mt-3 rounded-xl border border-amber-300/50 bg-amber-50 p-4 dark:bg-amber-950/20">
+                            <p className="text-xs font-bold tracking-[0.14em] text-amber-800 uppercase dark:text-amber-500">Control number</p>
+                            <p className="mt-1 font-mono text-2xl font-bold text-amber-900 tabular-nums dark:text-amber-400">
+                                {walkIn.control_number}
+                            </p>
+                            <p className="mt-2 text-xs text-amber-800 dark:text-amber-500">
+                                They can pay this now. Their badge appears here once the payment is verified.
+                            </p>
+                        </div>
+                    ) : (
+                        <p className="text-muted-foreground mt-2 text-sm">{walkIn.billing_message}</p>
+                    )}
+                </div>
+            )}
+
+            <div className="flex flex-wrap items-center gap-3">
+                {walkIn.badge && (
+                    <PrintBadgeButton
+                        person={{ id: walkIn.registrant_id, name: walkIn.name, badges_printed: walkIn.badges_printed }}
+                        printRoute={route('staff.badge', walkIn.registrant_id)}
+                    />
+                )}
+                <Link href={route('staff.registrant', walkIn.registrant_id)} className="text-sm font-semibold underline underline-offset-2">
+                    Open their record
+                </Link>
+                <Button type="button" variant="outline" className="ml-auto" onClick={onRegisterAnother}>
+                    Register another
+                </Button>
+            </div>
+        </div>
     );
 }
 

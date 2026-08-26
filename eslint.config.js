@@ -40,5 +40,17 @@ export default [
     {
         ignores: ['vendor', 'node_modules', 'public', 'bootstrap/ssr', 'tailwind.config.js'],
     },
+    {
+        /*
+         * checkin-app is React Native, not the web app these rules were written
+         * for. Metro resolves static assets through `require()` — it is the
+         * pattern React Native's own documentation uses for images — so the
+         * no-require-imports rule is a web assumption that does not hold there.
+         */
+        files: ['checkin-app/**/*.{ts,tsx}'],
+        rules: {
+            '@typescript-eslint/no-require-imports': 'off',
+        },
+    },
     prettier, // Turn off all rules that might conflict with Prettier
 ];

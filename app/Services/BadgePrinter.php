@@ -23,9 +23,20 @@ class BadgePrinter
     public function __construct(private QrCodeService $qrCodes) {}
 
     /**
+     * Everything printed on a badge, without printing one.
+     *
+     * Split out from render() so the desk can show a registrant their badge on
+     * screen without that counting as a print: render() logs a BadgePrintLog
+     * every time it runs, and a preview that logged would make the next real
+     * print announce itself as a reprint. Anything that puts a badge in front of
+     * a human — the PDF or the screen — reads its content from here, so the two
+     * cannot drift on what a badge says.
+     *
+     * @return array<string, string|null>
+     *
      * @throws RuntimeException when the registrant has no right to a badge
      */
-    public function render(User $user, ?User $printedBy = null): PdfDocument
+    public function content(User $user): array
     {
         if (! $user->canPrintBadge()) {
             throw new RuntimeException(
@@ -42,16 +53,9 @@ class BadgePrinter
             $user->save();
         }
 
-        $category = $this->categoryLabel($user);
-
-        BadgePrintLog::record($user, $printedBy, $user->full_name, $user->institution, $category);
-
-        $template = config('badge.template');
-
-        $pdf = Pdf::loadView('pdf.badge', [
+        return [
             'name' => trim(($user->salutation ? $user->salutation.' ' : '').$user->name),
             'institution' => $user->institution,
-            'categoryLabel' => $category,
             'registrationCode' => $user->registration_code,
             // A URL, not the bare code, so the same square serves two readers:
             // an ordinary phone camera opens the public verification page, while
@@ -60,7 +64,54 @@ class BadgePrinter
             'qr' => $this->qrCodes->dataUri(route('badges.verify', $user->registration_code)),
             'conferenceName' => ConferenceSetting::get('conference_name', config('app.name')),
             'conferenceYear' => ConferenceSetting::get('conference_year'),
-        ]);
+        ];
+    }
+
+    /**
+     * The same badge, on screen instead of on paper.
+     *
+     * Returns null rather than throwing for someone who has not paid: callers
+     * are pages deciding whether there is a badge to show yet, and "not paid"
+     * is an ordinary answer there, not an error.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function preview(User $user): ?array
+    {
+        if (! $user->canPrintBadge()) {
+            return null;
+        }
+
+        return [
+            ...$this->content($user),
+            // The screen badge is positioned from the same percentages as the
+            // PDF, so re-skinning the badge moves both at once instead of
+            // leaving the preview behind.
+            'template' => config('badge.template'),
+            'placeholders' => config('badge.placeholders'),
+            // Encoded segment by segment: the artwork ships under its designer's
+            // own filename, spaces and all, and an unencoded space is not a
+            // valid URL. The PDF reads the same value straight off disk via
+            // public_path(), where spaces are fine.
+            'background' => asset(implode('/', array_map(
+                'rawurlencode',
+                explode('/', config('badge.template.background'))
+            ))),
+        ];
+    }
+
+    /**
+     * @throws RuntimeException when the registrant has no right to a badge
+     */
+    public function render(User $user, ?User $printedBy = null): PdfDocument
+    {
+        $content = $this->content($user);
+
+        BadgePrintLog::record($user, $printedBy, $user->full_name, $user->institution, $this->categoryLabel($user));
+
+        $template = config('badge.template');
+
+        $pdf = Pdf::loadView('pdf.badge', $content);
 
         // Millimetres, because badge stock is bought in millimetres. dompdf
         // takes points, so convert rather than leaving a magic number here.
@@ -75,11 +126,11 @@ class BadgePrinter
     }
 
     /**
-     * What the badge says about why this person is here.
+     * The registrant's actual fee category, for the print log only.
      *
-     * For a complimentary registrant this is the whole justification for their
-     * presence — "Media", "Secretariat" — so it must be the category's own
-     * label and never a generic "waived".
+     * Nothing prints it on the badge — the artwork has no band for it. The log
+     * is a record of who was issued a badge rather than of what the face showed,
+     * so it keeps the category even though the card does not.
      */
     private function categoryLabel(User $user): ?string
     {

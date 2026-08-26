@@ -19,7 +19,6 @@
 
     $badgeName = $tidy($name);
     $badgeInstitution = $tidy($institution);
-    $badgeCategory = $tidy($categoryLabel);
 
     // Long names shrink rather than spilling into the institution line.
     $sizeFor = function (array $spec, string $text) {
@@ -34,10 +33,30 @@
         return $size;
     };
 
+    /*
+     * Text blocks are anchored by their BOTTOM edge, not their top: each one
+     * sits on a dotted rule drawn into the artwork. Anchoring the bottom keeps
+     * the text on the rule at every font size, and makes a value that wraps
+     * anyway grow upwards into empty space rather than down through the rule.
+     */
+    /*
+     * The institution may never be set in larger type than the name.
+     *
+     * The two shrink independently — the name to stay on one line, the
+     * institution to fit two — so a long name paired with a short institution
+     * would otherwise leave the institution the biggest thing on the badge. The
+     * name is what a steward reads first, and it must look like it.
+     */
+    $mm = fn (string $value) => (float) $value;
+
+    $capToName = function (string $size, string $nameSize) use ($mm) {
+        return $mm($size) > $mm($nameSize) ? $nameSize : $size;
+    };
+
     $style = function (array $spec, ?string $fontSize = null) {
         $rules = [
             'left: '.$spec['left'],
-            'top: '.$spec['top'],
+            isset($spec['bottom']) ? 'bottom: '.$spec['bottom'] : 'top: '.$spec['top'],
             'width: '.$spec['width'],
             'font-size: '.($fontSize ?? $spec['font_size'] ?? '3mm'),
             'line-height: '.($spec['line_height'] ?? '1.2'),
@@ -143,28 +162,17 @@
     <div class="stamp" style="{{ $style($place['name'], $nameSize) }}">{{ $badgeName }}</div>
 
     @if ($badgeInstitution)
-        @php $institutionSize = $sizeFor($place['institution'], $badgeInstitution); @endphp
+        @php $institutionSize = $capToName($sizeFor($place['institution'], $badgeInstitution), $nameSize); @endphp
         @foreach ($edges($place['institution']) as [$x, $y])
             <div class="stamp" style="{{ $style($place['institution'], $institutionSize) }} margin-left: {{ $x }}mm; margin-top: {{ $y }}mm;">{{ $badgeInstitution }}</div>
         @endforeach
         <div class="stamp" style="{{ $style($place['institution'], $institutionSize) }}">{{ $badgeInstitution }}</div>
     @endif
 
-    {{-- How this person qualifies to be here. For a complimentary badge this
-         is the whole point: it says Media or Secretariat rather than leaving a
-         steward to guess why someone has no paid registration. --}}
-    @if ($badgeCategory)
-        @foreach ($edges($place['category']) as [$x, $y])
-            <div class="stamp" style="{{ $style($place['category']) }} margin-left: {{ $x }}mm; margin-top: {{ $y }}mm;">{{ $badgeCategory }}</div>
-        @endforeach
-        <div class="stamp" style="{{ $style($place['category']) }}">{{ $badgeCategory }}</div>
-    @endif
-
     <div class="qr" style="left: {{ $place['qr']['left'] }}; top: {{ $place['qr']['top'] }}; width: {{ $place['qr']['width'] }};">
         <img src="{{ $qr }}" alt="">
     </div>
 
-    <div class="stamp" style="{{ $style($place['code']) }}">{{ $registrationCode }}</div>
 </div>
 </body>
 </html>

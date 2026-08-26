@@ -7,6 +7,7 @@ use App\Mail\PaymentConfirmed;
 use App\Models\Attendance;
 use App\Models\FeeCategory;
 use App\Models\User;
+use App\Services\BadgePrinter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -250,6 +251,150 @@ class StaffDashboardTest extends TestCase
         $this->assertSame('verified', $noEmail->payment_status);
         $this->assertNotNull($noEmail->registration_code);
         Mail::assertNothingQueued();
+    }
+
+    /**
+     * A complimentary walk-in owes nothing and never receives a control number,
+     * so the desk must be handed the badge itself — not a billing panel about a
+     * number that will never exist.
+     */
+    public function test_a_complimentary_walk_in_is_handed_a_badge_and_no_control_number(): void
+    {
+        $this->seedComplimentaryCategory();
+        $staff = User::factory()->staff()->create();
+
+        $this->actingAs($staff)
+            ->post(route('staff.walk-ins.store'), [
+                'name' => 'Press Person',
+                'phone' => '+255 700 000 222',
+                'institution_id' => 'other',
+                'institution_other' => 'The Citizen',
+                'participant_type' => 'media',
+                'fee_category' => 'complimentary_media',
+            ])
+            ->assertRedirect();
+
+        $walkIn = User::where('name', 'Press Person')->firstOrFail();
+        $flash = session('walkIn');
+
+        $this->assertNull($flash['control_number']);
+        $this->assertNotNull($flash['badge'], 'A comped walk-in is paid, so their badge exists immediately.');
+        $this->assertSame($walkIn->registration_code, $flash['badge']['registrationCode']);
+        // Positioned from the same config as the PDF, so the two cannot drift.
+        $this->assertSame(config('badge.placeholders'), $flash['badge']['placeholders']);
+    }
+
+    /**
+     * The artwork has slots for a name, an institution and a QR, and nothing
+     * else, so no fee category reaches the badge. The print log still records
+     * the real one: it is a record of who was issued a badge rather than of what
+     * the face showed.
+     */
+    public function test_no_fee_category_reaches_the_badge_but_the_print_log_keeps_it(): void
+    {
+        $this->seedParticipantCategory();
+        $staff = User::factory()->staff()->create();
+        $paid = $this->paidRegistrant([
+            'name' => 'Ordinary Attendee',
+            'fee_category' => 'participant_east_africa',
+        ]);
+
+        $badge = app(BadgePrinter::class)->preview($paid);
+
+        $this->assertArrayNotHasKey('categoryLabel', $badge);
+        $this->assertSame('Ordinary Attendee', $badge['name']);
+
+        $this->actingAs($staff)->get(route('staff.badge', $paid))->assertOk();
+
+        $this->assertSame(
+            'East African Participants',
+            $paid->badgePrints()->latest('printed_at')->first()->printed_category,
+        );
+    }
+
+    /** The coordinates are measured off the artwork, so a swap must not go unnoticed. */
+    public function test_the_badge_ships_the_real_artwork_at_its_own_proportions(): void
+    {
+        $this->assertFileExists(public_path(config('badge.template.background')));
+
+        [$width, $height] = getimagesize(public_path(config('badge.template.background')));
+
+        $this->assertEqualsWithDelta(
+            config('badge.template.width_mm') / config('badge.template.height_mm'),
+            $width / $height,
+            0.005,
+            'The artwork would be stretched: its aspect ratio no longer matches width_mm/height_mm.',
+        );
+    }
+
+    /** Showing a badge on screen is not printing one. */
+    public function test_registering_a_walk_in_does_not_count_as_printing_their_badge(): void
+    {
+        $this->seedComplimentaryCategory();
+        $staff = User::factory()->staff()->create();
+
+        $this->actingAs($staff)->post(route('staff.walk-ins.store'), [
+            'name' => 'Unprinted Guest',
+            'phone' => '+255 700 000 333',
+            'institution_id' => 'other',
+            'institution_other' => 'NIMR',
+            'participant_type' => 'media',
+            'fee_category' => 'complimentary_media',
+        ]);
+
+        $walkIn = User::where('name', 'Unprinted Guest')->firstOrFail();
+
+        $this->assertSame(0, $walkIn->badgePrints()->count());
+
+        // And neither is opening their record, or the desk's first real print
+        // would announce itself as a reprint.
+        $this->actingAs($staff)->get(route('staff.registrant', $walkIn))->assertOk();
+
+        $this->assertSame(0, $walkIn->badgePrints()->count());
+    }
+
+    /** Someone who still owes gets the number to pay with, and no badge. */
+    public function test_a_paying_walk_in_is_handed_a_control_number_and_no_badge(): void
+    {
+        $this->seedParticipantCategory();
+        $staff = User::factory()->staff()->create();
+
+        $this->actingAs($staff)
+            ->post(route('staff.walk-ins.store'), [
+                'name' => 'Owes Money',
+                'phone' => '+255 700 000 444',
+                'institution_id' => 'other',
+                'institution_other' => 'NIMR',
+                'participant_type' => 'researcher',
+                'country' => 'Tanzania',
+                'fee_category' => 'participant_east_africa',
+            ])
+            ->assertRedirect();
+
+        $flash = session('walkIn');
+
+        $this->assertNull($flash['badge'], 'Nobody unpaid may be shown a badge.');
+    }
+
+    /** The detail page carries the badge for anyone who has one. */
+    public function test_the_registrant_page_shows_a_badge_only_once_they_have_paid(): void
+    {
+        $staff = User::factory()->staff()->create();
+        $unpaid = User::factory()->create(['payment_status' => 'submitted', 'registration_code' => null]);
+        $paid = $this->paidRegistrant(['name' => 'Settled Person']);
+
+        $this->actingAs($staff)
+            ->get(route('staff.registrant', $unpaid))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page->component('staff/registrant')->where('badge', null)->etc());
+
+        $this->actingAs($staff)
+            ->get(route('staff.registrant', $paid))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('staff/registrant')
+                ->where('badge.registrationCode', $paid->registration_code)
+                ->etc());
     }
 
     private function seedComplimentaryCategory(): FeeCategory

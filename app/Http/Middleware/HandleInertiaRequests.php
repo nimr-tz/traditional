@@ -56,6 +56,10 @@ class HandleInertiaRequests extends Middleware
                 'success' => fn () => $request->session()->get('success'),
                 'error' => fn () => $request->session()->get('error'),
                 'info' => fn () => $request->session()->get('info'),
+                // What the desk just did, when it produced something the staff
+                // member needs in front of them — a badge to show, or a control
+                // number to read out. A sentence cannot carry either.
+                'walkIn' => fn () => $request->session()->get('walkIn'),
             ],
         ]);
     }

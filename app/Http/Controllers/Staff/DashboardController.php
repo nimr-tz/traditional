@@ -109,7 +109,7 @@ class DashboardController extends Controller
      * next to the details that justify it — issuing a control number sits next
      * to what is owed, settling a payment sits next to who is allowed to.
      */
-    public function show(User $user): Response
+    public function show(User $user, BadgePrinter $printer): Response
     {
         abort_unless($user->hasRole(User::ROLE_USER), 404);
 
@@ -128,6 +128,10 @@ class DashboardController extends Controller
 
         return Inertia::render('staff/registrant', [
             'canManageFinance' => Auth::user()->canManageFinance(),
+            // Null until they have paid. Showing the badge here costs nothing —
+            // preview() does not log a print — and saves printing one just to
+            // read a code off it.
+            'badge' => $printer->preview($user),
             'person' => [
                 'id' => $user->id,
                 'name' => $user->name,
@@ -186,17 +190,33 @@ class DashboardController extends Controller
      * Staff may do this. What they may not do is make the result paid — see
      * confirmPayment/waive below.
      */
-    public function registerWalkIn(Request $request, WalkInRegistrar $registrar): RedirectResponse
+    public function registerWalkIn(Request $request, WalkInRegistrar $registrar, BadgePrinter $printer): RedirectResponse
     {
         $validated = $request->validate(WalkInRegistrar::rules($request->input('fee_category')));
 
         ['user' => $user, 'billing' => $billing] = $registrar->register($validated, $request->user());
 
-        return back()->with(in_array($billing['status'], ['ready', 'waived'], true) ? 'success' : 'info', match ($billing['status']) {
-            'ready' => "{$user->full_name} is registered. Control number {$billing['control_number']} — they can pay it now.",
-            'waived' => "{$user->full_name} is registered. Fee waived — their badge is ready.",
-            default => "{$user->full_name} is registered. {$billing['message']}",
-        });
+        // Whether there is a badge follows from whether they have paid, not from
+        // how billing went: someone waived or complimentary is paid and never
+        // gets a control number, so keying off the billing status would leave
+        // exactly the people whose badge is ready staring at a panel about a
+        // control number that will never exist.
+        $badge = $printer->preview($user);
+
+        return back()
+            ->with('walkIn', [
+                'name' => $user->full_name,
+                'registrant_id' => $user->id,
+                'badge' => $badge,
+                'badges_printed' => $user->badgePrints()->count(),
+                'control_number' => $billing['control_number'],
+                'billing_message' => $billing['message'],
+            ])
+            ->with($badge || $billing['status'] === 'ready' ? 'success' : 'info', match (true) {
+                $badge !== null => "{$user->full_name} is registered. Their badge is ready.",
+                $billing['status'] === 'ready' => "{$user->full_name} is registered. Control number {$billing['control_number']} — they can pay it now.",
+                default => "{$user->full_name} is registered. {$billing['message']}",
+            });
     }
 
     /**

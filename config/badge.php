@@ -7,57 +7,95 @@ return [
     |--------------------------------------------------------------------------
     |
     | The finished artwork is the whole design. The PDF stamps only the dynamic
-    | text — name, institution, category, QR — on top of it at percentage
-    | coordinates, so re-skinning the badge is an image swap plus a nudge to the
-    | numbers below, not a template rewrite.
+    | text — name, institution, QR — on top of it at percentage coordinates, so
+    | re-skinning the badge is an image swap plus a nudge to the numbers below,
+    | not a template rewrite.
     |
-    | ⚠ The shipped artwork is a PLACEHOLDER borrowed from AJSC. It reads
-    | "33rd Annual Joint Scientific Conference · 9–11 June 2026" — the wrong
-    | conference and the wrong dates. Replace `background` with the real TMSC
-    | artwork before printing anything anyone will wear, and re-check the
-    | placeholder positions against it.
+    | Unlike the fill-in template that came before it, this artwork is a blank
+    | canvas: a green header, a plain white field, and the flag bar. There are no
+    | printed rules or boxes to line anything up with, so the numbers below are
+    | a layout rather than a tracing. What the artwork does fix is the usable
+    | area, measured off the image —
+    |
+    |   green header ends   38.05%   (its curve dips lowest at the centre)
+    |   flag bar begins     95.82%
+    |
+    | Everything must live between those two, edge to edge.
+    |
+    | ⚠ The conference name, edition, venue and date are drawn into the artwork
+    | ("5TH … CONFERENCE AND EXHIBITION", "MBEYA. 28 AUGUST 2026"). Changing any
+    | of those in conference settings will NOT move the badge — that needs a new
+    | export of the image.
     |
     */
 
     'template' => [
-        'background' => 'images/badge-template-placeholder.png',
+        'background' => 'images/Traditional Medicine Scientific Conference.png',
 
-        // Physical badge stock, in millimetres. The artwork's aspect ratio
-        // should match, or it will be stretched.
+        // The artwork is 591 × 1004px, an aspect ratio of 0.58865 — which is
+        // exactly 80.88 × 137.4mm. These follow the image rather than the badge
+        // stock on purpose: matching the artwork means it is never stretched,
+        // and a mismatch with the holder is a visible margin rather than a
+        // distorted logo.
+        //
+        // ⚠ 591px across 80.88mm is only ~186dpi. That prints acceptably but is
+        // below the 300dpi print standard; a 955 × 1622px export of the same
+        // design would drop straight in here with no other change.
         'width_mm' => 80.88,
         'height_mm' => 137.4,
     ],
 
     /*
-    | Placeholder geometry, as percentages of the badge. `top`/`left` position
+    | Placeholder geometry, as percentages of the badge. `left`/`width` position
     | the box; text is centred within its own width.
     |
     | dompdf renders font-weight poorly, so bold text is faked by stamping the
     | same string several times at sub-millimetre offsets (see the blade). Keep
     | `edge_offset_mm` small — larger values read as a blur, not a bold.
-    */
-    /*
-    | Vertical budget for the white panel below the artwork's wave, which runs
-    | from roughly 50% to 90% of the badge. Each block is placed with room for
-    | its *longest realistic* content, not its shortest: "Muhimbili University
-    | of Health and Allied Sciences" takes two lines however hard it shrinks,
-    | and the first layout let that second line land on top of the QR.
     |
-    |   name         55.0%  → up to 2 lines
-    |   institution  66.5%  → up to 2 lines
-    |   category     76.5%
-    |   qr           80.5%  → square, ~11% tall
-    |   code         93.0%
+    | The text blocks are anchored by `bottom`, not `top`. With a blank canvas
+    | that matters less than it did against a printed rule, but it still means a
+    | value long enough to wrap grows upwards into empty white instead of down
+    | into the QR. The `shrink_at` steps aim to keep everything on one line
+    | anyway; they are sized from this font's real width, about 0.63 × font-size
+    | per uppercase character, against the 67.9mm these blocks have to work with.
+    |
+    | Vertical budget for the white field (38.05% – 95.82%):
+    |
+    | Vertical budget, worked from the top down so every gap is deliberate:
+    |
+    |   1.2%   clear of the green curve
+    |   name   sits at 50.1%, over one or two lines, growing upwards
+    |   4.5%   gap — the name and the institution are separate facts
+    |   inst   sits at 61.2%, over one or two lines
+    |   2.2%   gap
+    |   qr     63.4% – 92.8%
+    |   3.0%   clear of the flag bar
+    |
+    | There is deliberately no category band and no registration code: the code
+    | is already carried by the QR, and a fee tier tells a door steward nothing
+    | they would act on.
     */
     'placeholders' => [
         'name' => [
-            'left' => '5%',
-            'top' => '55%',
-            'width' => '90%',
-            'font_size' => '5.3mm',
-            // Long names step down through these sizes rather than wrapping
-            // into the institution line below.
-            'shrink_at' => [22 => '4.4mm', 30 => '3.7mm', 40 => '3.1mm'],
+            'left' => '8%',
+            // Sitting at 50.1%, growing upwards. Two lines at full size reach
+            // ~39.3%, clearing the green header's curve at 38.05%.
+            'bottom' => '49.9%',
+            'width' => '84%',
+            'font_size' => '6.5mm',
+            /*
+             * Like the institution, sized for up to TWO lines rather than forced
+             * onto one. Holding a 32-character name on a single line meant 2.9mm
+             * type — smaller than the institution beneath it, which is backwards.
+             * Wrapping instead keeps that same name at 5.5mm.
+             *
+             * A short name still gets one line: 6.5mm fits ~16 characters across,
+             * so it only wraps once it has to. Thresholds are the two-line
+             * capacity — ~67.9mm of width, about 0.63 × font-size per character,
+             * doubled, with ~10% headroom.
+             */
+            'shrink_at' => [29 => '5.5mm', 35 => '4.6mm', 42 => '3.8mm', 51 => '3.2mm'],
             'line_height' => '1.15',
             'letter_spacing' => '0.02em',
             'color' => '#132986',
@@ -68,10 +106,24 @@ return [
 
         'institution' => [
             'left' => '8%',
-            'top' => '66.5%',
+            // Sitting at 61.2%, over one or two lines, which leaves ~6mm of white
+            // between it and the name above — enough that the two read as
+            // separate facts rather than one block. Never larger than the name:
+            // the blade and the React component both clamp it.
+            'bottom' => '38.8%',
             'width' => '84%',
-            'font_size' => '3.4mm',
-            'shrink_at' => [28 => '2.9mm', 44 => '2.5mm', 64 => '2.2mm'],
+            'font_size' => '3.6mm',
+            /*
+             * Sized for two lines, not one. Squeezing "National Institute for
+             * Medical Research (NIMR)" onto a single line meant 2mm type — legible
+             * on paper held at arm's length, but far too small next to a 6mm name.
+             * Wrapping to a second line instead keeps it at 3.6mm.
+             *
+             * The thresholds are therefore roughly double the one-line capacity:
+             * ~67.9mm of width at about 0.72 × font-size per character, times two
+             * lines. Only an institution too long for two lines steps down.
+             */
+            'shrink_at' => [52 => '3.2mm', 59 => '2.8mm', 67 => '2.4mm', 78 => '2mm'],
             'line_height' => '1.25',
             'letter_spacing' => '0.04em',
             'color' => '#96500b',
@@ -81,46 +133,22 @@ return [
         ],
 
         /*
-        | The category band. It carries real operational weight: a waived
-        | attendee's badge has to say *how* they qualify — Media, Secretariat,
-        | Invited Guest — so a door steward can tell at a glance who is entitled
-        | to be there without a paid registration.
-        */
-        'category' => [
-            'left' => '10%',
-            'top' => '76.5%',
-            'width' => '80%',
-            'font_size' => '2.9mm',
-            'line_height' => '1.2',
-            'letter_spacing' => '0.14em',
-            'color' => '#1b2f86',
-            'align' => 'center',
-            'transform' => 'uppercase',
-            'edge_offset_mm' => 0.08,
-        ],
-
-        /*
-        | The QR is square, so its height follows its width: 21% of an 80.88mm
-        | badge is ~17mm, which is ~12.4% of the 137.4mm height. `top` plus that
-        | must clear the code line below, or the two overlap — which is exactly
-        | what a wider QR did on the first print.
+        | Large, but no longer as large as the canvas allows. 50% of 80.88mm is a
+        | ~40mm square — still 2.6× the 15.4mm the first template managed — and
+        | what it gave back is what lets the name run to 6.5mm over two lines
+        | instead of collapsing to 2.9mm on one, and buys the ~6mm of air between
+        | the name and the institution. A steward reads the name across a room
+        | and scans the QR from a few centimetres away, so the trade favours the
+        | name.
+        |
+        | The QR is square, so its height follows its width. Widening it means
+        | moving `top` up by the same amount in percent-of-height terms, or it
+        | will run into the flag bar.
         */
         'qr' => [
-            'left' => '40.5%',
-            'top' => '80.5%',
-            'width' => '19%',
-        ],
-
-        'code' => [
-            'left' => '10%',
-            'top' => '93%',
-            'width' => '80%',
-            'font_size' => '2.2mm',
-            'letter_spacing' => '0.1em',
-            // Dark enough to stay legible where the artwork's lower wave turns
-            // the background blue.
-            'color' => '#3f4d5f',
-            'align' => 'center',
+            'left' => '25%',
+            'top' => '63.4%',
+            'width' => '50%',
         ],
     ],
 ];

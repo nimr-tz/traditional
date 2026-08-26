@@ -1,4 +1,5 @@
 import { DashboardCard } from '@/components/dashboard-card';
+import { RegistrantBadge, type BadgeContent } from '@/components/registrant-badge';
 import { PrintBadgeButton, StandingBadge, formatAmount, formatDateTime, formatTime } from '@/components/registrant-standing';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -60,6 +61,8 @@ interface BadgePrint {
 interface RegistrantPageProps {
     canManageFinance: boolean;
     person: PersonDetail;
+    /** Null until their payment is verified or waived — there is no badge before that. */
+    badge: BadgeContent | null;
     attendance: AttendanceRecord[];
     badgePrints: BadgePrint[];
 }
@@ -77,7 +80,7 @@ function participantTypeLabel(value: string | null): string {
         .join(' ');
 }
 
-export default function RegistrantPage({ canManageFinance, person, attendance, badgePrints }: RegistrantPageProps) {
+export default function RegistrantPage({ canManageFinance, person, badge, attendance, badgePrints }: RegistrantPageProps) {
     const { flash } = usePage<SharedData & { flash: { success?: string; error?: string; info?: string } }>().props;
     const [settling, setSettling] = useState(false);
     const { data, setData, post, processing, errors, reset } = useForm({ notes: '' });
@@ -263,7 +266,21 @@ export default function RegistrantPage({ canManageFinance, person, attendance, b
                     </DashboardCard>
 
                     <DashboardCard>
-                        <h2 className="text-sm font-bold tracking-wide uppercase">Badge prints ({person.badges_printed})</h2>
+                        <h2 className="text-sm font-bold tracking-wide uppercase">Badge</h2>
+                        {badge ? (
+                            <>
+                                <p className="text-muted-foreground mt-1 text-xs">
+                                    Scannable from the screen — no need to print one just to read the code.
+                                </p>
+                                <div className="mt-4 flex justify-center overflow-x-auto rounded-xl border bg-white p-4">
+                                    <RegistrantBadge badge={badge} className="shrink-0 shadow-sm" />
+                                </div>
+                            </>
+                        ) : (
+                            <p className="text-muted-foreground mt-4 text-sm">No badge yet — one exists once their payment is verified or waived.</p>
+                        )}
+
+                        <h2 className="mt-6 text-sm font-bold tracking-wide uppercase">Badge prints ({person.badges_printed})</h2>
                         {badgePrints.length === 0 ? (
                             <p className="text-muted-foreground mt-4 text-sm">No badge printed yet.</p>
                         ) : (
