@@ -41,10 +41,39 @@ class BadgeQrCodeTest extends TestCase
 
         $this->get(route('badges.verify', $attendee->registration_code))
             ->assertOk()
-            ->assertSee('Registered attendee')
             ->assertSee('Asha Nyerere')
             ->assertSee('NIMR')
-            ->assertSee('East African Participants');
+            // The issuer is the whole reason the page is worth anything.
+            ->assertSee('National Institute for Medical Research')
+            // What somebody paid is nobody's business at a door or in an interview.
+            ->assertDontSee('East African Participants');
+    }
+
+    /**
+     * The page is read years later, sometimes by an employer checking a CV, so
+     * it must never confirm attendance on the strength of a registration alone.
+     */
+    public function test_it_separates_attending_from_merely_registering(): void
+    {
+        $staff = User::factory()->staff()->create();
+        $attendee = $this->attendee();
+
+        $this->get(route('badges.verify', $attendee->registration_code))
+            ->assertOk()
+            ->assertSee('Verified registration')
+            ->assertSee('was a registered participant of the')
+            ->assertDontSee('attended the');
+
+        Attendance::create([
+            'user_id' => $attendee->id,
+            'checked_in_at' => now(),
+            'checked_in_by' => $staff->id,
+        ]);
+
+        $this->get(route('badges.verify', $attendee->registration_code))
+            ->assertOk()
+            ->assertSee('Verified participation')
+            ->assertSee('attended the');
     }
 
     /** Public page, so it must show no more than the badge already prints. */
@@ -75,9 +104,12 @@ class BadgeQrCodeTest extends TestCase
             'checked_in_by' => $staff->id,
         ]);
 
+        // Stated as a fact about the conference, not as a door readout: the
+        // page has to still make sense long after the day it was scanned.
         $this->get(route('badges.verify', $attendee->registration_code))
             ->assertOk()
-            ->assertSee('Checked in');
+            ->assertSee('attended the')
+            ->assertSee('Present on');
     }
 
     public function test_an_unknown_or_unsettled_badge_is_refused(): void
