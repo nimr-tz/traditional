@@ -11,6 +11,7 @@ import {
     View,
 } from 'react-native';
 import { DeskOptions, RegistrationResult, apiErrorMessage, fetchDeskOptions, registerAttendee } from '../api/client';
+import { colors } from '../theme';
 
 const EMPTY_FORM = {
     name: '',
@@ -411,9 +412,9 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 const registerStyles = StyleSheet.create({
     flex: { flex: 1 },
-    screen: { flex: 1, backgroundColor: '#f7f5ef' },
+    screen: { flex: 1, backgroundColor: colors.background },
     content: { padding: 20, paddingBottom: 40 },
-    heading: { color: '#173f2a', fontSize: 28, fontWeight: '700', marginBottom: 6 },
+    heading: { color: colors.primaryDark, fontSize: 28, fontWeight: '700', marginBottom: 6 },
     intro: { color: '#536159', fontSize: 15, lineHeight: 22, marginBottom: 24 },
     field: { marginBottom: 16 },
     label: { color: '#24372c', fontSize: 14, fontWeight: '600', marginBottom: 7 },
@@ -454,7 +455,7 @@ const registerStyles = StyleSheet.create({
         justifyContent: 'space-between',
         paddingHorizontal: 14,
         borderWidth: 1,
-        borderColor: '#173f2a',
+        borderColor: colors.primary,
         borderRadius: 6,
         backgroundColor: '#ffffff',
         marginBottom: 8,
@@ -472,11 +473,11 @@ const registerStyles = StyleSheet.create({
         borderRadius: 8,
         backgroundColor: '#ffffff',
     },
-    categoryOptionSelected: { backgroundColor: '#173f2a', borderColor: '#173f2a' },
+    categoryOptionSelected: { backgroundColor: colors.primary, borderColor: colors.primary },
     categoryLabel: { color: '#24372c', fontSize: 15, fontWeight: '600' },
     categoryLabelSelected: { color: '#ffffff' },
     categoryAmount: { color: '#647168', fontSize: 14, marginTop: 3 },
-    amountDue: { color: '#173f2a', fontSize: 17, fontWeight: '700', marginTop: 10 },
+    amountDue: { color: colors.primaryDark, fontSize: 17, fontWeight: '700', marginTop: 10 },
     codePending: { color: '#8a7550', fontSize: 16, fontWeight: '600', textAlign: 'center' },
     blockedHint: { color: '#7a5216', backgroundColor: '#fbf1dc', padding: 12, borderRadius: 6 },
     successMarkPending: { backgroundColor: '#b8863b' },
@@ -490,12 +491,12 @@ const registerStyles = StyleSheet.create({
         borderRadius: 22,
         backgroundColor: '#ffffff',
     },
-    typeOptionSelected: { backgroundColor: '#173f2a', borderColor: '#173f2a' },
+    typeOptionSelected: { backgroundColor: colors.primary, borderColor: colors.primary },
     typeText: { color: '#354b3e', fontSize: 14, fontWeight: '600' },
     typeTextSelected: { color: '#ffffff' },
     primaryButton: {
         minHeight: 52,
-        backgroundColor: '#173f2a',
+        backgroundColor: colors.primary,
         borderRadius: 6,
         alignItems: 'center',
         justifyContent: 'center',
@@ -506,13 +507,13 @@ const registerStyles = StyleSheet.create({
     buttonDisabled: { opacity: 0.65 },
     error: { color: '#a73526', backgroundColor: '#f9e7e3', padding: 12, borderRadius: 6, marginBottom: 12, lineHeight: 20 },
     successScreen: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
-    successMark: { width: 64, height: 64, borderRadius: 32, backgroundColor: '#173f2a', alignItems: 'center', justifyContent: 'center' },
+    successMark: { width: 64, height: 64, borderRadius: 32, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
     successMarkText: { color: '#ffffff', fontSize: 36, fontWeight: '700', lineHeight: 42 },
-    successTitle: { color: '#173f2a', fontSize: 24, fontWeight: '700', marginTop: 20, marginBottom: 12 },
+    successTitle: { color: colors.primaryDark, fontSize: 24, fontWeight: '700', marginTop: 20, marginBottom: 12 },
     successName: { color: '#172019', fontSize: 19, fontWeight: '600', textAlign: 'center' },
     successDetail: { color: '#647168', fontSize: 15, marginTop: 4 },
     codeBlock: { alignSelf: 'stretch', borderTopWidth: 1, borderBottomWidth: 1, borderColor: '#c8cec9', paddingVertical: 16, marginVertical: 24 },
     codeLabel: { color: '#69766e', fontSize: 11, letterSpacing: 1.2, textAlign: 'center', marginBottom: 6 },
-    code: { color: '#173f2a', fontSize: 20, fontWeight: '700', letterSpacing: 1.4, textAlign: 'center' },
+    code: { color: colors.primaryDark, fontSize: 20, fontWeight: '700', letterSpacing: 1.4, textAlign: 'center' },
     successHint: { color: '#536159', fontSize: 15, lineHeight: 22, textAlign: 'center', marginBottom: 18 },
 });

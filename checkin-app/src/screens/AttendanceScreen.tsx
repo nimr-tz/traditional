@@ -23,6 +23,7 @@ import {
     waivePayment,
 } from '../api/client';
 import { useAuth } from '../context/AuthContext';
+import { colors } from '../theme';
 
 type AttendanceMode = 'scan' | 'search';
 
@@ -221,7 +222,7 @@ export default function AttendanceScreen() {
                             value={notes}
                             onChangeText={setNotes}
                             placeholder="Notes — required to waive"
-                            placeholderTextColor="#77827b"
+                            placeholderTextColor={colors.textMuted}
                             multiline
                         />
                         <Pressable
@@ -292,7 +293,7 @@ export default function AttendanceScreen() {
                         <TextInput
                             style={attendanceStyles.searchInput}
                             placeholder="Name or email"
-                            placeholderTextColor="#77827b"
+                            placeholderTextColor={colors.textMuted}
                             value={query}
                             onChangeText={(value) => {
                                 setQuery(value);
@@ -303,7 +304,7 @@ export default function AttendanceScreen() {
                             returnKeyType="search"
                         />
                         <Pressable style={attendanceStyles.searchButton} onPress={runSearch} disabled={loading} accessibilityRole="button">
-                            {loading ? <ActivityIndicator color="#ffffff" /> : <Text style={attendanceStyles.searchButtonText}>Search</Text>}
+                            {loading ? <ActivityIndicator color={colors.onPrimary} /> : <Text style={attendanceStyles.searchButtonText}>Search</Text>}
                         </Pressable>
                     </View>
 
@@ -370,7 +371,7 @@ function ScanPanel({
     onScan: ({ data }: { data: string }) => void;
 }) {
     if (!permission) {
-        return <ActivityIndicator style={attendanceStyles.loadingScreen} color="#173f2a" />;
+        return <ActivityIndicator style={attendanceStyles.loadingScreen} color={colors.primary} />;
     }
 
     if (!permission.granted) {
@@ -401,7 +402,7 @@ function ScanPanel({
             </View>
             <View style={attendanceStyles.cameraShadeBottom}>
                 <Text style={attendanceStyles.cameraInstruction}>Hold the QR code inside the frame</Text>
-                {locked ? <ActivityIndicator color="#ffffff" style={attendanceStyles.scanProgress} /> : null}
+                {locked ? <ActivityIndicator color={colors.onPrimary} style={attendanceStyles.scanProgress} /> : null}
             </View>
         </View>
     );
@@ -428,71 +429,139 @@ function formatParticipantType(value: string) {
 }
 
 const attendanceStyles = StyleSheet.create({
-    screen: { flex: 1, backgroundColor: '#f7f5ef' },
-    modeBar: { flexDirection: 'row', padding: 12, gap: 8, backgroundColor: '#ffffff', borderBottomWidth: 1, borderBottomColor: '#d7dcd8' },
-    modeButton: { flex: 1, minHeight: 46, alignItems: 'center', justifyContent: 'center', borderRadius: 5 },
-    modeButtonSelected: { backgroundColor: '#173f2a' },
-    modeButtonText: { color: '#43564a', fontSize: 15, fontWeight: '700' },
-    modeButtonTextSelected: { color: '#ffffff' },
-    cameraPanel: { flex: 1, backgroundColor: '#000000' },
-    cameraShadeTop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)' },
-    cameraMiddle: { height: 250, flexDirection: 'row' },
-    cameraShadeSide: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)' },
-    scanFrame: { width: 250, borderWidth: 3, borderColor: '#ffffff', borderRadius: 8 },
-    cameraShadeBottom: { flex: 1.2, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', paddingTop: 28 },
-    cameraInstruction: { color: '#ffffff', fontSize: 16, fontWeight: '600', textAlign: 'center' },
+    screen: { flex: 1, backgroundColor: colors.background },
+    modeBar: {
+        flexDirection: 'row',
+        padding: 12,
+        gap: 8,
+        backgroundColor: colors.surface,
+        borderBottomWidth: 1,
+        borderBottomColor: colors.headerDivider,
+    },
+    modeButton: { flex: 1, minHeight: 46, alignItems: 'center', justifyContent: 'center', borderRadius: 6 },
+    modeButtonSelected: { backgroundColor: colors.primaryDark },
+    modeButtonText: { color: '#43564A', fontSize: 15, fontWeight: '700' },
+    modeButtonTextSelected: { color: colors.onPrimary },
+    cameraPanel: { flex: 1, backgroundColor: '#111111' },
+    cameraShadeTop: { flex: 1, backgroundColor: colors.scanShade },
+    cameraMiddle: { height: 240, flexDirection: 'row' },
+    cameraShadeSide: { flex: 1, backgroundColor: colors.scanShade },
+    // Yellow, not white: the frame has to stay findable against a dark room and
+    // against a badge held up in daylight.
+    scanFrame: { width: 240, borderWidth: 3, borderColor: colors.scanFrame, borderRadius: 10 },
+    cameraShadeBottom: { flex: 1.2, backgroundColor: colors.scanShade, alignItems: 'center', paddingTop: 26 },
+    cameraInstruction: { color: colors.onPrimary, fontSize: 15, fontWeight: '600', textAlign: 'center', paddingHorizontal: 40 },
     scanProgress: { marginTop: 16 },
-    searchPanel: { flex: 1, paddingTop: 22 },
-    heading: { color: '#173f2a', fontSize: 26, fontWeight: '700', marginHorizontal: 20 },
-    intro: { color: '#536159', fontSize: 15, lineHeight: 22, marginHorizontal: 20, marginTop: 6, marginBottom: 18 },
+    searchPanel: { flex: 1, paddingTop: 18 },
+    heading: { color: colors.primaryDark, fontSize: 22, fontWeight: '700', marginHorizontal: 20 },
+    intro: { color: colors.textMuted, fontSize: 14, lineHeight: 20, marginHorizontal: 20, marginTop: 6, marginBottom: 16 },
     searchRow: { flexDirection: 'row', gap: 8, marginHorizontal: 20 },
-    searchInput: { flex: 1, minHeight: 50, backgroundColor: '#ffffff', borderColor: '#bfc7c1', borderWidth: 1, borderRadius: 6, paddingHorizontal: 14, fontSize: 16, color: '#172019' },
-    searchButton: { minWidth: 88, minHeight: 50, backgroundColor: '#173f2a', borderRadius: 6, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 14 },
-    searchButtonText: { color: '#ffffff', fontSize: 15, fontWeight: '700' },
+    searchInput: {
+        flex: 1,
+        minHeight: 48,
+        backgroundColor: colors.surface,
+        borderColor: colors.borderStrong,
+        borderWidth: 1,
+        borderRadius: 6,
+        paddingHorizontal: 14,
+        fontSize: 16,
+        color: colors.text,
+    },
+    searchButton: {
+        minWidth: 84,
+        minHeight: 48,
+        backgroundColor: colors.primary,
+        borderRadius: 6,
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingHorizontal: 14,
+    },
+    searchButtonText: { color: colors.onPrimary, fontSize: 15, fontWeight: '700' },
     resultsList: { padding: 20, paddingBottom: 40 },
-    matchRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#d3d9d4' },
+    matchRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: colors.divider },
     matchText: { flex: 1, paddingRight: 12 },
-    matchName: { color: '#172019', fontSize: 17, fontWeight: '700', marginBottom: 3 },
-    matchDetail: { color: '#617067', fontSize: 13, lineHeight: 19 },
-    presentButton: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 13, borderWidth: 1, borderColor: '#173f2a', borderRadius: 5 },
-    presentButtonText: { color: '#173f2a', fontSize: 13, fontWeight: '700' },
-    empty: { color: '#6a766f', fontSize: 15, textAlign: 'center', marginTop: 30 },
-    error: { color: '#a73526', backgroundColor: '#f9e7e3', padding: 12, borderRadius: 6, marginHorizontal: 20, marginTop: 14, lineHeight: 20 },
-    scanError: { position: 'absolute', left: 20, right: 20, bottom: 24, backgroundColor: '#ffffff', borderRadius: 8, padding: 16 },
-    errorText: { color: '#912f22', fontSize: 15, lineHeight: 21, textAlign: 'center' },
+    matchName: { color: colors.text, fontSize: 16, fontWeight: '700', marginBottom: 3 },
+    matchDetail: { color: colors.textFaint, fontSize: 13, lineHeight: 19 },
+    presentButton: {
+        minHeight: 44,
+        justifyContent: 'center',
+        paddingHorizontal: 13,
+        borderWidth: 1,
+        borderColor: colors.primary,
+        borderRadius: 6,
+    },
+    presentButtonText: { color: colors.primary, fontSize: 13, fontWeight: '700' },
+    empty: { color: colors.textMuted, fontSize: 15, textAlign: 'center', marginTop: 30 },
+    error: {
+        color: colors.danger,
+        backgroundColor: colors.dangerSurface,
+        padding: 12,
+        borderRadius: 8,
+        marginHorizontal: 20,
+        marginTop: 14,
+        lineHeight: 20,
+    },
+    scanError: { position: 'absolute', left: 20, right: 20, bottom: 24, backgroundColor: colors.surface, borderRadius: 10, padding: 16 },
+    errorText: { color: '#912F22', fontSize: 15, lineHeight: 21, textAlign: 'center' },
     retryButton: { minHeight: 44, alignItems: 'center', justifyContent: 'center', marginTop: 8 },
-    retryButtonText: { color: '#173f2a', fontSize: 15, fontWeight: '700' },
+    retryButtonText: { color: colors.primary, fontSize: 14, fontWeight: '700' },
     loadingScreen: { flex: 1 },
-    permissionScreen: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
-    permissionText: { color: '#536159', fontSize: 16, lineHeight: 24, textAlign: 'center', marginTop: 10, marginBottom: 20 },
-    resultScreen: { flex: 1, backgroundColor: '#f7f5ef', alignItems: 'center', justifyContent: 'center', padding: 24 },
-    resultMark: { width: 64, height: 64, borderRadius: 32, backgroundColor: '#173f2a', alignItems: 'center', justifyContent: 'center' },
-    resultMarkWarning: { backgroundColor: '#996817' },
-    resultMarkText: { color: '#ffffff', fontSize: 36, fontWeight: '700', lineHeight: 42 },
-    resultTitle: { color: '#173f2a', fontSize: 24, fontWeight: '700', textAlign: 'center', marginTop: 18, marginBottom: 18 },
-    resultName: { color: '#172019', fontSize: 20, fontWeight: '700', textAlign: 'center' },
-    resultDetail: { color: '#647168', fontSize: 15, marginTop: 4, textAlign: 'center' },
-    resultTime: { color: '#536159', fontSize: 14, marginTop: 18, marginBottom: 20 },
-    primaryButton: { minHeight: 52, backgroundColor: '#173f2a', borderRadius: 6, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 22, marginTop: 4 },
-    primaryButtonText: { color: '#ffffff', fontSize: 16, fontWeight: '700' },
+    permissionScreen: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24, backgroundColor: colors.background },
+    permissionText: { color: colors.textSubtle, fontSize: 15, lineHeight: 22, textAlign: 'center', marginTop: 10, marginBottom: 20 },
+    resultScreen: { flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center', padding: 24 },
+    resultMark: { width: 64, height: 64, borderRadius: 32, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
+    // A repeat scan is a warning, not a failure - brown, never red.
+    resultMarkWarning: { backgroundColor: colors.duplicate },
+    resultMarkText: { color: colors.onPrimary, fontSize: 32, fontWeight: '700', lineHeight: 38 },
+    resultTitle: { color: colors.primaryDark, fontSize: 22, fontWeight: '700', textAlign: 'center', marginTop: 18, marginBottom: 16 },
+    resultName: { color: colors.text, fontSize: 18, fontWeight: '700', textAlign: 'center' },
+    resultDetail: { color: colors.textMuted, fontSize: 14, marginTop: 4, textAlign: 'center' },
+    resultTime: { color: colors.textSubtle, fontSize: 13, marginTop: 16, marginBottom: 20 },
+    primaryButton: {
+        minHeight: 52,
+        backgroundColor: colors.primary,
+        borderRadius: 8,
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingHorizontal: 22,
+        marginTop: 4,
+    },
+    primaryButtonText: { color: colors.onPrimary, fontSize: 15, fontWeight: '700' },
     buttonDisabled: { opacity: 0.65 },
-    paidTag: { color: '#1d6b41', fontSize: 12, fontWeight: '700', marginTop: 5 },
-    unpaidTag: { color: '#9a5b12', fontSize: 12, fontWeight: '700', marginTop: 5 },
-    resolveButton: { borderColor: '#9a5b12', backgroundColor: '#fbf1dc' },
-    notice: { color: '#1d4b32', backgroundColor: '#e4f1e6', padding: 12, borderRadius: 6, marginHorizontal: 20, marginTop: 14, lineHeight: 20 },
-    owingScreen: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
-    owingMark: { width: 64, height: 64, borderRadius: 32, backgroundColor: '#b8863b', alignItems: 'center', justifyContent: 'center' },
-    owingMarkText: { color: '#ffffff', fontSize: 36, fontWeight: '700', lineHeight: 42 },
-    owingAmount: { color: '#173f2a', fontSize: 19, fontWeight: '700', marginTop: 12 },
-    owingNote: { color: '#536159', fontSize: 14, lineHeight: 21, textAlign: 'center', marginTop: 14 },
-    owingActions: { alignSelf: 'stretch', gap: 10, marginTop: 20 },
+    paidTag: { color: colors.paid, fontSize: 12, fontWeight: '700', marginTop: 5 },
+    unpaidTag: { color: colors.owing, fontSize: 12, fontWeight: '700', marginTop: 5 },
+    resolveButton: { borderColor: colors.owing, backgroundColor: colors.owingSurface },
+    notice: {
+        color: colors.noticeText,
+        backgroundColor: colors.noticeSurface,
+        padding: 12,
+        borderRadius: 8,
+        marginHorizontal: 20,
+        marginTop: 14,
+        lineHeight: 20,
+    },
+    owingScreen: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: 26 },
+    owingMark: { width: 64, height: 64, borderRadius: 32, backgroundColor: colors.owingMark, alignItems: 'center', justifyContent: 'center' },
+    owingMarkText: { color: colors.onPrimary, fontSize: 32, fontWeight: '700', lineHeight: 38 },
+    owingAmount: { color: colors.primaryDark, fontSize: 17, fontWeight: '700', marginTop: 12 },
+    owingNote: { color: colors.textSubtle, fontSize: 13, lineHeight: 20, textAlign: 'center', marginTop: 14 },
+    // A dashed rule separates what they owe from what you may do about it.
+    owingActions: {
+        alignSelf: 'stretch',
+        gap: 10,
+        marginTop: 22,
+        paddingTop: 18,
+        borderTopWidth: 1,
+        borderTopColor: colors.border,
+        borderStyle: 'dashed',
+    },
     notesInput: {
         minHeight: 76,
         borderWidth: 1,
-        borderColor: '#c8cec9',
-        borderRadius: 6,
-        backgroundColor: '#ffffff',
-        color: '#172019',
+        borderColor: colors.border,
+        borderRadius: 8,
+        backgroundColor: colors.surface,
+        color: colors.text,
         fontSize: 15,
         padding: 12,
         textAlignVertical: 'top',
@@ -500,11 +569,11 @@ const attendanceStyles = StyleSheet.create({
     waiveButton: {
         minHeight: 52,
         borderWidth: 1,
-        borderColor: '#9a5b12',
-        borderRadius: 6,
+        borderColor: colors.owing,
+        borderRadius: 8,
         alignItems: 'center',
         justifyContent: 'center',
         paddingHorizontal: 22,
     },
-    waiveButtonText: { color: '#9a5b12', fontSize: 16, fontWeight: '700' },
+    waiveButtonText: { color: colors.owing, fontSize: 15, fontWeight: '700' },
 });

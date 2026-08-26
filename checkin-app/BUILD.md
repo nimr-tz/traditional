@@ -16,6 +16,11 @@ npx eas-cli init           # writes expo.extra.eas.projectId into app.json — c
 the one value that cannot be committed ahead of time, because it is issued by
 Expo when the project is created.
 
+There is no global `eas` to install: every command here, and both `build:*`
+scripts in `package.json`, go through `npx eas-cli`, which fetches the pinned
+CLI on first use. Logging in is still one-off — the session is stored under
+`~/.expo`, not in this directory.
+
 ## Building an APK for the venue
 
 ```sh
