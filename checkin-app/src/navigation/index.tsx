@@ -51,7 +51,11 @@ export default function RootNavigator() {
 
     return (
         <NavigationContainer>
+            {/* Attendance is the job: staff scan badges all day and register the
+                occasional walk-in, so the app opens on the scanner rather than
+                on a form nobody needs most of the time. */}
             <Tab.Navigator
+                initialRouteName="Attendance"
                 screenOptions={{
                     headerTitleAlign: 'left',
                     headerLeft: () => <HeaderMark />,
@@ -66,8 +70,8 @@ export default function RootNavigator() {
                     tabBarStyle: { height: 64, paddingTop: 8, backgroundColor: colors.surface, borderTopColor: colors.headerDivider },
                 }}
             >
-                <Tab.Screen name="Register" component={RegisterScreen} options={{ title: 'Registration' }} />
                 <Tab.Screen name="Attendance" component={AttendanceScreen} options={{ title: 'Attendance' }} />
+                <Tab.Screen name="Register" component={RegisterScreen} options={{ title: 'Registration' }} />
             </Tab.Navigator>
         </NavigationContainer>
     );
