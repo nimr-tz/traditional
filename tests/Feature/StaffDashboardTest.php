@@ -6,6 +6,7 @@ use App\Mail\FeeWaived;
 use App\Mail\PaymentConfirmed;
 use App\Models\Attendance;
 use App\Models\FeeCategory;
+use App\Models\Institution;
 use App\Models\User;
 use App\Services\BadgePrinter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -395,6 +396,119 @@ class StaffDashboardTest extends TestCase
 
         $this->assertSame('NIMR', $paid->badge_affiliation);
         $this->assertSame('NIMR', app(BadgePrinter::class)->preview($paid)['institution']);
+    }
+
+    /**
+     * A name mistyped at the desk is fixed in place — no second registration,
+     * which would leave a duplicate in every count.
+     */
+    public function test_the_desk_can_correct_a_registrant_after_registration(): void
+    {
+        $this->seedParticipantCategory();
+        $staff = User::factory()->staff()->create();
+        $person = $this->paidRegistrant([
+            'name' => 'Jhon Mistpye',
+            'salutation' => 'Mr.',
+            'institution' => 'MUHUS',
+            'fee_category' => 'participant_east_africa',
+        ]);
+
+        $this->actingAs($staff)
+            ->patch(route('staff.registrant.update', $person), [
+                'salutation' => 'Prof.',
+                'name' => 'John Mtapaya',
+                'position_title' => 'Director General',
+                'institution' => 'MUHAS',
+                'phone' => '',
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $person->refresh();
+        $this->assertSame('John Mtapaya', $person->name);
+        $this->assertSame('Prof.', $person->salutation);
+        $this->assertSame('Director General', $person->position_title);
+        $this->assertSame('MUHAS', $person->institution);
+        $this->assertNull($person->phone);
+        $this->assertSame('Director General, MUHAS', $person->badge_affiliation);
+    }
+
+    /** Retyping the institution frees it from a stale link to a canonical row. */
+    public function test_correcting_the_institution_clears_a_stale_institution_id(): void
+    {
+        $this->seedParticipantCategory();
+        $staff = User::factory()->staff()->create();
+        $institution = Institution::create(['name' => 'Old Institute', 'active' => true, 'sort_order' => 1]);
+        $person = $this->paidRegistrant([
+            'name' => 'Linked Person',
+            'institution' => 'Old Institute',
+            'institution_id' => $institution->id,
+            'fee_category' => 'participant_east_africa',
+        ]);
+
+        $this->actingAs($staff)
+            ->patch(route('staff.registrant.update', $person), [
+                'name' => 'Linked Person',
+                'institution' => 'New Institute',
+            ])
+            ->assertRedirect();
+
+        $person->refresh();
+        $this->assertSame('New Institute', $person->institution);
+        $this->assertNull($person->institution_id);
+    }
+
+    /** The print log records what was on the card, so a later correction does not rewrite it. */
+    public function test_a_correction_does_not_touch_an_already_printed_badge_log(): void
+    {
+        $this->seedParticipantCategory();
+        $staff = User::factory()->staff()->create();
+        $person = $this->paidRegistrant([
+            'name' => 'Printed Already',
+            'institution' => 'NIMR',
+            'fee_category' => 'participant_east_africa',
+        ]);
+
+        $this->actingAs($staff)->get(route('staff.badge', $person))->assertOk();
+
+        $this->actingAs($staff)
+            ->patch(route('staff.registrant.update', $person), ['name' => 'Corrected Afterwards', 'institution' => 'NIMR'])
+            ->assertRedirect()
+            ->assertSessionHas('success', fn ($message) => str_contains($message, 'reprint'));
+
+        $this->assertSame('Printed Already', $person->badgePrints()->latest('printed_at')->first()->printed_name);
+    }
+
+    public function test_a_correction_still_needs_a_name(): void
+    {
+        $this->seedParticipantCategory();
+        $staff = User::factory()->staff()->create();
+        $person = $this->paidRegistrant(['name' => 'Has A Name', 'fee_category' => 'participant_east_africa']);
+
+        $this->actingAs($staff)
+            ->patch(route('staff.registrant.update', $person), ['name' => ''])
+            ->assertSessionHasErrors('name');
+
+        $this->assertSame('Has A Name', $person->fresh()->name);
+    }
+
+    public function test_correcting_details_is_closed_to_registrants_and_only_applies_to_them(): void
+    {
+        $this->seedParticipantCategory();
+        $person = $this->paidRegistrant(['name' => 'Target', 'fee_category' => 'participant_east_africa']);
+
+        // A plain registrant cannot reach the desk tools at all.
+        $this->actingAs(User::factory()->create())
+            ->patch(route('staff.registrant.update', $person), ['name' => 'Hacked'])
+            ->assertForbidden();
+
+        // Staff can, but only for registrants — not other staff or admins.
+        $staff = User::factory()->staff()->create();
+        $this->actingAs($staff)
+            ->patch(route('staff.registrant.update', User::factory()->admin()->create()), ['name' => 'Nope'])
+            ->assertNotFound();
+
+        $this->assertSame('Target', $person->fresh()->name);
     }
 
     /** The coordinates are measured off the artwork, so a swap must not go unnoticed. */

@@ -19,6 +19,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response as HttpResponse;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -181,7 +182,56 @@ class DashboardController extends Controller
                 'printed_at' => $print->printed_at,
                 'printed_by' => $print->printedBy?->full_name,
             ]),
+            'salutations' => config('tmsc.salutations'),
         ]);
+    }
+
+    /**
+     * Fix what the desk got wrong when it registered someone.
+     *
+     * A mistyped name, a missing title, the wrong institution — caught later,
+     * even after the badge is printed. The alternative was registering the
+     * person a second time, which leaves a duplicate in every count. Only the
+     * fields that appear on the badge or identify the person; category, country
+     * and payment state are settled elsewhere and left alone here.
+     *
+     * The BadgePrintLog is deliberately not touched: it records what was on the
+     * card that came off the printer, so a correction here means "reprint", not
+     * "rewrite history".
+     */
+    public function updateDetails(Request $request, User $user): RedirectResponse
+    {
+        abort_unless($user->hasRole(User::ROLE_USER), 404);
+
+        $validated = $request->validate([
+            'salutation' => ['nullable', 'string', Rule::in(config('tmsc.salutations'))],
+            'name' => ['required', 'string', 'max:255'],
+            'position_title' => ['nullable', 'string', 'max:80'],
+            'phone' => ['nullable', 'string', 'max:50'],
+            'institution' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $attributes = [
+            'salutation' => ($validated['salutation'] ?? null) ?: null,
+            'name' => $validated['name'],
+            'position_title' => filled($validated['position_title'] ?? null) ? $validated['position_title'] : null,
+            'phone' => filled($validated['phone'] ?? null) ? $validated['phone'] : null,
+            'institution' => filled($validated['institution'] ?? null) ? $validated['institution'] : null,
+        ];
+
+        // Retyping the institution by hand breaks any link to a canonical
+        // Institution row — drop it rather than leave it pointing at the old one.
+        if ($attributes['institution'] !== $user->institution) {
+            $attributes['institution_id'] = null;
+        }
+
+        $user->update($attributes);
+
+        $note = $user->badgePrints()->exists()
+            ? ' Their badge is already printed — reprint it to pick up the change.'
+            : '';
+
+        return back()->with('success', "Updated {$user->full_name}'s details.{$note}");
     }
 
     /**

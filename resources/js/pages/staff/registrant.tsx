@@ -2,12 +2,13 @@ import { DashboardCard } from '@/components/dashboard-card';
 import { RegistrantBadge, type BadgeContent } from '@/components/registrant-badge';
 import { PrintBadgeButton, StandingBadge, formatAmount, formatDateTime, formatTime } from '@/components/registrant-standing';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem, type SharedData } from '@/types';
 import { Head, Link, useForm, usePage } from '@inertiajs/react';
-import { ArrowLeft, CheckCircle2, CreditCard, ScanLine } from 'lucide-react';
-import { useState } from 'react';
+import { ArrowLeft, CheckCircle2, CreditCard, Pencil, ScanLine } from 'lucide-react';
+import { FormEventHandler, useState } from 'react';
 
 interface PersonDetail {
     id: number;
@@ -66,6 +67,7 @@ interface RegistrantPageProps {
     badge: BadgeContent | null;
     attendance: AttendanceRecord[];
     badgePrints: BadgePrint[];
+    salutations: string[];
 }
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -81,7 +83,7 @@ function participantTypeLabel(value: string | null): string {
         .join(' ');
 }
 
-export default function RegistrantPage({ canManageFinance, person, badge, attendance, badgePrints }: RegistrantPageProps) {
+export default function RegistrantPage({ canManageFinance, person, badge, attendance, badgePrints, salutations }: RegistrantPageProps) {
     const { flash } = usePage<SharedData & { flash: { success?: string; error?: string; info?: string } }>().props;
     const [settling, setSettling] = useState(false);
     const { data, setData, post, processing, errors, reset } = useForm({ notes: '' });
@@ -94,6 +96,38 @@ export default function RegistrantPage({ canManageFinance, person, badge, attend
                 setSettling(false);
             },
         });
+    };
+
+    // Correcting what the desk mistyped — name, title, institution — without
+    // registering the person again. Works after the badge is printed; the desk
+    // just reprints.
+    const [editing, setEditing] = useState(false);
+    const details = useForm({
+        salutation: person.salutation ?? '',
+        name: person.name,
+        position_title: person.position_title ?? '',
+        phone: person.phone ?? '',
+        institution: person.institution ?? '',
+    });
+
+    const saveDetails: FormEventHandler = (event) => {
+        event.preventDefault();
+        details.patch(route('staff.registrant.update', person.id), {
+            preserveScroll: true,
+            onSuccess: () => setEditing(false),
+        });
+    };
+
+    const cancelEdit = () => {
+        details.clearErrors();
+        details.setData({
+            salutation: person.salutation ?? '',
+            name: person.name,
+            position_title: person.position_title ?? '',
+            phone: person.phone ?? '',
+            institution: person.institution ?? '',
+        });
+        setEditing(false);
     };
 
     return (
@@ -207,19 +241,89 @@ export default function RegistrantPage({ canManageFinance, person, badge, attend
 
                 <div className="grid gap-5 md:grid-cols-2">
                     <DashboardCard>
-                        <h2 className="text-sm font-bold tracking-wide uppercase">Contact & identity</h2>
-                        <dl className="mt-4 flex flex-col gap-3 text-sm">
-                            <Row label="Email" value={person.email ?? '—'} />
-                            <Row label="Phone" value={person.phone ?? '—'} />
-                            {person.position_title && <Row label="Position / role" value={person.position_title} />}
-                            <Row label="Institution" value={person.institution ?? '—'} />
-                            <Row label="Participant type" value={participantTypeLabel(person.participant_type)} />
-                            <Row
-                                label="Country"
-                                value={person.country ? `${person.country} (${person.is_east_africa ? 'East Africa' : 'International'})` : '—'}
-                            />
-                            <Row label="Registered" value={formatDateTime(person.registered_at)} />
-                        </dl>
+                        <div className="flex items-center justify-between gap-3">
+                            <h2 className="text-sm font-bold tracking-wide uppercase">Contact &amp; identity</h2>
+                            {!editing && (
+                                <Button size="sm" variant="ghost" className="h-7 gap-1.5 px-2 text-xs" onClick={() => setEditing(true)}>
+                                    <Pencil className="size-3.5" />
+                                    Edit
+                                </Button>
+                            )}
+                        </div>
+
+                        {editing ? (
+                            <form onSubmit={saveDetails} className="mt-4 flex flex-col gap-3 text-sm">
+                                <EditField label="Salutation" error={details.errors.salutation}>
+                                    <select
+                                        value={details.data.salutation}
+                                        onChange={(event) => details.setData('salutation', event.target.value)}
+                                        className="border-input bg-background text-foreground h-9 rounded-md border px-3 text-sm"
+                                    >
+                                        <option value="">—</option>
+                                        {salutations.map((s) => (
+                                            <option key={s} value={s}>
+                                                {s}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </EditField>
+                                <EditField label="Full name" error={details.errors.name}>
+                                    <Input
+                                        value={details.data.name}
+                                        onChange={(event) => details.setData('name', event.target.value)}
+                                        autoComplete="off"
+                                    />
+                                </EditField>
+                                <EditField label="Position / role" error={details.errors.position_title}>
+                                    <Input
+                                        value={details.data.position_title}
+                                        onChange={(event) => details.setData('position_title', event.target.value)}
+                                        autoComplete="off"
+                                        placeholder="Optional — e.g. Director General"
+                                    />
+                                </EditField>
+                                <EditField label="Institution" error={details.errors.institution}>
+                                    <Input
+                                        value={details.data.institution}
+                                        onChange={(event) => details.setData('institution', event.target.value)}
+                                        autoComplete="off"
+                                    />
+                                </EditField>
+                                <EditField label="Phone" error={details.errors.phone}>
+                                    <Input
+                                        value={details.data.phone}
+                                        onChange={(event) => details.setData('phone', event.target.value)}
+                                        inputMode="tel"
+                                        autoComplete="off"
+                                        placeholder="Optional"
+                                    />
+                                </EditField>
+                                <p className="text-muted-foreground text-xs">
+                                    Email is changed by an administrator. Category, country and payment are settled separately.
+                                </p>
+                                <div className="flex gap-2 pt-1">
+                                    <Button size="sm" type="submit" disabled={details.processing}>
+                                        Save changes
+                                    </Button>
+                                    <Button size="sm" type="button" variant="ghost" onClick={cancelEdit} disabled={details.processing}>
+                                        Cancel
+                                    </Button>
+                                </div>
+                            </form>
+                        ) : (
+                            <dl className="mt-4 flex flex-col gap-3 text-sm">
+                                <Row label="Email" value={person.email ?? '—'} />
+                                <Row label="Phone" value={person.phone ?? '—'} />
+                                {person.position_title && <Row label="Position / role" value={person.position_title} />}
+                                <Row label="Institution" value={person.institution ?? '—'} />
+                                <Row label="Participant type" value={participantTypeLabel(person.participant_type)} />
+                                <Row
+                                    label="Country"
+                                    value={person.country ? `${person.country} (${person.is_east_africa ? 'East Africa' : 'International'})` : '—'}
+                                />
+                                <Row label="Registered" value={formatDateTime(person.registered_at)} />
+                            </dl>
+                        )}
                     </DashboardCard>
 
                     <DashboardCard>
@@ -310,5 +414,15 @@ function Row({ label, value, mono = false }: { label: string; value: string; mon
             <dt className="text-muted-foreground shrink-0">{label}</dt>
             <dd className={mono ? 'text-right font-mono text-xs' : 'text-right font-medium'}>{value}</dd>
         </div>
+    );
+}
+
+function EditField({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
+    return (
+        <label className="grid gap-1">
+            <span className="text-muted-foreground text-xs font-semibold">{label}</span>
+            {children}
+            {error && <span className="text-destructive text-xs">{error}</span>}
+        </label>
     );
 }

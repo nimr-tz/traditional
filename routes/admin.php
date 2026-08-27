@@ -121,6 +121,9 @@ Route::middleware(['auth', 'role:staff,finance,admin,super_admin'])->prefix('sta
     // onto, so every action lives with the details that justify it instead of
     // being crammed into the search row itself.
     Route::get('registrants/{user}', [StaffDashboardController::class, 'show'])->name('registrant');
+    // Fix a mistyped name / title / institution caught after registration,
+    // rather than registering the person a second time.
+    Route::patch('registrants/{user}', [StaffDashboardController::class, 'updateDetails'])->name('registrant.update');
     Route::post('walk-ins', [StaffDashboardController::class, 'registerWalkIn'])->name('walk-ins.store');
     Route::post('registrants/{user}/control-number', [StaffDashboardController::class, 'issueControlNumber'])->name('control-number');
     // Reprints are allowed and logged — the desk warns first, then prints.
