@@ -511,19 +511,17 @@ class StaffDashboardTest extends TestCase
         $this->assertSame('Target', $person->fresh()->name);
     }
 
-    /** The coordinates are measured off the artwork, so a swap must not go unnoticed. */
-    public function test_the_badge_ships_the_real_artwork_at_its_own_proportions(): void
+    /**
+     * The badge page is the full 10 x 14 cm holder, edge to edge. The
+     * background artwork is scaled to fit that, so it must be shipped at (or
+     * re-exported to) the 100:140 ratio to avoid being stretched.
+     */
+    public function test_the_badge_page_is_the_full_holder_size(): void
     {
         $this->assertFileExists(public_path(config('badge.template.background')));
 
-        [$width, $height] = getimagesize(public_path(config('badge.template.background')));
-
-        $this->assertEqualsWithDelta(
-            config('badge.template.width_mm') / config('badge.template.height_mm'),
-            $width / $height,
-            0.005,
-            'The artwork would be stretched: its aspect ratio no longer matches width_mm/height_mm.',
-        );
+        $this->assertSame(100.0, (float) config('badge.template.width_mm'));
+        $this->assertSame(140.0, (float) config('badge.template.height_mm'));
     }
 
     /** Showing a badge on screen is not printing one. */

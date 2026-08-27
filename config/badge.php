@@ -32,17 +32,19 @@ return [
     'template' => [
         'background' => 'images/Traditional Medicine Scientific Conference.png',
 
-        // The artwork is 591 × 1004px, an aspect ratio of 0.58865 — which is
-        // exactly 80.88 × 137.4mm. These follow the image rather than the badge
-        // stock on purpose: matching the artwork means it is never stretched,
-        // and a mismatch with the holder is a visible margin rather than a
-        // distorted logo.
+        // The badge is the full 10 × 14 cm holder — it fills it edge to edge,
+        // no margin. The background image is scaled to fit this page, so if its
+        // own ratio is not 100:140 it WILL be stretched. The shipped artwork is
+        // 591 × 1004px (~0.589), narrower than 100:140 (~0.714), so it is
+        // stretched ~21% wider than tall.
         //
-        // ⚠ 591px across 80.88mm is only ~186dpi. That prints acceptably but is
-        // below the 300dpi print standard; a 955 × 1622px export of the same
-        // design would drop straight in here with no other change.
-        'width_mm' => 80.88,
-        'height_mm' => 137.4,
+        // ⚠ To print clean, re-export the artwork at the 100:140 ratio — e.g.
+        // 1181 × 1654px for 300dpi, or 1000 × 1400px for ~254dpi — and drop it
+        // in at the same path. Nothing else changes: every coordinate below is
+        // a percentage of the page, and the green-curve / flag-bar landmarks
+        // are percentages of the artwork, so they ride along with the scale.
+        'width_mm' => 100,
+        'height_mm' => 140,
     ],
 
     /*
@@ -76,7 +78,7 @@ return [
     |   ~5.5%  gap — the name and the institution are separate facts
     |   inst   sits at 67% (4.2mm), over one to three lines
     |   ~3%    gap
-    |   qr     70% – 92.4%   (smaller and lower than it was, to give the text room)
+    |   qr     70% – 92%     (a ~31mm square, low, so the text keeps the middle)
     |   3.4%   clear of the flag bar
     |
     | There is deliberately no category band and no registration code: the code
@@ -145,22 +147,21 @@ return [
         ],
 
         /*
-        | Pulled down and shrunk. It was a ~40mm square starting at 63.4%, which
-        | crammed the name and a multi-line title into the sliver above it. At
-        | 38% of 80.88mm it is a ~30.7mm square — still ~2× the 15.4mm the first
-        | template managed, and still read from a few centimetres away — starting
-        | at 70%, which hands ~13% of card height back to the text. A steward
-        | reads the name across a room and scans the QR up close, so the trade
-        | favours the name.
+        | 31% of the 100mm width is a ~31mm square — still ~2× the 15.4mm the
+        | first template managed, and read from a few centimetres away. It sits
+        | low so the name and a multi-line title get the middle of the card; a
+        | steward reads the name across a room and scans the QR up close, so the
+        | trade favours the name.
         |
-        | The QR is square, so its height follows its width. Widening it means
-        | moving `top` up by the same amount in percent-of-height terms, or it
-        | will run into the flag bar at 95.82%.
+        | The QR is square, so its height follows its width — as a fraction of
+        | the 140mm height, 31mm is ~22%, so starting at 70% it ends at ~92%,
+        | clear of the flag bar at 95.82%. Widening it means moving `top` up by
+        | the same amount in percent-of-height terms.
         */
         'qr' => [
-            'left' => '31%',
+            'left' => '34.5%',
             'top' => '70%',
-            'width' => '38%',
+            'width' => '31%',
         ],
     ],
 ];
