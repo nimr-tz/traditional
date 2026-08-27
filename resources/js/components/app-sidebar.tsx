@@ -35,6 +35,7 @@ const registrantNavItems: NavItem[] = [
 // registrant page, which asked them to pay a fee and submit an abstract.
 const staffNavItems: NavItem[] = [
     { title: 'Check-in', url: '/staff', icon: ScanLine },
+    { title: 'Attendance', url: '/staff/attendance', icon: ClipboardList },
     { title: 'All registrants', url: '/staff/registrants', icon: Users },
 ];
 

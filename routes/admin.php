@@ -12,6 +12,7 @@ use App\Http\Controllers\Admin\ReviewerAssignmentController as AdminReviewerAssi
 use App\Http\Controllers\Admin\SettingsController as AdminSettingsController;
 use App\Http\Controllers\Admin\SmsCampaignController as AdminSmsCampaignController;
 use App\Http\Controllers\Admin\StudentVerificationController as AdminStudentVerificationController;
+use App\Http\Controllers\Staff\AttendanceController as StaffAttendanceController;
 use App\Http\Controllers\Staff\DashboardController as StaffDashboardController;
 use App\Http\Controllers\Staff\RegistrantController as StaffRegistrantController;
 use Illuminate\Support\Facades\Route;
@@ -112,6 +113,9 @@ Route::middleware(['auth', 'role:super_admin'])->prefix('admin')->name('admin.')
 // below would be unreachable for the very role they exist for.
 Route::middleware(['auth', 'role:staff,finance,admin,super_admin'])->prefix('staff')->name('staff.')->group(function () {
     Route::get('/', [StaffDashboardController::class, 'index'])->name('dashboard');
+    // Every badge scan, newest first — the record the Arrivals panel is too
+    // small to be. Read-only; scanning still happens in the check-in app.
+    Route::get('attendance', [StaffAttendanceController::class, 'index'])->name('attendance');
     // The whole register, for browsing. The desk itself opens on a search.
     Route::get('registrants', [StaffRegistrantController::class, 'index'])->name('registrants');
     // A run of badges for everyone matching the current filter — the pre-doors
