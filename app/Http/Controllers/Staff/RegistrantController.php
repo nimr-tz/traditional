@@ -5,8 +5,12 @@ namespace App\Http\Controllers\Staff;
 use App\Http\Controllers\Controller;
 use App\Models\FeeCategory;
 use App\Models\User;
+use App\Services\BadgePrinter;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response as HttpResponse;
+use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -72,12 +76,60 @@ class RegistrantController extends Controller
                 'category' => $category ?? 'all',
             ],
             'counts' => $this->counts($request->search, $category),
+            // How many badges the "Print all" button would produce for this
+            // exact view, and the ceiling it must stay under.
+            'printableCount' => $this->printable($request->search, $category, $status)->count(),
+            'batchLimit' => (int) config('badge.batch_limit'),
             'categories' => FeeCategory::query()
                 ->active()
                 ->orderBy('is_complimentary')
                 ->orderBy('sort_order')
                 ->get(['key', 'label', 'is_complimentary']),
         ]);
+    }
+
+    /**
+     * Print a badge for everyone in the current view, as one PDF.
+     *
+     * The pre-doors print run. Takes the same filters as the register itself
+     * (status tab, fee category, search) and narrows them to people who have
+     * actually paid — an unpaid registrant has no badge, in a batch no less
+     * than one at a time. Every card is logged, so a batch reprint shows up
+     * in each person's print history exactly as a single reprint would.
+     */
+    public function printBadges(Request $request, BadgePrinter $printer): HttpResponse|RedirectResponse
+    {
+        $status = in_array($request->status, self::FILTERS, true) ? $request->status : 'all';
+        $category = $request->category && $request->category !== 'all' ? $request->category : null;
+
+        $people = $this->printable($request->search, $category, $status)
+            ->orderBy('name')
+            ->get();
+
+        if ($people->isEmpty()) {
+            return back()->with('info', 'Nobody in this view has paid yet, so there are no badges to print.');
+        }
+
+        $limit = (int) config('badge.batch_limit');
+
+        if ($people->count() > $limit) {
+            return back()->with('error', "This view has {$people->count()} paid registrants — more than the {$limit} badges that print at once. Narrow it with a filter or search, then print again.");
+        }
+
+        return $printer->renderBatch($people, Auth::user())
+            ->stream($printer->filenameForBatch($people->count()));
+    }
+
+    /**
+     * The current view, narrowed to people a badge can actually be produced
+     * for. Shared by the register (for the button's count) and the print run
+     * itself, so the number on the button is the number of pages that come out.
+     */
+    private function printable(?string $search, ?string $category, string $status): Builder
+    {
+        return $this->scoped($search, $category)
+            ->tap(fn (Builder $query) => $this->applyStatus($query, $status))
+            ->whereIn('payment_status', ['verified', 'waived']);
     }
 
     private function applyStatus(Builder $query, string $status): void

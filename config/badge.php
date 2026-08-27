@@ -46,6 +46,14 @@ return [
     ],
 
     /*
+    | The most badges the venue desk will render into a single batch PDF. The
+    | desk prints a run for whoever matches the current filter; without a ceiling
+    | an unfiltered "print everyone" is a several-hundred-page document that
+    | dompdf takes minutes over. Past this, the desk is told to narrow the view.
+    */
+    'batch_limit' => (int) env('BADGE_BATCH_LIMIT', 300),
+
+    /*
     | Placeholder geometry, as percentages of the badge. `left`/`width` position
     | the box; text is centred within its own width.
     |
@@ -60,17 +68,16 @@ return [
     | anyway; they are sized from this font's real width, about 0.63 × font-size
     | per uppercase character, against the 67.9mm these blocks have to work with.
     |
-    | Vertical budget for the white field (38.05% – 95.82%):
-    |
-    | Vertical budget, worked from the top down so every gap is deliberate:
+    | Vertical budget for the white field (38.05% – 95.82%), worked from the top
+    | down so every gap is deliberate:
     |
     |   1.2%   clear of the green curve
-    |   name   sits at 50.1%, over one or two lines, growing upwards
-    |   4.5%   gap — the name and the institution are separate facts
-    |   inst   sits at 61.2%, over one or two lines
-    |   2.2%   gap
-    |   qr     63.4% – 92.8%
-    |   3.0%   clear of the flag bar
+    |   name   sits at 54%, over one to three lines, growing upwards
+    |   ~5.5%  gap — the name and the institution are separate facts
+    |   inst   sits at 67% (4.2mm), over one to three lines
+    |   ~3%    gap
+    |   qr     70% – 92.4%   (smaller and lower than it was, to give the text room)
+    |   3.4%   clear of the flag bar
     |
     | There is deliberately no category band and no registration code: the code
     | is already carried by the QR, and a fee tier tells a door steward nothing
@@ -79,24 +86,23 @@ return [
     'placeholders' => [
         'name' => [
             'left' => '8%',
-            // Sitting at 50.1%, growing upwards. Two lines at full size reach
-            // ~39.3%, clearing the green header's curve at 38.05%.
-            'bottom' => '49.9%',
+            // Baseline at 54% from the top, growing upwards. Dropped here (from
+            // ~50%) once the QR was pulled down and shrunk: the name now has the
+            // middle of the card, not a sliver above the code. A two-line name
+            // at 7mm tops out around 42%, well clear of the green curve at
+            // 38.05%; a three-line name has shrunk to 5.5mm first and clears too.
+            'bottom' => '46%',
             'width' => '84%',
-            'font_size' => '6.5mm',
+            'font_size' => '7mm',
             /*
-             * Like the institution, sized for up to TWO lines rather than forced
-             * onto one. Holding a 32-character name on a single line meant 2.9mm
-             * type — smaller than the institution beneath it, which is backwards.
-             * Wrapping instead keeps that same name at 5.5mm.
-             *
-             * A short name still gets one line: 6.5mm fits ~16 characters across,
-             * so it only wraps once it has to. Thresholds are the two-line
-             * capacity — ~67.9mm of width, about 0.63 × font-size per character,
-             * doubled, with ~10% headroom.
+             * Sized for up to TWO lines at the base size, then it steps down —
+             * three lines at 7mm would reach the green curve. A short name gets
+             * one line; ~16 characters fit across at 7mm before it wraps.
+             * Thresholds are the two-line capacity — ~67.9mm of width, about
+             * 0.63 × font-size per character, doubled, with ~10% headroom.
              */
-            'shrink_at' => [29 => '5.5mm', 35 => '4.6mm', 42 => '3.8mm', 51 => '3.2mm'],
-            'line_height' => '1.15',
+            'shrink_at' => [31 => '5.5mm', 38 => '4.6mm', 46 => '3.9mm', 55 => '3.3mm'],
+            'line_height' => '1.13',
             'letter_spacing' => '0.02em',
             'color' => '#132986',
             'align' => 'center',
@@ -106,49 +112,55 @@ return [
 
         'institution' => [
             'left' => '8%',
-            // Sitting at 61.2%, over one or two lines, which leaves ~6mm of white
-            // between it and the name above — enough that the two read as
-            // separate facts rather than one block. Never larger than the name:
-            // the blade and the React component both clamp it.
-            'bottom' => '38.8%',
+            // Baseline at 67% from the top — down in the band the QR gave back —
+            // leaving a clear ~7mm of white above it so it and the name read as
+            // separate facts. Never larger than the name: the blade and the
+            // React component both clamp it. Also carries a dignitary's role
+            // ("DIRECTOR GENERAL, MUHAS"), which is why it runs at 4.2mm.
+            'bottom' => '33%',
             'width' => '84%',
-            'font_size' => '3.6mm',
+            'font_size' => '4.2mm',
             /*
              * Sized for two lines, not one. Squeezing "National Institute for
              * Medical Research (NIMR)" onto a single line meant 2mm type — legible
              * on paper held at arm's length, but far too small next to a 6mm name.
-             * Wrapping to a second line instead keeps it at 3.6mm.
+             * Wrapping to a second line instead keeps it at 4.2mm.
              *
              * The thresholds are therefore roughly double the one-line capacity:
              * ~67.9mm of width at about 0.72 × font-size per character, times two
-             * lines. Only an institution too long for two lines steps down.
+             * lines. Only an institution too long for two lines steps down. Steps
+             * scaled with the base bump so a long affiliation still lands on two
+             * lines rather than three.
              */
-            'shrink_at' => [52 => '3.2mm', 59 => '2.8mm', 67 => '2.4mm', 78 => '2mm'],
+            'shrink_at' => [52 => '3.7mm', 59 => '3.3mm', 67 => '2.9mm', 78 => '2.4mm'],
             'line_height' => '1.25',
             'letter_spacing' => '0.04em',
-            'color' => '#96500b',
+            // Dark slate, not the old ochre: the navy name stays the one accent
+            // on the card and the affiliation reads as clearly secondary,
+            // without the muddiness the brown had on the white field.
+            'color' => '#334155',
             'align' => 'center',
             'transform' => 'uppercase',
-            'edge_offset_mm' => 0.1,
+            'edge_offset_mm' => 0.12,
         ],
 
         /*
-        | Large, but no longer as large as the canvas allows. 50% of 80.88mm is a
-        | ~40mm square — still 2.6× the 15.4mm the first template managed — and
-        | what it gave back is what lets the name run to 6.5mm over two lines
-        | instead of collapsing to 2.9mm on one, and buys the ~6mm of air between
-        | the name and the institution. A steward reads the name across a room
-        | and scans the QR from a few centimetres away, so the trade favours the
-        | name.
+        | Pulled down and shrunk. It was a ~40mm square starting at 63.4%, which
+        | crammed the name and a multi-line title into the sliver above it. At
+        | 38% of 80.88mm it is a ~30.7mm square — still ~2× the 15.4mm the first
+        | template managed, and still read from a few centimetres away — starting
+        | at 70%, which hands ~13% of card height back to the text. A steward
+        | reads the name across a room and scans the QR up close, so the trade
+        | favours the name.
         |
         | The QR is square, so its height follows its width. Widening it means
         | moving `top` up by the same amount in percent-of-height terms, or it
-        | will run into the flag bar.
+        | will run into the flag bar at 95.82%.
         */
         'qr' => [
-            'left' => '25%',
-            'top' => '63.4%',
-            'width' => '50%',
+            'left' => '31%',
+            'top' => '70%',
+            'width' => '38%',
         ],
     ],
 ];

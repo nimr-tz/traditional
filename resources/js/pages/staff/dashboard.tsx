@@ -409,6 +409,7 @@ function WalkInForm({
     const [mode, setMode] = useState<'paying' | 'free'>('paying');
     const { data, setData, post, transform, processing, errors, reset } = useForm({
         salutation: '',
+        position_title: '',
         name: '',
         email: '',
         phone: '',
@@ -497,8 +498,21 @@ function WalkInForm({
                 <Field label="Full name" required error={errors.name}>
                     <Input value={data.name} onChange={(event) => setData('name', event.target.value)} autoComplete="off" />
                 </Field>
-                <Field label="Phone" required error={errors.phone} hint="The control number is sent here by SMS.">
-                    <Input value={data.phone} onChange={(event) => setData('phone', event.target.value)} inputMode="tel" />
+                <Field
+                    label="Position / role"
+                    error={errors.position_title}
+                    className="md:col-span-2"
+                    hint="For dignitaries — prints on the badge beside the institution, e.g. Director General, MUHAS."
+                >
+                    <Input
+                        value={data.position_title}
+                        onChange={(event) => setData('position_title', event.target.value)}
+                        autoComplete="off"
+                        placeholder="Optional"
+                    />
+                </Field>
+                <Field label="Phone" error={errors.phone} hint="Optional. If given, the control number is also texted here.">
+                    <Input value={data.phone} onChange={(event) => setData('phone', event.target.value)} inputMode="tel" placeholder="Optional" />
                 </Field>
                 <Field label="Institution" required error={errors.institution_id}>
                     <Select
@@ -730,16 +744,18 @@ function Field({
     error,
     hint,
     required = false,
+    className,
     children,
 }: {
     label: string;
     error?: string;
     hint?: string;
     required?: boolean;
+    className?: string;
     children: React.ReactNode;
 }) {
     return (
-        <div className="grid gap-1.5">
+        <div className={cn('grid gap-1.5', className)}>
             <label className="text-sm font-semibold">
                 {label}
                 {required && <span className="text-destructive ml-1">*</span>}

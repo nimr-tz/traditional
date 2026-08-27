@@ -5,7 +5,7 @@ import AppLayout from '@/layouts/app-layout';
 import { cn, formatPersonName } from '@/lib/utils';
 import { type BreadcrumbItem } from '@/types';
 import { Head, Link, router } from '@inertiajs/react';
-import { ChevronRight, Search, Users, X } from 'lucide-react';
+import { ChevronRight, Printer, Search, Users, X } from 'lucide-react';
 import { FormEventHandler, KeyboardEvent, useRef, useState } from 'react';
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -55,6 +55,10 @@ interface RegistrantsProps {
     filters: { search: string | null; status: StatusFilter; category: string };
     counts: Record<StatusFilter, number>;
     categories: Category[];
+    /** Paid registrants in the current view — how many badges "Print all" would produce. */
+    printableCount: number;
+    /** The most badges that can be printed in one run. */
+    batchLimit: number;
 }
 
 const tabs: { key: StatusFilter; label: string }[] = [
@@ -66,9 +70,29 @@ const tabs: { key: StatusFilter; label: string }[] = [
     { key: 'complimentary', label: 'Attending free' },
 ];
 
-export default function StaffRegistrants({ people, filters, counts, categories }: RegistrantsProps) {
+export default function StaffRegistrants({ people, filters, counts, categories, printableCount, batchLimit }: RegistrantsProps) {
     const [search, setSearch] = useState(filters.search ?? '');
     const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
+
+    // "Print all badges" for the current view. Opens the batch PDF in a new tab
+    // with the same filter query the page is showing, so the run matches the
+    // list. Anyone already holding a badge is reprinted — confirm that first.
+    const batchHref = route('staff.registrants.badges', {
+        status: filters.status === 'all' ? undefined : filters.status,
+        category: filters.category === 'all' ? undefined : filters.category,
+        search: filters.search || undefined,
+    });
+
+    const confirmBatch = (event: React.MouseEvent<HTMLAnchorElement>) => {
+        if (
+            !window.confirm(
+                `Print ${printableCount} badge${printableCount === 1 ? '' : 's'} as one PDF, one per page? ` +
+                    `Only paid registrants in this view are included, and anyone who already has a badge is counted as a reprint.`,
+            )
+        ) {
+            event.preventDefault();
+        }
+    };
 
     const go = (params: Record<string, string | undefined>) => {
         router.get(
@@ -176,7 +200,25 @@ export default function StaffRegistrants({ people, filters, counts, categories }
                         })}
                     </div>
 
-                    <div className="flex flex-col gap-2 sm:flex-row lg:shrink-0">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center lg:shrink-0">
+                        {printableCount > 0 &&
+                            (printableCount > batchLimit ? (
+                                <p className="text-muted-foreground text-xs sm:self-center">
+                                    {printableCount} paid — narrow to {batchLimit} or fewer to print a batch
+                                </p>
+                            ) : (
+                                <a
+                                    href={batchHref}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    onClick={confirmBatch}
+                                    className="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-[#135eeb] px-3 text-sm font-bold text-white transition hover:bg-[#0d4fca]"
+                                >
+                                    <Printer className="size-4" />
+                                    Print {printableCount} badge{printableCount === 1 ? '' : 's'}
+                                </a>
+                            ))}
+
                         {hasFilters && (
                             <Button type="button" variant="ghost" className="h-9" onClick={clearFilters}>
                                 Clear filters

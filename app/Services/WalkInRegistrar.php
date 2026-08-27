@@ -41,16 +41,18 @@ class WalkInRegistrar
     /**
      * The fields a walk-in registration needs, wherever it is being typed.
      *
-     * Name and phone identify the person; `institution_id` picks from the same
-     * list the public registration form offers (`other` plus `institution_other`
-     * for free text), so the desk cannot spell the same institution three
-     * different ways across the register. `country` and `fee_category` set the
-     * price and are checked against each other by FeeTier::guard.
+     * Name identifies the person; `institution_id` picks from the same list the
+     * public registration form offers (`other` plus `institution_other` for free
+     * text), so the desk cannot spell the same institution three different ways
+     * across the register. `country` and `fee_category` set the price and are
+     * checked against each other by FeeTier::guard.
      *
-     * Email is the one optional field. Plenty of attendees reach the desk
-     * without an address they can recall or spell, and demanding one produces
-     * invented addresses that bounce and pollute every campaign audience. The
-     * phone number carries the control number instead, by SMS.
+     * Email and phone are both optional. Plenty of attendees reach the desk
+     * without an address they can recall or spell, and a leader is not going to
+     * hand a desk clerk a personal mobile number; demanding either produces
+     * invented values. When a phone is given the control number also goes out by
+     * SMS, but the desk sees it on screen the moment it is issued regardless, so
+     * a walk-in with neither can still be told what to pay.
      *
      * `country` is the other optional one, but only when the category picked
      * is complimentary: it exists solely to pick a fee tier, and a
@@ -69,9 +71,13 @@ class WalkInRegistrar
 
         return [
             'salutation' => ['nullable', 'string', Rule::in(config('tmsc.salutations'))],
+            // A dignitary's role, printed beside their institution on the badge
+            // ("DIRECTOR GENERAL, MUHAS"). Desk-only and rare; capped short
+            // because the badge line it shares is not generous.
+            'position_title' => ['nullable', 'string', 'max:80'],
             'name' => ['required', 'string', 'max:255'],
             'email' => ['nullable', 'string', 'lowercase', 'email', 'max:255', 'unique:users,email'],
-            'phone' => ['required', 'string', 'max:50'],
+            'phone' => ['nullable', 'string', 'max:50'],
             'institution_id' => [
                 'required', 'string',
                 function ($attribute, $value, $fail) {
@@ -106,6 +112,7 @@ class WalkInRegistrar
      * @param  array<string, mixed>  $validated  name, email, phone, institution_id,
      *                                           institution_other, participant_type,
      *                                           country, fee_category, and optionally
+     *                                           salutation, position_title,
      *                                           student_verified_in_person, waive, waive_notes
      * @param  User  $staff  whoever is standing at the desk doing the registering —
      *                       recorded against a student verification or a waiver, and
@@ -148,6 +155,9 @@ class WalkInRegistrar
             // index sees a NULL instead of an empty string it would collide on
             // the second time.
             'email' => filled($validated['email'] ?? null) ? $validated['email'] : null,
+            // Likewise NULL, not '', when there is no phone — TanzanianPhone and
+            // the register search both key off a real value or nothing.
+            'phone' => filled($validated['phone'] ?? null) ? $validated['phone'] : null,
             'password' => Str::password(32),
         ]);
 

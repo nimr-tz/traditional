@@ -77,6 +77,7 @@ class User extends Authenticatable implements MustVerifyEmailContract
         'middle_name',
         'last_name',
         'salutation',
+        'position_title',
         'email',
         'institution',
         'institution_id',
@@ -110,6 +111,21 @@ class User extends Authenticatable implements MustVerifyEmailContract
     {
         return Attribute::make(
             get: fn () => trim(($this->salutation ? $this->salutation.' ' : '').$this->name),
+        );
+    }
+
+    /**
+     * What prints under the name on the badge: "DIRECTOR GENERAL, MUHAS" for a
+     * dignitary, or just "MUHAS" for everyone else. `position_title` is only
+     * ever set for leaders registered at the desk; when it is blank this is
+     * exactly the institution, so the badge is unchanged for the other 99%.
+     */
+    protected function badgeAffiliation(): Attribute
+    {
+        return Attribute::make(
+            get: fn () => collect([$this->position_title, $this->institution])
+                ->filter()
+                ->implode(', '),
         );
     }
 

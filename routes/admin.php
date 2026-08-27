@@ -114,6 +114,9 @@ Route::middleware(['auth', 'role:staff,finance,admin,super_admin'])->prefix('sta
     Route::get('/', [StaffDashboardController::class, 'index'])->name('dashboard');
     // The whole register, for browsing. The desk itself opens on a search.
     Route::get('registrants', [StaffRegistrantController::class, 'index'])->name('registrants');
+    // A run of badges for everyone matching the current filter — the pre-doors
+    // print job. Must precede registrants/{user} or "badges" binds as a {user}.
+    Route::get('registrants/badges', [StaffRegistrantController::class, 'printBadges'])->name('registrants.badges');
     // Everything about one person, in one place — what a search result opens
     // onto, so every action lives with the details that justify it instead of
     // being crammed into the search row itself.

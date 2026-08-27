@@ -55,7 +55,10 @@ class BadgePrinter
 
         return [
             'name' => trim(($user->salutation ? $user->salutation.' ' : '').$user->name),
-            'institution' => $user->institution,
+            // Carries the dignitary's role when they have one — "DIRECTOR
+            // GENERAL, MUHAS" — and is plain "MUHAS" otherwise. Same slot on
+            // the card either way.
+            'institution' => $user->badge_affiliation,
             'registrationCode' => $user->registration_code,
             // A URL, not the bare code, so the same square serves two readers:
             // an ordinary phone camera opens the public verification page, while
@@ -107,7 +110,7 @@ class BadgePrinter
     {
         $content = $this->content($user);
 
-        BadgePrintLog::record($user, $printedBy, $user->full_name, $user->institution, $this->categoryLabel($user));
+        BadgePrintLog::record($user, $printedBy, $user->full_name, $user->badge_affiliation, $this->categoryLabel($user));
 
         $template = config('badge.template');
 
@@ -120,9 +123,49 @@ class BadgePrinter
         return $pdf;
     }
 
+    /**
+     * A run of badges as one PDF, one card per page.
+     *
+     * The desk prints these before doors open for everyone matching a filter.
+     * Callers must pass only people entitled to a badge — content() throws
+     * otherwise, aborting the whole run rather than quietly skipping someone.
+     * Each card is logged exactly as a single print is: a batch is still a
+     * stack of badges leaving the printer.
+     *
+     * @param  iterable<int, User>  $users
+     *
+     * @throws RuntimeException when any registrant in the run has no right to a badge
+     */
+    public function renderBatch(iterable $users, ?User $printedBy = null): PdfDocument
+    {
+        $template = config('badge.template');
+        $badges = [];
+
+        foreach ($users as $user) {
+            $badges[] = $this->content($user);
+
+            BadgePrintLog::record($user, $printedBy, $user->full_name, $user->badge_affiliation, $this->categoryLabel($user));
+        }
+
+        $pdf = Pdf::loadView('pdf.badges', [
+            'badges' => $badges,
+            'widthMm' => $template['width_mm'],
+            'heightMm' => $template['height_mm'],
+        ]);
+
+        $pdf->setPaper([0, 0, $this->mmToPoints($template['width_mm']), $this->mmToPoints($template['height_mm'])]);
+
+        return $pdf;
+    }
+
     public function filenameFor(User $user): string
     {
         return 'tmsc-badge-'.$user->registration_code.'.pdf';
+    }
+
+    public function filenameForBatch(int $count): string
+    {
+        return 'tmsc-badges-'.$count.'-'.now()->format('Y-m-d').'.pdf';
     }
 
     /**

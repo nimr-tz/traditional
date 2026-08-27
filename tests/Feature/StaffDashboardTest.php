@@ -222,7 +222,7 @@ class StaffDashboardTest extends TestCase
         $this->assertSame('participant_east_africa', $walkIn->fee_category);
     }
 
-    public function test_name_phone_and_institution_are_all_required(): void
+    public function test_name_institution_and_participant_type_are_required_but_phone_is_not(): void
     {
         $this->seedParticipantCategory();
         $staff = User::factory()->staff()->create();
@@ -232,7 +232,36 @@ class StaffDashboardTest extends TestCase
                 'country' => 'Tanzania',
                 'fee_category' => 'participant_east_africa',
             ])
-            ->assertSessionHasErrors(['name', 'phone', 'institution_id', 'participant_type']);
+            ->assertSessionHasErrors(['name', 'institution_id', 'participant_type'])
+            ->assertSessionDoesntHaveErrors('phone');
+    }
+
+    /**
+     * A leader will not give a desk clerk a personal mobile, and plenty of
+     * attendees have no email either. Neither is required — the desk reads the
+     * control number off its own screen.
+     */
+    public function test_a_walk_in_needs_neither_a_phone_nor_an_email(): void
+    {
+        $this->seedParticipantCategory();
+        $staff = User::factory()->staff()->create();
+
+        $this->actingAs($staff)
+            ->post(route('staff.walk-ins.store'), [
+                'name' => 'No Contact Person',
+                'institution_id' => 'other',
+                'institution_other' => 'Ministry of Health',
+                'participant_type' => 'policy_maker',
+                'country' => 'Tanzania',
+                'fee_category' => 'participant_east_africa',
+            ])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $walkIn = User::where('name', 'No Contact Person')->firstOrFail();
+
+        $this->assertNull($walkIn->phone);
+        $this->assertNull($walkIn->email);
     }
 
     /** A missing address must not throw and abandon a confirmed payment halfway. */
@@ -310,6 +339,62 @@ class StaffDashboardTest extends TestCase
             'East African Participants',
             $paid->badgePrints()->latest('printed_at')->first()->printed_category,
         );
+    }
+
+    /**
+     * A leader is registered at the desk as a walk-in with their role in the
+     * "Position / role" field. It rides onto the badge in the institution slot —
+     * "DIRECTOR GENERAL, MUHAS" — while the name line stays the salutation plus
+     * the name.
+     */
+    public function test_a_dignitary_walk_in_carries_their_position_onto_the_badge(): void
+    {
+        $this->seedComplimentaryCategory();
+        $staff = User::factory()->staff()->create();
+
+        $this->actingAs($staff)
+            ->post(route('staff.walk-ins.store'), [
+                'salutation' => 'Hon.',
+                'position_title' => 'Director General',
+                'name' => 'Jane Mwakalinga',
+                'phone' => '+255 700 000 900',
+                'institution_id' => 'other',
+                'institution_other' => 'MUHAS',
+                'participant_type' => 'policy_maker',
+                'fee_category' => 'complimentary_media',
+            ])
+            ->assertRedirect();
+
+        $leader = User::where('name', 'Jane Mwakalinga')->firstOrFail();
+        $this->assertSame('Director General', $leader->position_title);
+        $this->assertSame('Director General, MUHAS', $leader->badge_affiliation);
+
+        $badge = app(BadgePrinter::class)->preview($leader);
+        $this->assertSame('Hon. Jane Mwakalinga', $badge['name']);
+        $this->assertSame('Director General, MUHAS', $badge['institution']);
+
+        // What actually printed is what the log keeps.
+        $this->actingAs($staff)->get(route('staff.badge', $leader))->assertOk();
+        $this->assertSame(
+            'Director General, MUHAS',
+            $leader->badgePrints()->latest('printed_at')->first()->printed_institution,
+        );
+    }
+
+    /** No position on file means the affiliation line is exactly the institution, unchanged. */
+    public function test_an_ordinary_registrant_badge_is_untouched_by_the_position_field(): void
+    {
+        $this->seedParticipantCategory();
+
+        $paid = $this->paidRegistrant([
+            'name' => 'Plain Attendee',
+            'institution' => 'NIMR',
+            'fee_category' => 'participant_east_africa',
+            'position_title' => null,
+        ]);
+
+        $this->assertSame('NIMR', $paid->badge_affiliation);
+        $this->assertSame('NIMR', app(BadgePrinter::class)->preview($paid)['institution']);
     }
 
     /** The coordinates are measured off the artwork, so a swap must not go unnoticed. */

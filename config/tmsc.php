@@ -1,7 +1,7 @@
 <?php
 
 return [
-    'salutations' => ['Prof.', 'Dr.', 'Mr.', 'Mrs.', 'Ms.'],
+    'salutations' => ['Hon.', 'Prof.', 'Dr.', 'Mr.', 'Mrs.', 'Ms.'],
 
     'participant_types' => [
         'researcher' => 'Researcher',

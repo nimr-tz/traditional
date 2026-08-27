@@ -136,6 +136,7 @@ class DashboardController extends Controller
                 'id' => $user->id,
                 'name' => $user->name,
                 'salutation' => $user->salutation,
+                'position_title' => $user->position_title,
                 'email' => $user->email,
                 'phone' => $user->phone,
                 'institution' => $user->institution,

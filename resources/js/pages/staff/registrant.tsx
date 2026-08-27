@@ -13,6 +13,7 @@ interface PersonDetail {
     id: number;
     name: string;
     salutation: string | null;
+    position_title: string | null;
     email: string | null;
     phone: string | null;
     institution: string | null;
@@ -210,6 +211,7 @@ export default function RegistrantPage({ canManageFinance, person, badge, attend
                         <dl className="mt-4 flex flex-col gap-3 text-sm">
                             <Row label="Email" value={person.email ?? '—'} />
                             <Row label="Phone" value={person.phone ?? '—'} />
+                            {person.position_title && <Row label="Position / role" value={person.position_title} />}
                             <Row label="Institution" value={person.institution ?? '—'} />
                             <Row label="Participant type" value={participantTypeLabel(person.participant_type)} />
                             <Row
