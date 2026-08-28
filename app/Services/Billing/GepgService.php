@@ -5,6 +5,7 @@ namespace App\Services\Billing;
 use App\Jobs\AssignSandboxControlNumber;
 use App\Mail\ControlNumberIssued;
 use App\Mail\PaymentConfirmed;
+use App\Models\ConferenceSetting;
 use App\Models\FeeCategory;
 use App\Models\User;
 use App\Services\Sms\SmsNotifier;
@@ -107,13 +108,7 @@ class GepgService
             'qty' => 1,
             'currency' => $user->currency,
             'amount' => $user->fee_amount,
-            'customer' => [
-                'first_name' => $this->sanitize($user->first_name ?: $user->name),
-                'middle_name' => $this->sanitize($user->middle_name ?: 'no middle name'),
-                'last_name' => $this->sanitize($user->last_name ?: $user->first_name ?: $user->name),
-                'cell_num' => $this->formatPhone($user->phone),
-                'email' => $user->email,
-            ],
+            'customer' => $this->customerPayload($user),
         ];
 
         try {
@@ -287,6 +282,99 @@ class GepgService
      * Strip characters the billing system's GePG XML bridge chokes on
      * (accents, apostrophes, etc.) — matches NREIMS's own sanitization.
      */
+    /**
+     * The `customer` block of a bill submission (see api.md).
+     *
+     * Every field here is one the public registration form makes mandatory, so
+     * this used to read them straight off the user. A walk-in registered at the
+     * venue desk breaks all of those assumptions: they arrive with a single
+     * `name` rather than a first/middle/last, and both email and phone are
+     * optional at the desk (WalkInRegistrar::rules explains why). Read raw,
+     * that produced `email: null` and a fabricated `cell_num` of 255000000000
+     * — a payload the billing system rejects, which is why issuing a control
+     * number at the desk failed while the identical request from the
+     * registrant's own payment page succeeded.
+     *
+     * When the registrant has no contact details of their own, the conference's
+     * own stand in rather than a placeholder: the desk reads the control number
+     * off the screen and hands it over, so a bill notification landing with the
+     * secretariat is the right destination anyway.
+     *
+     * @return array<string, string>
+     */
+    private function customerPayload(User $user): array
+    {
+        [$firstName, $middleName, $lastName] = $this->nameParts($user);
+
+        return [
+            'first_name' => $this->sanitize($firstName),
+            'middle_name' => $this->sanitize($middleName),
+            'last_name' => $this->sanitize($lastName),
+            'cell_num' => $this->formatPhone($this->contactPhone($user)),
+            'email' => $this->contactEmail($user),
+        ];
+    }
+
+    /**
+     * First/middle/last for the bill, from whichever of the two shapes the
+     * registrant was created in: the public form's separate name columns, or
+     * the desk's single `name` field, which is split on whitespace.
+     *
+     * @return array{0: string, 1: string, 2: string}
+     */
+    private function nameParts(User $user): array
+    {
+        if ($user->first_name) {
+            return [
+                $user->first_name,
+                $user->middle_name ?: 'no middle name',
+                $user->last_name ?: $user->first_name,
+            ];
+        }
+
+        $words = preg_split('/\s+/', trim((string) $user->name), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+
+        if ($words === []) {
+            return ['Conference', 'no middle name', 'Participant'];
+        }
+
+        $first = array_shift($words);
+        $last = $words ? array_pop($words) : $first;
+
+        return [$first, $words ? implode(' ', $words) : 'no middle name', $last];
+    }
+
+    /**
+     * A real address for the bill, never null. Falls back to the conference's
+     * published contact address for a desk walk-in who gave none.
+     */
+    private function contactEmail(User $user): string
+    {
+        if (filled($user->email)) {
+            return $user->email;
+        }
+
+        return ConferenceSetting::get('contact_email')
+            ?: config('mail.from.address');
+    }
+
+    /**
+     * A real number for the bill, never a padded placeholder. `formatPhone`
+     * pads whatever it is given out to 12 digits, so a registrant with no phone
+     * would otherwise be billed as 255000000000 — a number that belongs to
+     * nobody. The conference's published contact number stands in instead, and
+     * only when it too is unset does the placeholder survive, since the bill
+     * still has to carry something.
+     */
+    private function contactPhone(User $user): ?string
+    {
+        if (filled($user->phone)) {
+            return $user->phone;
+        }
+
+        return ConferenceSetting::get('contact_phone');
+    }
+
     private function sanitize(string $value, int $maxLength = 0): string
     {
         $clean = trim(preg_replace('/[^A-Za-z0-9 ]/', '', $value));

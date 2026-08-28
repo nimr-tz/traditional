@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Jobs\AssignSandboxControlNumber;
 use App\Mail\ControlNumberIssued;
 use App\Mail\PaymentConfirmed;
+use App\Models\ConferenceSetting;
 use App\Models\User;
 use App\Services\Billing\GepgService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -488,5 +489,86 @@ class PaymentFlowTest extends TestCase
         $this->expectExceptionMessage('Payments are not available yet.');
 
         app(GepgService::class)->requestControlNumber($user);
+    }
+
+    /**
+     * A walk-in has one `name` and may have given the desk neither an email nor
+     * a phone (WalkInRegistrar::rules). The bill still has to carry a valid
+     * customer, so the conference's own contacts stand in — previously this
+     * sent `email: null` and a padded `cell_num` of 255000000000, and the
+     * billing system rejected the submission.
+     */
+    public function test_a_desk_walk_in_without_contact_details_still_submits_a_valid_customer(): void
+    {
+        Http::fake([
+            'https://billing.example/api/bill-submission/' => Http::response(['bill_id' => 'LIVE-BILL-777'], 201),
+        ]);
+
+        config([
+            'billing.sandbox' => false,
+            'billing.system_url' => 'https://billing.example',
+            'billing.api_key' => 'secret',
+        ]);
+
+        ConferenceSetting::set('contact_email', 'tmsc@nimr.or.tz');
+        ConferenceSetting::set('contact_phone', '0754 111 222');
+
+        $user = User::factory()->create([
+            'name' => 'Jane Anna Doe',
+            'first_name' => null,
+            'middle_name' => null,
+            'last_name' => null,
+            'email' => null,
+            'phone' => null,
+            'fee_category' => 'participant_east_africa',
+            'fee_amount' => 150000,
+            'currency' => 'TZS',
+        ]);
+
+        app(GepgService::class)->requestControlNumber($user);
+
+        Http::assertSent(fn ($request) => $request['customer'] === [
+            'first_name' => 'Jane',
+            'middle_name' => 'Anna',
+            'last_name' => 'Doe',
+            'cell_num' => '255754111222',
+            'email' => 'tmsc@nimr.or.tz',
+        ]);
+
+        $this->assertSame('LIVE-BILL-777', $user->fresh()->billing_request_id);
+    }
+
+    public function test_a_self_registered_customer_payload_is_unchanged(): void
+    {
+        Http::fake([
+            'https://billing.example/api/bill-submission/' => Http::response(['bill_id' => 'LIVE-BILL-778'], 201),
+        ]);
+
+        config([
+            'billing.sandbox' => false,
+            'billing.system_url' => 'https://billing.example',
+            'billing.api_key' => 'secret',
+        ]);
+
+        $user = User::factory()->create([
+            'first_name' => 'John',
+            'middle_name' => null,
+            'last_name' => 'Doe',
+            'email' => 'john.doe@example.com',
+            'phone' => '+255 700 000 000',
+            'fee_category' => 'participant_east_africa',
+            'fee_amount' => 150000,
+            'currency' => 'TZS',
+        ]);
+
+        app(GepgService::class)->requestControlNumber($user);
+
+        Http::assertSent(fn ($request) => $request['customer'] === [
+            'first_name' => 'John',
+            'middle_name' => 'no middle name',
+            'last_name' => 'Doe',
+            'cell_num' => '255700000000',
+            'email' => 'john.doe@example.com',
+        ]);
     }
 }
