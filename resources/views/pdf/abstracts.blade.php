@@ -8,6 +8,13 @@
     .meta { font-size: 9px; color: #6b7280; margin: 0 0 2px; }
     .subtheme { font-size: 14px; font-weight: bold; color: #1F4E1F; margin: 24px 0 12px; border-bottom: 1px solid #d1d5db; padding-bottom: 4px; }
     .subtheme:first-of-type { margin-top: 24px; }
+    .summary { page-break-after: always; }
+    .summary h2 { font-size: 14px; color: #1F4E1F; margin: 24px 0 8px; }
+    .summary table { width: 100%; border-collapse: collapse; }
+    .summary th { text-align: left; font-size: 9px; text-transform: uppercase; color: #6b7280; border-bottom: 1px solid #d1d5db; padding: 4px 6px; }
+    .summary td { padding: 6px; border-bottom: 1px solid #e5e7eb; }
+    .summary .count { text-align: right; width: 70px; font-variant-numeric: tabular-nums; }
+    .summary .total td { font-weight: bold; border-top: 1px solid #27364b; border-bottom: 0; }
     .abstract { margin-bottom: 18px; }
     .abstract-title { font-size: 12px; font-weight: bold; margin: 0 0 4px; }
     .authors { margin: 0 0 4px; }
@@ -26,8 +33,31 @@
         <div class="meta">Filtered to search: "{{ $search }}"</div>
     @endif
 
+    <div class="summary">
+        <h2>Summary by theme</h2>
+        <table>
+            <thead>
+                <tr><th>Theme</th><th class="count">Abstracts</th></tr>
+            </thead>
+            <tbody>
+                @foreach($subthemes as $subtheme)
+                    <tr>
+                        <td>{{ $loop->iteration }}. {{ $subtheme->title }}</td>
+                        <td class="count">{{ $subtheme->abstractSubmissions->count() }}</td>
+                    </tr>
+                @endforeach
+                <tr class="total">
+                    <td>Total</td>
+                    <td class="count">{{ $subthemes->sum(fn ($subtheme) => $subtheme->abstractSubmissions->count()) }}</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
     @foreach($subthemes as $subtheme)
-        <div class="subtheme">{{ $subtheme->title }}</div>
+        <div class="subtheme">{{ $loop->iteration }}. {{ $subtheme->title }}
+            <span class="meta">— {{ $subtheme->abstractSubmissions->count() }} {{ \Illuminate\Support\Str::plural('abstract', $subtheme->abstractSubmissions->count()) }}</span>
+        </div>
 
         @foreach($subtheme->abstractSubmissions as $abstract)
             <div class="abstract">
