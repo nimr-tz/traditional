@@ -13,6 +13,7 @@ use App\Http\Controllers\Admin\SettingsController as AdminSettingsController;
 use App\Http\Controllers\Admin\SmsCampaignController as AdminSmsCampaignController;
 use App\Http\Controllers\Admin\StudentVerificationController as AdminStudentVerificationController;
 use App\Http\Controllers\Staff\AttendanceController as StaffAttendanceController;
+use App\Http\Controllers\Staff\AttendanceExportController as StaffAttendanceExportController;
 use App\Http\Controllers\Staff\DashboardController as StaffDashboardController;
 use App\Http\Controllers\Staff\RegistrantController as StaffRegistrantController;
 use Illuminate\Support\Facades\Route;
@@ -128,6 +129,9 @@ Route::middleware(['auth', 'role:staff,finance,admin,super_admin'])->prefix('sta
     // Fix a mistyped name / title / institution caught after registration,
     // rather than registering the person a second time.
     Route::patch('registrants/{user}', [StaffDashboardController::class, 'updateDetails'])->name('registrant.update');
+    // A day's attendance as a spreadsheet (?date=YYYY-MM-DD, default today, or
+    // ?date=all). Reading what the app recorded, not recording it.
+    Route::get('attendance/export', StaffAttendanceExportController::class)->name('attendance.export');
     Route::post('walk-ins', [StaffDashboardController::class, 'registerWalkIn'])->name('walk-ins.store');
     Route::post('registrants/{user}/control-number', [StaffDashboardController::class, 'issueControlNumber'])->name('control-number');
     // Reprints are allowed and logged — the desk warns first, then prints.

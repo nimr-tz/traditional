@@ -5,7 +5,7 @@ import AppLayout from '@/layouts/app-layout';
 import { cn, formatPersonName } from '@/lib/utils';
 import { type BreadcrumbItem } from '@/types';
 import { Head, Link, router } from '@inertiajs/react';
-import { ChevronRight, Printer, Search, Users, X } from 'lucide-react';
+import { ChevronRight, Download, Printer, Search, Users, X } from 'lucide-react';
 import { FormEventHandler, KeyboardEvent, useRef, useState } from 'react';
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -59,6 +59,7 @@ interface RegistrantsProps {
     printableCount: number;
     /** The most badges that can be printed in one run. */
     batchLimit: number;
+    attendanceDays: { date: string; total: number }[];
 }
 
 const tabs: { key: StatusFilter; label: string }[] = [
@@ -70,8 +71,12 @@ const tabs: { key: StatusFilter; label: string }[] = [
     { key: 'complimentary', label: 'Attending free' },
 ];
 
-export default function StaffRegistrants({ people, filters, counts, categories, printableCount, batchLimit }: RegistrantsProps) {
+export default function StaffRegistrants({ people, filters, counts, categories, printableCount, batchLimit, attendanceDays }: RegistrantsProps) {
     const [search, setSearch] = useState(filters.search ?? '');
+    const today = localDate(new Date());
+    // Today when anyone has been scanned today — the export a conference day
+    // ends on — otherwise the most recent day that has scans.
+    const [exportDay, setExportDay] = useState(attendanceDays.find((day) => day.date === today)?.date ?? attendanceDays[0]?.date ?? 'all');
     const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
     // "Print all badges" for the current view. Opens the batch PDF in a new tab
@@ -166,6 +171,37 @@ export default function StaffRegistrants({ people, filters, counts, categories, 
                                 .
                             </p>
                         </div>
+                    </div>
+
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                        <select
+                            value={exportDay}
+                            aria-label="Attendance day to export"
+                            disabled={attendanceDays.length === 0}
+                            onChange={(event) => setExportDay(event.target.value)}
+                            className="border-input bg-background text-foreground h-9 rounded-md border px-3 text-sm disabled:opacity-50"
+                        >
+                            {attendanceDays.map((day) => (
+                                <option key={day.date} value={day.date}>
+                                    {formatDay(day.date)}
+                                    {day.date === today ? ' (today)' : ''} · {day.total} checked in
+                                </option>
+                            ))}
+                            <option value="all">All days</option>
+                        </select>
+                        {attendanceDays.length === 0 ? (
+                            <Button type="button" variant="outline" className="h-9" disabled>
+                                <Download className="size-4" />
+                                Export attendance
+                            </Button>
+                        ) : (
+                            <Button asChild variant="outline" className="h-9">
+                                <a href={route('staff.attendance.export', { date: exportDay })}>
+                                    <Download className="size-4" />
+                                    Export attendance
+                                </a>
+                            </Button>
+                        )}
                     </div>
                 </header>
 
@@ -354,4 +390,13 @@ export default function StaffRegistrants({ people, filters, counts, categories, 
             </div>
         </AppLayout>
     );
+}
+
+/** YYYY-MM-DD in the browser's own timezone — toISOString() would give UTC's date. */
+function localDate(date: Date): string {
+    return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-');
+}
+
+function formatDay(date: string): string {
+    return new Date(`${date}T00:00:00`).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
 }

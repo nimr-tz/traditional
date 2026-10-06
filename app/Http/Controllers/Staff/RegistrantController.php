@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Staff;
 
 use App\Http\Controllers\Controller;
+use App\Models\Attendance;
 use App\Models\FeeCategory;
 use App\Models\User;
 use App\Services\BadgePrinter;
@@ -85,6 +86,18 @@ class RegistrantController extends Controller
                 ->orderBy('is_complimentary')
                 ->orderBy('sort_order')
                 ->get(['key', 'label', 'is_complimentary']),
+            // The days anyone was scanned, newest first — what the attendance
+            // export offers, so nobody picks a date with nothing in it.
+            'attendanceDays' => Attendance::query()
+                ->whereHas('user', fn (Builder $query) => $query->withRole(User::ROLE_USER))
+                ->selectRaw('attendance_date, count(*) as total')
+                ->groupBy('attendance_date')
+                ->orderByDesc('attendance_date')
+                ->get()
+                ->map(fn (Attendance $day) => [
+                    'date' => $day->attendance_date->toDateString(),
+                    'total' => (int) $day->total,
+                ]),
         ]);
     }
 

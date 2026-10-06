@@ -9,7 +9,7 @@ import AppLayout from '@/layouts/app-layout';
 import { cn, formatPersonName } from '@/lib/utils';
 import { type BreadcrumbItem, type SharedData } from '@/types';
 import { Head, Link, router, useForm, usePage } from '@inertiajs/react';
-import { CheckCircle2, ChevronRight, CreditCard, Gift, ScanLine, Search, ShieldCheck, UserPlus, X } from 'lucide-react';
+import { CheckCircle2, ChevronRight, CreditCard, Download, Gift, ScanLine, Search, ShieldCheck, UserPlus, X } from 'lucide-react';
 import { FormEventHandler, useMemo, useState } from 'react';
 
 const breadcrumbs: BreadcrumbItem[] = [{ title: 'Check-in', href: '/staff' }];
@@ -274,7 +274,19 @@ function ArrivalsPanel({ arrivals, today }: { arrivals: Arrival[]; today: number
                     </span>
                     Checking in
                 </h2>
-                <span className="text-muted-foreground text-xs font-semibold tabular-nums">{today} today</span>
+                <div className="flex items-center gap-3">
+                    <span className="text-muted-foreground text-xs font-semibold tabular-nums">{today} today</span>
+                    {today > 0 && (
+                        <a
+                            href={route('staff.attendance.export')}
+                            className="inline-flex items-center gap-1 text-xs font-semibold text-[#135eeb] hover:underline"
+                            title="Download today's attendance as a spreadsheet"
+                        >
+                            <Download className="size-3.5" />
+                            Export
+                        </a>
+                    )}
+                </div>
             </div>
 
             {arrivals.length === 0 ? (
