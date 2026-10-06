@@ -5,7 +5,7 @@ import AppLayout from '@/layouts/app-layout';
 import { cn } from '@/lib/utils';
 import { type BreadcrumbItem } from '@/types';
 import { Head, Link, router } from '@inertiajs/react';
-import { CalendarDays, ScanLine, Search, X } from 'lucide-react';
+import { CalendarDays, Download, ScanLine, Search, X } from 'lucide-react';
 import { FormEventHandler, useState } from 'react';
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -103,6 +103,15 @@ export default function StaffAttendance({ scans, filters, days, summary }: Atten
                             <dd className="font-serif text-2xl font-semibold tabular-nums">{summary.conference_total}</dd>
                         </div>
                     </dl>
+
+                    {days.length > 0 && (
+                        <Button asChild variant="outline" className="h-9">
+                            <a href={route('staff.attendance.export', { date: filters.date })}>
+                                <Download className="size-4" />
+                                {allDays ? 'Export all days' : 'Export this day'}
+                            </a>
+                        </Button>
+                    )}
                 </header>
 
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
